@@ -4,3 +4,5 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
 # end Nimble config
 
 --mm:orc
+--debugger:native
+--app:gui
