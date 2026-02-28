@@ -4,10 +4,10 @@ import seaqt/[
   qwidget, qpushbutton,
   qplaintextedit, qtoolbar, qboxlayout,
   qmenu, qtoolbutton, qaction, qfiledialog,
-  qfont, qfontdatabase, qtabwidget]
+  qfont, qfontdatabase, qtabwidget, qsizepolicy]
 import seaqt/QtWidgets/gen_qlayout_types
 
-import bench/[buffers, ui]
+import bench/[buffers, ui, theme]
 
 proc buildApplication() =
   let _ = QApplication.create()
@@ -19,6 +19,7 @@ proc buildApplication() =
   let dashLayout = QVBoxLayout.create()
   let startBtn = QPushButton.create("Start")
   startBtn.setFixedWidth(120)
+  QLayout(h: dashLayout.h, owned: false).setContentsMargins(0, 0, 0, 0)
   dashLayout.addStretch()
   dashLayout.addWidget(QWidget(h: startBtn.h, owned: false), 0, 132) # AlignCenter
   dashLayout.addStretch()
@@ -66,6 +67,7 @@ proc buildApplication() =
     tabs.setCurrentIndex(tabs.count() - 1)
 
   editLayout.setSpacing(0)
+  QLayout(h: editLayout.h, owned: false).setContentsMargins(0, 0, 0, 0)
   editLayout.addWidget(QWidget(h: toolbar.h, owned: false))
   editLayout.addWidget(QWidget(h: tabs.h, owned: false), 1)
   editPage.setLayout(QLayout(h: editLayout.h, owned: false))
@@ -185,6 +187,25 @@ proc buildApplication() =
   buffersBtn.setMenu(buffersMenu)
   buffersBtn.setPopupMode(cint QToolButtonToolButtonPopupModeEnum.InstantPopup)
   discard toolbar.addWidget(QWidget(h: buffersBtn.h, owned: false))
+
+  # Expanding spacer pushes the next widget to the far right
+  let spacer = QWidget.create()
+  spacer.setSizePolicy(
+    cint QSizePolicyPolicyEnum.Expanding,
+    cint QSizePolicyPolicyEnum.Preferred
+  )
+  discard toolbar.addWidget(QWidget(h: spacer.h, owned: false))
+
+  # Dark mode toggle button
+  var currentTheme = Theme.Light
+  let themeBtn = QPushButton.create("Dark")
+  themeBtn.setFixedWidth(60)
+  discard toolbar.addWidget(QWidget(h: themeBtn.h, owned: false))
+
+  themeBtn.onPressed do():
+    currentTheme = if currentTheme == Theme.Light: Theme.Dark else: Theme.Light
+    applyTheme(currentTheme)
+    themeBtn.setText(if currentTheme == Theme.Dark: "Light" else: "Dark")
 
   stack.setCurrentIndex(idxEdit)
 
