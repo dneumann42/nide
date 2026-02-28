@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(pkg-config:*)",
+      "Bash(nimble list:*)",
+      "Bash(gh repo:*)",
+      "Bash(curl:*)",
+      "Bash(test:*)",
+      "WebSearch",
+      "WebFetch(domain:api.github.com)",
+      "Bash(nimble build:*)",
+      "Bash(nimble:*)",
+      "Bash(git clone:*)",
+      "Bash(nim cpp:*)"
+    ]
+  }
+}
