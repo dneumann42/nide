@@ -19,6 +19,12 @@ proc benchDirPath*(): string =
 proc hasNoProjects*(pm: ProjectManager): bool =
   pm.projects.len() == 0
 
+iterator projects*(pm: ProjectManager): string =
+  for p in pm.projects: yield p
+
+proc addProject*(self: var ProjectManager, path: string) =
+  self.projects.add(path)
+
 proc projectsFileExists(): bool =
   result = fileExists(benchDirPath() / "projects.toml")
 

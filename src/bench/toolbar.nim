@@ -1,7 +1,7 @@
 import std/[tables]
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
               qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
-              qsvgrenderer]
+              qsvgrenderer, qlabel]
 
 const SunSvg   = staticRead("icons/sun.svg")
 const MoonSvg  = staticRead("icons/moon.svg")
@@ -36,6 +36,7 @@ type
   Toolbar* = ref object
     toolbar: QToolbar
     fileMenu: ToolMenu
+    projectLabel: QLabel
     newPaneBtn: QToolButton
     themeBtn: QToolButton
     runBtn: QToolButton
@@ -84,6 +85,12 @@ proc build*(self: Toolbar) =
   let tbLayout = QWidget(h: self.toolbar.h, owned: false).layout()
   tbLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
   tbLayout.setSpacing(cint 2)
+  self.projectLabel = QLabel.create("—")
+  self.projectLabel.owned = false
+  QWidget(h: self.projectLabel.h, owned: false).setStyleSheet(
+    "QLabel { background: #1e3a5c; color: #cce0ff; border-radius: 4px; padding: 1px 7px; }")
+  discard self.toolbar.addWidget(QWidget(h: self.projectLabel.h, owned: false))
+
   self.buildFileMenu()
 
   var spacer = QWidget.create()
@@ -113,6 +120,9 @@ proc build*(self: Toolbar) =
   QAbstractButton(h: self.themeBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
   discard self.toolbar.addWidget(self.themeBtn)
 
+proc setProjectName*(self: Toolbar, name: string) =
+  self.projectLabel.setText(name)
+
 proc onRun*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.runBtn.onClicked(triggered)
 
@@ -129,3 +139,6 @@ proc setThemeIcon*(self: Toolbar, isDark: bool) =
   const IconSize = 12
   let svg = if isDark: SunSvg else: MoonSvg
   QAbstractButton(h: self.themeBtn.h, owned: false).setIcon(svgIcon(svg, cint IconSize))
+  let (bg, fg) = if isDark: ("#1e3a5c", "#cce0ff") else: ("#b8d4f0", "#1a2a3a")
+  QWidget(h: self.projectLabel.h, owned: false).setStyleSheet(
+    "QLabel { background: " & bg & "; color: " & fg & "; border-radius: 4px; padding: 1px 7px; }")

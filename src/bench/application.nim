@@ -1,4 +1,4 @@
-import std/[os, strutils]
+import std/[os]
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qstatusbar, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject]
@@ -41,21 +41,17 @@ proc equalizeSplits*(self: Application) =
   self.splitter.setSizes(sizes)
 
 proc openProject(self: Application) {.raises: [].} =
-  let dir = QFileDialog.getExistingDirectory(QWidget(h: self.root.h, owned: false))
-  if dir.len == 0: return
-  var isProject = false
-  try:
-    for kind, path in walkDir(dir):
-      if kind == pcFile and path.endsWith(".nimble"):
-        isProject = true; break
-  except: discard
-  if not isProject: return
+  let file = QFileDialog.getOpenFileName(
+    QWidget(h: self.root.h, owned: false), "", "", "Nimble files (*.nimble)")
+  if file.len == 0: return
+  let dir = file.parentDir()
   self.currentProject = dir
   for panel in self.panels:
     panel.clearBuffer()
     panel.setProjectOpen(true)
   self.bufferManager = BufferManager.init()
   try: setCurrentDir(dir) except OSError: discard
+  self.toolbar.setProjectName(dir.lastPathPart)
 
 # Forward declarations
 proc insertCol(self: Application, afterPane: Pane, col: QSplitter)
