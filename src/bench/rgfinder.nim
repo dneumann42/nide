@@ -1,6 +1,8 @@
 import std/[strutils, os, osproc]
 import seaqt/[qwidget, qvboxlayout, qlayout, qdialog, qlineedit, qlistwidget,
-              qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer]
+              qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer,
+              qsplitter, qplaintextedit, qfont, qtextdocument, qtextcursor, qtextobject]
+import bench/highlight
 
 proc dbg(msg: string) {.raises: [].} =
   try: stderr.write(msg & "\n") except: discard
@@ -24,7 +26,7 @@ proc showRipgrepFinder*(parent: QWidget,
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Find in Files")
-    QWidget(h: dialogH, owned: false).resize(cint 600, cint 400)
+    QWidget(h: dialogH, owned: false).resize(cint 900, cint 500)
 
     var searchBox = QLineEdit.create()
     searchBox.owned = false
@@ -33,11 +35,36 @@ proc showRipgrepFinder*(parent: QWidget,
     listWidget.owned = false
     let listH = listWidget.h
 
-    var vlay = QVBoxLayout.create()
-    vlay.owned = false
-    vlay.addWidget(QWidget(h: searchBox.h, owned: false))
-    vlay.addWidget(QWidget(h: listWidget.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: vlay.h, owned: false))
+    var leftLayout = QVBoxLayout.create()
+    leftLayout.owned = false
+    leftLayout.addWidget(QWidget(h: searchBox.h, owned: false))
+    leftLayout.addWidget(QWidget(h: listWidget.h, owned: false))
+
+    var leftPanel = QWidget.create()
+    leftPanel.owned = false
+    leftPanel.setLayout(QLayout(h: leftLayout.h, owned: false))
+
+    var preview = QPlainTextEdit.create()
+    preview.owned = false
+    preview.setReadOnly(true)
+    var previewFont = QFont.create("Monospace")
+    previewFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
+    QWidget(h: preview.h, owned: false).setFont(previewFont)
+    let previewHl = NimHighlighter()
+    previewHl.attach(preview.document())
+    let previewH = preview.h
+
+    var splitter = QSplitter.create(cint 1)
+    splitter.owned = false
+    splitter.addWidget(QWidget(h: leftPanel.h, owned: false))
+    splitter.addWidget(QWidget(h: preview.h, owned: false))
+    splitter.setStretchFactor(cint 0, cint 1)
+    splitter.setStretchFactor(cint 1, cint 2)
+
+    var outerLayout = QVBoxLayout.create()
+    outerLayout.owned = false
+    outerLayout.addWidget(QWidget(h: splitter.h, owned: false))
+    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: outerLayout.h, owned: false))
 
     var currentMatches: seq[RgMatch]
     var pendingQuery = ""
@@ -86,7 +113,7 @@ proc showRipgrepFinder*(parent: QWidget,
             let parts = lineStr.split(':', 2)
             if parts.len == 3:
               currentMatches.add(RgMatch(
-                file:    parts[0],
+                file:    (try: relativePath(parts[0], cwd) except: parts[0]),
                 lineNum: parseInt(parts[1]),
                 match:   parts[2]
               ))
@@ -101,6 +128,22 @@ proc showRipgrepFinder*(parent: QWidget,
     QTimer(h: timerH, owned: false).onTimeout do() {.raises: [].}:
       dbg("rgfinder: timer fired, query=" & pendingQuery)
       populate(pendingQuery)
+
+    listWidget.onCurrentRowChanged do(row: cint) {.raises: [].}:
+      if row >= 0 and row < cint(currentMatches.len):
+        let m = currentMatches[row]
+        let absPath = if isAbsolute(m.file): m.file else: cwd / m.file
+        try:
+          let content = readFile(absPath)
+          let pv = QPlainTextEdit(h: previewH, owned: false)
+          pv.setPlainText(content)
+          let blk = pv.document().findBlockByNumber(cint(m.lineNum - 1))
+          var cur = pv.textCursor()
+          cur.setPosition(blk.position())
+          pv.setTextCursor(cur)
+          pv.ensureCursorVisible()
+        except:
+          QPlainTextEdit(h: previewH, owned: false).setPlainText("(could not read file)")
 
     searchBox.onTextChanged do(text: openArray[char]) {.raises: [].}:
       pendingQuery = toStr(text)
