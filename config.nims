@@ -6,3 +6,6 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
 --mm:orc
 --debugger:native
 --app:gui
+--stackTrace:on
+--lineTrace:on
+--panics:on

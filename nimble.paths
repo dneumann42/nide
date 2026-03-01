@@ -1,3 +1,5 @@
 --noNimblePath
+--path:"/home/dneumann/.nimble/pkgs2/db_connector-0.1.0-4f2e67d0e4b61af9ac5575509305660b473f01a4/src"
 --path:"/home/dneumann/.nimble/pkgs2/seaqt-0.6.4.0-4b05762909502cd88ebb0930db13d1ea4ee49015"
+--path:"/home/dneumann/.nimble/pkgs2/db_connector-0.1.0-4f2e67d0e4b61af9ac5575509305660b473f01a4"
 --path:"/home/dneumann/Projects/bench/src"

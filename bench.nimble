@@ -13,3 +13,5 @@ bin           = @["bench"]
 
 requires "nim >= 2.2.6"
 requires "https://github.com/seaqt/nim-seaqt#qt-6.4"
+
+requires "db_connector >= 0.1.0"
