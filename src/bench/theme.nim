@@ -23,6 +23,7 @@ proc applyTheme*(theme: Theme) =
     palette.setColor(cint QPaletteColorRoleEnum.Link,            QColor.fromString("#2a82da"))
     palette.setColor(cint QPaletteColorRoleEnum.Highlight,       QColor.fromString("#2a82da"))
     palette.setColor(cint QPaletteColorRoleEnum.HighlightedText, QColor.fromString("#000000"))
+    palette.setColor(cint QPaletteColorRoleEnum.PlaceholderText, QColor.fromString("#888888"))
   of Light:
     discard  # leave palette as default (Fusion light)
   QApplication.setPalette(palette)
