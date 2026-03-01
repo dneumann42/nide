@@ -1,7 +1,8 @@
 import std/[os]
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qstatusbar, qtoolbutton, qabstractbutton,
-              qshortcut, qkeysequence, qobject]
+              qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
+              qgraphicseffect]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder]
 
@@ -20,6 +21,8 @@ type
     runReopen:  proc() {.raises: [].}
     buildReopen: proc() {.raises: [].}
     lastFocusedPane: Pane
+    opacityActive: bool
+    opacityEffect: QGraphicsOpacityEffect
 
 proc buffers*(app: Application): lent BufferManager =
   result = app.bufferManager
@@ -147,6 +150,7 @@ proc closeBuffer*(self: Application, name: string) =
 
 proc build*(self: Application) =
   self.root = QMainWindow.create()
+  QWidget(h: self.root.h, owned: false).setAttribute(cint(120))  # WA_TranslucentBackground
   QWidget(h: self.root.h, owned: false).setMinimumSize(cint(800), cint(480))
   self.toolbar.build()
 
@@ -156,6 +160,13 @@ proc build*(self: Application) =
   self.splitter.setHandleWidth(cint 1)
   self.root.setCentralWidget(QWidget(h: self.splitter.h, owned: false))
   self.splitter.owned = false
+
+  var opEff = QGraphicsOpacityEffect.create()
+  opEff.setOpacity(1.0)
+  QWidget(h: self.splitter.h, owned: false).setGraphicsEffect(
+    QGraphicsEffect(h: opEff.h, owned: false))
+  opEff.owned = false
+  self.opacityEffect = opEff
 
   self.theme = Dark
   applyTheme(Dark)
@@ -210,6 +221,11 @@ proc build*(self: Application) =
     let fw = QApplication.focusWidget()
     for p in self.panels:
       p.setHeaderFocus(fw.h != nil and p.widget().isAncestorOf(fw), self.theme == Dark)
+
+  self.toolbar.onOpacityToggle do():
+    self.opacityActive = not self.opacityActive
+    let level = if self.opacityActive: 0.85 else: 1.0
+    self.opacityEffect.setOpacity(level)
 
   self.toolbar.onTriggered(NewProject) do():
     showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager)

@@ -3,10 +3,11 @@ import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplicat
               qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qlabel]
 
-const SunSvg   = staticRead("icons/sun.svg")
-const MoonSvg  = staticRead("icons/moon.svg")
-const RunSvg   = staticRead("icons/run.svg")
-const BuildSvg = staticRead("icons/build.svg")
+const SunSvg     = staticRead("icons/sun.svg")
+const MoonSvg    = staticRead("icons/moon.svg")
+const RunSvg     = staticRead("icons/run.svg")
+const BuildSvg   = staticRead("icons/build.svg")
+const OpacitySvg = staticRead("icons/opacity.svg")
 
 proc svgIcon(svg: string, size: cint): QIcon =
   var pm = QPixmap.create(size, size)
@@ -39,6 +40,7 @@ type
     projectLabel: QLabel
     newPaneBtn: QToolButton
     themeBtn: QToolButton
+    opacityBtn: QToolButton
     runBtn: QToolButton
     buildBtn: QToolButton
 
@@ -120,6 +122,13 @@ proc build*(self: Toolbar) =
   QAbstractButton(h: self.themeBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
   discard self.toolbar.addWidget(self.themeBtn)
 
+  self.opacityBtn = QToolButton.create()
+  self.opacityBtn.setAutoRaise(true)
+  QWidget(h: self.opacityBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QAbstractButton(h: self.opacityBtn.h, owned: false).setIcon(svgIcon(OpacitySvg, cint IconSize))
+  QAbstractButton(h: self.opacityBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  discard self.toolbar.addWidget(self.opacityBtn)
+
 proc setProjectName*(self: Toolbar, name: string) =
   self.projectLabel.setText(name)
 
@@ -134,6 +143,9 @@ proc onNewPane*(self: Toolbar, triggered: proc() {.raises: [].}) =
 
 proc onThemeToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.themeBtn.onClicked(triggered)
+
+proc onOpacityToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.opacityBtn.onClicked(triggered)
 
 proc setThemeIcon*(self: Toolbar, isDark: bool) =
   const IconSize = 12
