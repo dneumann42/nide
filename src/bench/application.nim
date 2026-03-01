@@ -1,6 +1,6 @@
 import std/[os]
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
-              qcoreapplication, qstatusbar, qtoolbutton, qabstractbutton,
+              qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qgraphicseffect]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
@@ -174,22 +174,20 @@ proc build*(self: Application) =
   self.theme = Dark
   applyTheme(Dark)
 
-  # Status-bar background-process indicator buttons (initially hidden)
+  # Floating background-process indicator buttons (initially hidden, child of root)
   var runStatusBtn = QToolButton.create()
   runStatusBtn.owned = false
   QAbstractButton(h: runStatusBtn.h, owned: false).setText("nimble run")
+  QWidget(h: runStatusBtn.h, owned: false).setParent(QWidget(h: self.root.h, owned: false))
   QWidget(h: runStatusBtn.h, owned: false).hide()
   self.runStatusBtnH = runStatusBtn.h
 
   var buildStatusBtn = QToolButton.create()
   buildStatusBtn.owned = false
   QAbstractButton(h: buildStatusBtn.h, owned: false).setText("nimble build")
+  QWidget(h: buildStatusBtn.h, owned: false).setParent(QWidget(h: self.root.h, owned: false))
   QWidget(h: buildStatusBtn.h, owned: false).hide()
   self.buildStatusBtnH = buildStatusBtn.h
-
-  let sb = self.root.statusBar()
-  sb.addPermanentWidget(QWidget(h: runStatusBtn.h, owned: false))
-  sb.addPermanentWidget(QWidget(h: buildStatusBtn.h, owned: false))
 
   let runBtnH = self.runStatusBtnH
   runStatusBtn.onClicked do() {.raises: [].}:
@@ -208,13 +206,21 @@ proc build*(self: Application) =
   self.toolbar.onRun do():
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
       self.runReopen = reopen
-      QWidget(h: self.runStatusBtnH, owned: false).show()
+      let rw = QWidget(h: self.root.h, owned: false)
+      let btn = QWidget(h: self.runStatusBtnH, owned: false)
+      btn.move(rw.width() - cint(110), rw.height() - cint(40))
+      btn.show()
+      btn.raiseX()
     runCommand(QWidget(h: self.root.h, owned: false), "nimble run", "nimble run", onBg)
 
   self.toolbar.onBuild do():
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
       self.buildReopen = reopen
-      QWidget(h: self.buildStatusBtnH, owned: false).show()
+      let rw = QWidget(h: self.root.h, owned: false)
+      let btn = QWidget(h: self.buildStatusBtnH, owned: false)
+      btn.move(rw.width() - cint(110), rw.height() - cint(80))
+      btn.show()
+      btn.raiseX()
     runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "nimble build", onBg)
 
   self.toolbar.onThemeToggle do():
