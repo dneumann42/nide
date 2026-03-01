@@ -3,8 +3,10 @@ import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplicat
               qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer]
 
-const SunSvg  = staticRead("icons/sun.svg")
-const MoonSvg = staticRead("icons/moon.svg")
+const SunSvg   = staticRead("icons/sun.svg")
+const MoonSvg  = staticRead("icons/moon.svg")
+const RunSvg   = staticRead("icons/run.svg")
+const BuildSvg = staticRead("icons/build.svg")
 
 proc svgIcon(svg: string, size: cint): QIcon =
   var pm = QPixmap.create(size, size)
@@ -36,6 +38,8 @@ type
     fileMenu: ToolMenu
     newPaneBtn: QToolButton
     themeBtn: QToolButton
+    runBtn: QToolButton
+    buildBtn: QToolButton
 
 proc build(self: ToolMenu) =
   self.button = QToolButton.create()
@@ -82,6 +86,21 @@ proc build*(self: Toolbar) =
   tbLayout.setSpacing(cint 2)
   self.buildFileMenu()
 
+  const IconSize = 12
+  self.runBtn = QToolButton.create()
+  self.runBtn.setAutoRaise(true)
+  QWidget(h: self.runBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QAbstractButton(h: self.runBtn.h, owned: false).setIcon(svgIcon(RunSvg, cint IconSize))
+  QAbstractButton(h: self.runBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  discard self.toolbar.addWidget(self.runBtn)
+
+  self.buildBtn = QToolButton.create()
+  self.buildBtn.setAutoRaise(true)
+  QWidget(h: self.buildBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QAbstractButton(h: self.buildBtn.h, owned: false).setIcon(svgIcon(BuildSvg, cint IconSize))
+  QAbstractButton(h: self.buildBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  discard self.toolbar.addWidget(self.buildBtn)
+
   var spacer = QWidget.create()
   spacer.owned = false
   spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
@@ -90,10 +109,15 @@ proc build*(self: Toolbar) =
   self.themeBtn = QToolButton.create()
   self.themeBtn.setAutoRaise(true)
   QWidget(h: self.themeBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  const IconSize = 12
   QAbstractButton(h: self.themeBtn.h, owned: false).setIcon(svgIcon(SunSvg, cint IconSize))
   QAbstractButton(h: self.themeBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
   discard self.toolbar.addWidget(self.themeBtn)
+
+proc onRun*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.runBtn.onClicked(triggered)
+
+proc onBuild*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.buildBtn.onClicked(triggered)
 
 proc onNewPane*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.newPaneBtn.onClicked(triggered)

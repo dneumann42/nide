@@ -1,6 +1,6 @@
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar,
               qsplitter, qcoreapplication]
-import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane]
+import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner]
 
 type
   Application* = ref object
@@ -125,6 +125,12 @@ proc build*(self: Application) =
 
   self.theme = Dark
   applyTheme(Dark)
+
+  self.toolbar.onRun do():
+    runCommand(QWidget(h: self.root.h, owned: false), "nimble run", "nimble run")
+
+  self.toolbar.onBuild do():
+    runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "nimble build")
 
   self.toolbar.onThemeToggle do():
     self.theme = if self.theme == Dark: Light else: Dark
