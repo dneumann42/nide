@@ -110,3 +110,99 @@ proc showFileFinder*(parent: QWidget,
 
     discard QDialog(h: dialogH, owned: false).exec()
   except: discard
+
+proc showBufferFinder*(parent: QWidget,
+                       entries: seq[(string, string)],
+                       onSelected: proc(key: string) {.raises: [].}) {.raises: [].} =
+  try:
+    var dialog = QDialog.create(parent)
+    dialog.owned = false
+    let dialogH = dialog.h
+    QWidget(h: dialogH, owned: false).setWindowTitle("Switch Buffer")
+    QWidget(h: dialogH, owned: false).resize(cint 480, cint 320)
+
+    var searchBox = QLineEdit.create()
+    searchBox.owned = false
+    searchBox.setPlaceholderText("Search open buffers...")
+
+    var listWidget = QListWidget.create()
+    listWidget.owned = false
+    let listH = listWidget.h
+
+    var layout = QVBoxLayout.create()
+    layout.owned = false
+    layout.addWidget(QWidget(h: searchBox.h, owned: false))
+    layout.addWidget(QWidget(h: listWidget.h, owned: false))
+    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: layout.h, owned: false))
+
+    var filteredKeys: seq[string]
+
+    proc populate(query: string) {.raises: [].} =
+      try:
+        let lw = QListWidget(h: listH, owned: false)
+        lw.clear()
+        var matches: seq[(int, string, string)]
+        for (display, key) in entries:
+          let score = fuzzyScore(query, display)
+          if score >= 0:
+            matches.add((score, display, key))
+        matches.sort(proc(a, b: (int, string, string)): int {.raises: [].} = cmp(b[0], a[0]))
+        filteredKeys.setLen(0)
+        for (_, display, key) in matches:
+          lw.addItem(display)
+          filteredKeys.add(key)
+        if lw.count() > 0:
+          lw.setCurrentRow(cint 0)
+      except: discard
+
+    populate("")
+
+    searchBox.onTextChanged do(text: openArray[char]) {.raises: [].}:
+      populate(toStr(text))
+
+    # Ctrl+N = next item
+    var nextSc = QShortcut.create(QKeySequence.create("Ctrl+N"),
+                                  QObject(h: dialogH, owned: false))
+    nextSc.owned = false
+    nextSc.setContext(cint 2)
+    nextSc.onActivated do() {.raises: [].}:
+      let lw = QListWidget(h: listH, owned: false)
+      let next = min(lw.currentRow() + cint 1, lw.count() - cint 1)
+      lw.setCurrentRow(next)
+
+    # Ctrl+B = previous item
+    var prevSc = QShortcut.create(QKeySequence.create("Ctrl+B"),
+                                  QObject(h: dialogH, owned: false))
+    prevSc.owned = false
+    prevSc.setContext(cint 2)
+    prevSc.onActivated do() {.raises: [].}:
+      let lw = QListWidget(h: listH, owned: false)
+      let prev = max(lw.currentRow() - cint 1, cint 0)
+      lw.setCurrentRow(prev)
+
+    # Enter = open current selection
+    var enterSc = QShortcut.create(QKeySequence.create("Return"),
+                                   QObject(h: dialogH, owned: false))
+    enterSc.owned = false
+    enterSc.setContext(cint 2)
+    enterSc.onActivated do() {.raises: [].}:
+      let lw = QListWidget(h: listH, owned: false)
+      let row = lw.currentRow()
+      if row >= 0 and row < cint(filteredKeys.len):
+        let key = filteredKeys[row]
+        QDialog(h: dialogH, owned: false).accept()
+        onSelected(key)
+
+    # Double-click = open
+    listWidget.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
+      try:
+        let lw = QListWidget(h: listH, owned: false)
+        let row = lw.row(item)
+        if row >= 0 and row < cint(filteredKeys.len):
+          let key = filteredKeys[row]
+          QDialog(h: dialogH, owned: false).accept()
+          onSelected(key)
+      except: discard
+
+    discard QDialog(h: dialogH, owned: false).exec()
+  except: discard

@@ -1,3 +1,4 @@
+import std/os
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qstatusbar, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject]
@@ -219,6 +220,33 @@ proc build*(self: Application) =
       proc(path: string) {.raises: [].} =
         let buf = self.bufferManager.openFile(path)
         target.setBuffer(buf))
+
+  var bufferSc = QShortcut.create(QKeySequence.create("Ctrl+B"),
+                                  QObject(h: self.root.h, owned: false))
+  bufferSc.owned = false
+  bufferSc.setContext(cint 2)   # WindowShortcut
+  bufferSc.onActivated do() {.raises: [].}:
+    var target = self.lastFocusedPane
+    if target == nil and self.panels.len > 0:
+      target = self.panels[0]
+    if target == nil: return
+    var entries: seq[(string, string)]
+    let cwd = try: getCurrentDir() except OSError: ""
+    for buf in self.bufferManager:
+      var display = buf.name
+      if cwd.len > 0:
+        try: display = relativePath(buf.name, cwd)
+        except: discard
+      entries.add((display, buf.name))
+    if entries.len == 0: return
+    showBufferFinder(
+      QWidget(h: self.root.h, owned: false),
+      entries,
+      proc(key: string) {.raises: [].} =
+        for buf in self.bufferManager:
+          if buf.name == key:
+            target.setBuffer(buf)
+            break)
 
   self.addColumn()  # initialize at least one
   self.equalizeSplits()

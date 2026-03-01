@@ -17,6 +17,7 @@ proc showNewModuleDialog*(parent: QWidget): string =
   pathEditRow.owned = false
 
   var pathEdit = QLineEdit.create(); pathEdit.owned = false
+  pathEdit.setMinimumWidth(150)
   let defaultPath = try: getCurrentDir() / "src" except OSError: "src"
   pathEdit.setText(defaultPath)
   pathEditRowLayout.addWidget(QWidget(h: pathEdit.h, owned: false))
