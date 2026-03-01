@@ -1,6 +1,8 @@
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
-              qcoreapplication, qstatusbar, qtoolbutton, qabstractbutton]
-import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner]
+              qcoreapplication, qstatusbar, qtoolbutton, qabstractbutton,
+              qshortcut, qkeysequence, qobject]
+import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
+              filefinder]
 
 type
   Application* = ref object
@@ -15,6 +17,7 @@ type
     buildStatusBtnH: pointer
     runReopen:  proc() {.raises: [].}
     buildReopen: proc() {.raises: [].}
+    lastFocusedPane: Pane
 
 proc buffers*(app: Application): lent BufferManager =
   result = app.bufferManager
@@ -202,6 +205,21 @@ proc build*(self: Application) =
     self.addColumn()
     self.equalizeSplits()
 
+  var finderSc = QShortcut.create(QKeySequence.create("Ctrl+P"),
+                                  QObject(h: self.root.h, owned: false))
+  finderSc.owned = false
+  finderSc.setContext(cint 2)   # WindowShortcut
+  finderSc.onActivated do() {.raises: [].}:
+    var target = self.lastFocusedPane
+    if target == nil and self.panels.len > 0:
+      target = self.panels[0]
+    if target == nil: return
+    showFileFinder(
+      QWidget(h: self.root.h, owned: false),
+      proc(path: string) {.raises: [].} =
+        let buf = self.bufferManager.openFile(path)
+        target.setBuffer(buf))
+
   self.addColumn()  # initialize at least one
   self.equalizeSplits()
 
@@ -209,7 +227,10 @@ proc build*(self: Application) =
   appInstance.onFocusChanged do(old, now: QWidget):
     try:
       for p in self.panels:
-        p.setHeaderFocus(now.h != nil and p.widget().isAncestorOf(now), self.theme == Dark)
+        let focused = now.h != nil and p.widget().isAncestorOf(now)
+        p.setHeaderFocus(focused, self.theme == Dark)
+        if focused:
+          self.lastFocusedPane = p
     except: discard
 
 proc show*(self: Application) =
