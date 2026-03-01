@@ -20,8 +20,8 @@ proc svgIcon(svg: string, size: cint): QIcon =
 
 type
   ToolMenuId* = enum
-    NewFile
-    SaveFile
+    NewModule
+    OpenModule
     OpenFile
     NewProject
     SaveProject
@@ -67,8 +67,9 @@ proc buildFileMenu(self: Toolbar) =
   self.fileMenu = ToolMenu(label: "File")
   self.fileMenu.build()
 
-  self.fileMenu.actions[NewFile] = self.fileMenu.menu.addAction("New Module")
-  self.fileMenu.actions[OpenFile] = self.fileMenu.menu.addAction("Open Module")
+  self.fileMenu.actions[NewModule] = self.fileMenu.menu.addAction("New Module")
+  self.fileMenu.actions[OpenModule] = self.fileMenu.menu.addAction("Open Module")
+  self.fileMenu.actions[OpenFile] = self.fileMenu.menu.addAction("Open File")
 
   self.fileMenu.actions[NewProject] = self.fileMenu.menu.addAction("New Project")
   self.fileMenu.actions[OpenProject] = self.fileMenu.menu.addAction("Open Project")

@@ -242,13 +242,25 @@ proc build*(self: Application) =
   self.toolbar.onTriggered(NewProject) do():
     showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager)
 
-  self.toolbar.onTriggered(NewFile) do():
+  self.toolbar.onTriggered(NewModule) do():
     if self.panels.len > 0:
       self.panels[0].triggerNewModule()
 
-  self.toolbar.onTriggered(OpenFile) do():
+  self.toolbar.onTriggered(OpenModule) do():
     if self.panels.len > 0:
       self.panels[0].triggerOpenModule()
+  
+  self.toolbar.onTriggered(OpenFile) do():
+    let file = QFileDialog.getOpenFileName(
+        QWidget(h: self.root.h, owned: false), "", "", "All files (*.*)")
+    if file.len == 0: return
+    let buf = self.bufferManager.openFile(file)
+    
+    var target = self.lastFocusedPane
+    if target == nil and self.panels.len > 0:
+      target = self.panels[0]
+    if target == nil: return
+    target.setBuffer(buf)
 
   self.toolbar.onTriggered(OpenProject) do():
     self.openProject()

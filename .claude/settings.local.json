@@ -22,7 +22,15 @@
       "Bash(ls:*)",
       "Bash(timeout 5 ./bench:*)",
       "Bash(echo exit: $?:*)",
-      "Bash(nim e:*)"
+      "Bash(nim e:*)",
+      "Bash(nim:*)",
+      "Bash(nix:*)",
+      "Bash(nix-instantiate:*)",
+      "Bash(# Check what Qt6 modules are available \\(for pkg-config names\\) pkg-config --list-all)",
+      "Bash(nix-build <nixpkgs>:*)",
+      "Bash(/nix/store/9b8jzn6nczzsxqfmr52sa2z280q11pi5-nim_lk-20250309/bin/nim_lk:*)",
+      "Bash(/nix/store/ry71c22x9vi649f1vlgsgn2ijzdrk6rx-nim_builder-2.2.4/bin/nim_builder:*)",
+      "Bash(nix flake:*)"
     ]
   }
 }
