@@ -129,7 +129,7 @@ proc build*(self: Application) =
   self.toolbar.onThemeToggle do():
     self.theme = if self.theme == Dark: Light else: Dark
     applyTheme(self.theme)
-    self.toolbar.setThemeBtnText(if self.theme == Dark: "☀" else: "☾")
+    self.toolbar.setThemeIcon(self.theme == Dark)
 
   self.toolbar.onTriggered(NewProject) do():
     showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager)
