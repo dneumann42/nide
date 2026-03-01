@@ -1,12 +1,13 @@
 import seaqt/[qwidget, qpushbutton, qvboxlayout, qlayout,
-              qstackedwidget, qfiledialog]
-import bench/buffers
+              qstackedwidget, qfiledialog, qplaintextedit]
+import bench/[buffers, highlight]
 
 type
   Pane* = ref object
     stack: QStackedWidget
     openModuleWidget: QWidget
-    currentEditorH: pointer   # handle of editor currently in stack (nil = none)
+    editor: QPlainTextEdit
+    highlighter: NimHighlighter
     bufferName*: string
 
 proc widget*(pane: Pane): QWidget =
@@ -26,12 +27,20 @@ proc newPane*(onFileSelected: proc(pane: Pane, path: string) {.raises: [].}): Pa
   openModuleWidget.owned = false
   openModuleWidget.setLayout(QLayout(h: layout.h, owned: false))
 
+  var editor = QPlainTextEdit.create()
+  editor.owned = false
+  let hl = NimHighlighter()
+  hl.attach(editor.document())
+
   var stack = QStackedWidget.create()
   stack.owned = false
   discard stack.addWidget(QWidget(h: openModuleWidget.h, owned: false))
+  discard stack.addWidget(QWidget(h: editor.h, owned: false))
 
   result.stack = stack
   result.openModuleWidget = openModuleWidget
+  result.editor = editor
+  result.highlighter = hl
 
   let pane = result
   btn.onClicked(proc() {.raises: [].} =
@@ -40,18 +49,11 @@ proc newPane*(onFileSelected: proc(pane: Pane, path: string) {.raises: [].}): Pa
       onFileSelected(pane, fn))
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
-  if pane.currentEditorH != nil:
-    pane.stack.removeWidget(QWidget(h: pane.currentEditorH, owned: false))
-    pane.currentEditorH = nil
-  let editorW = QWidget(h: buf.editor.h, owned: false)
-  discard pane.stack.addWidget(editorW)
-  pane.stack.setCurrentWidget(editorW)
-  pane.currentEditorH = buf.editor.h
+  pane.editor.setPlainText(buf.content)
+  pane.stack.setCurrentIndex(cint(1))
   pane.bufferName = buf.name
 
 proc clearBuffer*(pane: Pane) =
-  if pane.currentEditorH != nil:
-    pane.stack.removeWidget(QWidget(h: pane.currentEditorH, owned: false))
-    pane.currentEditorH = nil
+  pane.editor.setPlainText("")
   pane.stack.setCurrentIndex(cint(0))
   pane.bufferName = ""
