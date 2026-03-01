@@ -5,7 +5,7 @@ import bench/[application, toolbar, buffers]
 proc start() =
   let _ = QApplication.create()
   var application = Application.new()
-  QApplication.setApplicationName("Bench DEV 0.0.0")
+  QApplication.setApplicationName("Bench DEV 0.0.1")
   application.build()
   application.show()
   quit QApplication.exec().int

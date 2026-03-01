@@ -74,12 +74,18 @@ proc newPane*(
   closeBtn.setFlat(true)
   QWidget(h: closeBtn.h, owned: false).setFixedSize(cint 18, cint 18)
 
+  var saveBtn = QPushButton.create("💾")
+  saveBtn.owned = false
+  saveBtn.setFlat(true)
+  QWidget(h: saveBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+
   var headerLayout = QHBoxLayout.create()
   headerLayout.owned = false
   QLayout(h: headerLayout.h, owned: false).setContentsMargins(cint 4, cint 2, cint 4, cint 2)
   headerLayout.addWidget(QWidget(h: label.h, owned: false), cint(0), cint(0))
   headerLayout.addWidget(QWidget(h: statusLabel.h, owned: false), cint(0), cint(0))
   headerLayout.addStretch()
+  headerLayout.addWidget(QWidget(h: saveBtn.h, owned: false), cint(0), cint(0))
   headerLayout.addWidget(QWidget(h: vSplitBtn.h, owned: false), cint(0), cint(0))
   headerLayout.addWidget(QWidget(h: hSplitBtn.h, owned: false), cint(0), cint(0))
   headerLayout.addWidget(QWidget(h: closeBtn.h, owned: false), cint(0), cint(0))
@@ -108,14 +114,23 @@ proc newPane*(
   result.highlighter = hl
 
   let pane = result
-  QPlainTextEdit(h: pane.editor.h, owned: false).onTextChanged(proc() {.raises: [].} =
+  QPlainTextEdit(h: pane.editor.h, owned: false).onTextChanged do() {.raises: [].}:
     pane.changed = true
-    pane.statusLabel.setText(StatusLight))
+    pane.statusLabel.setText(StatusLight)
 
   btn.onClicked do() {.raises: [].}:
     let fn = QFileDialog.getOpenFileName(QWidget(h: pane.stack.h, owned: false))
     if fn.len > 0:
       onFileSelected(pane, fn)
+
+  saveBtn.onClicked do() {.raises: [].}:
+    if pane.bufferName.len > 0:
+      try:
+        writeFile(pane.bufferName, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
+        pane.changed = false
+        pane.statusLabel.setText(StatusDark)
+      except:
+        discard
 
   vSplitBtn.onClicked do() {.raises: [].}: onVSplit(pane)
   hSplitBtn.onClicked do() {.raises: [].}: onHSplit(pane)
