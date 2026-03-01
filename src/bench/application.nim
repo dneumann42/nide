@@ -54,7 +54,12 @@ proc makePane(self: Application, col: QSplitter): Pane =
       except: discard,
     proc(pane: Pane) {.raises: [].} =
       try: self.insertRow(pane, QSplitter(h: colH, owned: false))
-      except: discard)
+      except: discard,
+    proc(pane: Pane) {.raises: [].} =
+      let path = showNewModuleDialog(QWidget(h: self.root.h, owned: false))
+      if path.len > 0:
+        let buf = self.bufferManager.openFile(path)
+        pane.setBuffer(buf))
 
 proc insertCol(self: Application, afterPane: Pane, col: QSplitter) =
   let colW = QWidget(h: col.h, owned: false)
@@ -131,17 +136,14 @@ proc build*(self: Application) =
 
   self.toolbar.onTriggered(NewFile) do():
     if self.panels.len > 0:
-      let path = showNewModuleDialog(QWidget(h: self.root.h, owned: false))
-      if path.len > 0:
-        let buf = self.bufferManager.openFile(path)
-        self.panels[0].setBuffer(buf)
+      self.panels[0].triggerNewModule()
 
   self.toolbar.onTriggered(OpenFile) do():
     if self.panels.len > 0:
-      let fn = QFileDialog.getOpenFileName(QWidget(h: self.root.h, owned: false))
-      if fn.len > 0:
-        let buf = self.bufferManager.openFile(fn)
-        self.panels[0].setBuffer(buf)
+      self.panels[0].openModuleDialog()
+
+  self.toolbar.onTriggered(OpenProject) do():
+    echo "OPEN PROJECT"
 
   self.toolbar.onTriggered(Quit) do():
     QApplication.quit()

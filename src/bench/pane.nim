@@ -16,6 +16,8 @@ type
     highlighter: NimHighlighter
     changed*: bool
     buffer*: Buffer
+    fileSelectedCb: proc(pane: Pane, path: string) {.raises: [].}
+    newModuleCb: proc(pane: Pane) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -40,16 +42,26 @@ proc newPane*(
   onFileSelected: proc(pane: Pane, path: string) {.raises: [].},
   onClose: proc(pane: Pane) {.raises: [].},
   onVSplit: proc(pane: Pane) {.raises: [].},
-  onHSplit: proc(pane: Pane) {.raises: [].}
+  onHSplit: proc(pane: Pane) {.raises: [].},
+  onNewModule: proc(pane: Pane) {.raises: [].}
 ): Pane =
   result = Pane()
 
+  var newModuleBtn = QPushButton.create("New Module")
+  newModuleBtn.owned = false
   var btn = QPushButton.create("Open Module")
   btn.owned = false
+
+  var btnRow = QHBoxLayout.create(); btnRow.owned = false
+  btnRow.addStretch()
+  btnRow.addWidget(QWidget(h: newModuleBtn.h, owned: false))
+  btnRow.addWidget(QWidget(h: btn.h, owned: false))
+  btnRow.addStretch()
+
   var layout = QVBoxLayout.create()
   layout.owned = false
   layout.addStretch()
-  layout.addWidget(QWidget(h: btn.h, owned: false), cint(0), cint(4))  # AlignHCenter = 4
+  layout.addLayout(QLayout(h: btnRow.h, owned: false))
   layout.addStretch()
   var openModuleWidget = QWidget.create()
   openModuleWidget.owned = false
@@ -135,11 +147,15 @@ proc newPane*(
   result.openModuleWidget = openModuleWidget
   result.editor = editor
   result.highlighter = hl
+  result.fileSelectedCb = onFileSelected
+  result.newModuleCb    = onNewModule
 
   let pane = result
   QPlainTextEdit(h: pane.editor.h, owned: false).onTextChanged do() {.raises: [].}:
     pane.changed = true
     pane.statusLabel.setText(StatusLight)
+
+  newModuleBtn.onClicked do() {.raises: [].}: onNewModule(pane)
 
   btn.onClicked do() {.raises: [].}:
     let fn = QFileDialog.getOpenFileName(QWidget(h: pane.stack.h, owned: false))
@@ -186,3 +202,11 @@ proc clearBuffer*(pane: Pane) =
   pane.statusLabel.setText(StatusDark)
   pane.stack.setCurrentIndex(cint(0))
   pane.buffer = nil
+
+proc openModuleDialog*(pane: Pane) {.raises: [].} =
+  let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))
+  if fn.len > 0:
+    pane.fileSelectedCb(pane, fn)
+
+proc triggerNewModule*(pane: Pane) {.raises: [].} =
+  pane.newModuleCb(pane)
