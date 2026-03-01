@@ -4,7 +4,7 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qgraphicseffect]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
-              filefinder]
+              filefinder, rgfinder]
 
 type
   Application* = ref object
@@ -298,6 +298,22 @@ proc build*(self: Application) =
           if buf.name == key:
             target.setBuffer(buf)
             break)
+
+  var rgSc = QShortcut.create(QKeySequence.create("Ctrl+Shift+F"),
+                              QObject(h: self.root.h, owned: false))
+  rgSc.owned = false
+  rgSc.setContext(cint 2)
+  rgSc.onActivated do() {.raises: [].}:
+    var target = self.lastFocusedPane
+    if target == nil and self.panels.len > 0:
+      target = self.panels[0]
+    if target == nil: return
+    showRipgrepFinder(
+      QWidget(h: self.root.h, owned: false),
+      proc(file: string, lineNum: int) {.raises: [].} =
+        let buf = self.bufferManager.openFile(file)
+        target.setBuffer(buf)
+        target.jumpToLine(lineNum))
 
   self.addColumn()  # initialize at least one
   self.equalizeSplits()

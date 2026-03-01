@@ -11,7 +11,7 @@ import seaqt/[
 
 type
   Page* = ref object of RootObj
-    widget: QWidget 
+    widget: QWidget
     
   EditPage* = ref object of Page
     monoFont*: QFont

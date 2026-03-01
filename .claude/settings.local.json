@@ -20,7 +20,9 @@
       "Bash(find:*)",
       "Bash(cat:*)",
       "Bash(ls:*)",
-      "Bash(timeout 5 ./bench:*)"
+      "Bash(timeout 5 ./bench:*)",
+      "Bash(echo exit: $?:*)",
+      "Bash(nim e:*)"
     ]
   }
 }

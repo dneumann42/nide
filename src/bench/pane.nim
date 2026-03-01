@@ -5,7 +5,7 @@ import seaqt/[qwidget, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
               qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
-              qregularexpression, qbrush, qtextformat]
+              qregularexpression, qbrush, qtextformat, qtextobject]
 import bench/[buffers, highlight]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -447,3 +447,13 @@ proc focus*(pane: Pane) {.raises: [].} =
     QWidget(h: pane.editor.h, owned: false).setFocus()
   else:
     pane.container.setFocus()
+
+proc jumpToLine*(pane: Pane, lineNum: int) {.raises: [].} =
+  if pane.buffer == nil: return
+  let ed  = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let doc = ed.document()
+  let blk = doc.findBlockByNumber(cint(lineNum - 1))
+  var cur = ed.textCursor()
+  cur.setPosition(blk.position())
+  ed.setTextCursor(cur)
+  ed.ensureCursorVisible()
