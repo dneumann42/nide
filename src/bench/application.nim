@@ -67,13 +67,16 @@ proc makePane(self: Application, col: QSplitter): Pane =
       let buf = self.bufferManager.openFile(path)
       pane.setBuffer(buf),
     proc(pane: Pane) {.raises: [].} =
-      pane.widget().hide()
-      try:
-        for i in countdown(self.panels.high, 0):
-          if self.panels[i] == pane:
-            self.panels.delete(i)
-            break
-      except: discard,
+      if self.panels.len <= 1:
+        pane.clearBuffer()
+      else:
+        pane.widget().hide()
+        try:
+          for i in countdown(self.panels.high, 0):
+            if self.panels[i] == pane:
+              self.panels.delete(i)
+              break
+        except: discard,
     proc(pane: Pane) {.raises: [].} =
       try: self.insertCol(pane, QSplitter(h: colH, owned: false))
       except: discard,
@@ -236,7 +239,7 @@ proc build*(self: Application) =
 
   self.toolbar.onTriggered(OpenFile) do():
     if self.panels.len > 0:
-      self.panels[0].openModuleDialog()
+      self.panels[0].triggerOpenModule()
 
   self.toolbar.onTriggered(OpenProject) do():
     self.openProject()

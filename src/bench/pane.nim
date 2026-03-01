@@ -263,6 +263,9 @@ proc openModuleDialog*(pane: Pane) {.raises: [].} =
 proc triggerNewModule*(pane: Pane) {.raises: [].} =
   pane.newModuleCb(pane)
 
+proc triggerOpenModule*(pane: Pane) {.raises: [].} =
+  pane.openModuleCb(pane)
+
 proc setProjectOpen*(pane: Pane, open: bool) =
   QWidget(h: pane.moduleBtnsRowH, owned: false).setVisible(open)
   QWidget(h: pane.openProjectRowH, owned: false).setVisible(not open)
