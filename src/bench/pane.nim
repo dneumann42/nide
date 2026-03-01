@@ -2,12 +2,14 @@ import std/os
 import seaqt/[qwidget, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
               qstackedwidget, qfiledialog, qplaintextedit, qfont,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
-              qsvgrenderer, qabstractbutton, qshortcut, qkeysequence]
+              qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
+              qpalette, qlineargradient]
 import bench/[buffers, highlight]
 
 type
   Pane* = ref object
     container: QWidget
+    headerBar: QWidget
     label: QLabel
     statusLabel: QLabel
     stack: QStackedWidget
@@ -141,6 +143,7 @@ proc newPane*(
   container.setLayout(QLayout(h: outerLayout.h, owned: false))
 
   result.container = container
+  result.headerBar = headerBar
   result.label = label
   result.statusLabel = statusLabel
   result.stack = stack
@@ -183,6 +186,25 @@ proc newPane*(
   vSplitBtn.onClicked do() {.raises: [].}: onVSplit(pane)
   hSplitBtn.onClicked do() {.raises: [].}: onHSplit(pane)
   closeBtn.onClicked do() {.raises: [].}: onClose(pane)
+
+proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
+  let hbw = QWidget(h: pane.headerBar.h, owned: false)
+  if focused:
+    var grad = QLinearGradient.create(0.0, 0.0, 0.0, 1.0)
+    QGradient(h: grad.h, owned: false).setCoordinateMode(cint QGradientCoordinateModeEnum.ObjectMode)
+    if isDark:
+      QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.create("#1e3a5c"))
+      QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.create("#353535"))
+    else:
+      QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.create("#b8d4f0"))
+      QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.create("#e8e8e8"))
+    var brush = QBrush.create(QGradient(h: grad.h, owned: false))
+    var pal = QPalette.create()
+    pal.setBrush(cint QPaletteColorRoleEnum.Window, brush)
+    hbw.setPalette(pal)
+    hbw.setAutoFillBackground(true)
+  else:
+    hbw.setAutoFillBackground(false)
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
   var displayName = buf.name

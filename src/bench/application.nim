@@ -1,5 +1,5 @@
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar,
-              qsplitter]
+              qsplitter, qcoreapplication]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane]
 
 type
@@ -130,6 +130,9 @@ proc build*(self: Application) =
     self.theme = if self.theme == Dark: Light else: Dark
     applyTheme(self.theme)
     self.toolbar.setThemeIcon(self.theme == Dark)
+    let fw = QApplication.focusWidget()
+    for p in self.panels:
+      p.setHeaderFocus(fw.h != nil and p.widget().isAncestorOf(fw), self.theme == Dark)
 
   self.toolbar.onTriggered(NewProject) do():
     showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager)
@@ -154,6 +157,13 @@ proc build*(self: Application) =
 
   self.addColumn()  # initialize at least one
   self.equalizeSplits()
+
+  let appInstance = QApplication(h: QCoreApplication.instance().h, owned: false)
+  appInstance.onFocusChanged do(old, now: QWidget):
+    try:
+      for p in self.panels:
+        p.setHeaderFocus(now.h != nil and p.widget().isAncestorOf(now), self.theme == Dark)
+    except: discard
 
 proc show*(self: Application) =
   self.root.show()
