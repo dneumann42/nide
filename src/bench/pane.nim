@@ -1,3 +1,4 @@
+import std/os
 import seaqt/[qwidget, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
               qstackedwidget, qfiledialog, qplaintextedit]
 import bench/[buffers, highlight]
@@ -62,6 +63,8 @@ proc newPane*(
   # Outer container: header bar + stack
   var outerLayout = QVBoxLayout.create()
   outerLayout.owned = false
+  QLayout(h: outerLayout.h, owned: false).setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+  QLayout(h: outerLayout.h, owned: false).setSpacing(cint 0)
   outerLayout.addWidget(QWidget(h: headerBar.h, owned: false), cint(0), cint(0))
   outerLayout.addWidget(QWidget(h: stack.h, owned: false), cint(0), cint(0))
   var container = QWidget.create()
@@ -85,7 +88,10 @@ proc newPane*(
     onClose(pane))
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
-  pane.label.setText(buf.name)
+  var displayName = buf.name
+  try: displayName = relativePath(buf.name, getCurrentDir())
+  except: discard
+  pane.label.setText(displayName)
   pane.editor.setPlainText(buf.content)
   pane.stack.setCurrentIndex(cint(1))
   pane.bufferName = buf.name

@@ -63,6 +63,7 @@ proc build*(self: Application) =
   self.root.addToolBar(QToolBar(h: self.toolbar.widget().h, owned: false))
 
   self.splitter = QSplitter.create(cint(1))          # 1 = Horizontal
+  self.splitter.setHandleWidth(cint 1)
   self.root.setCentralWidget(QWidget(h: self.splitter.h, owned: false))
   self.splitter.owned = false   # Qt (QMainWindow) owns the C++ object now
 

@@ -1,5 +1,5 @@
 import std/[tables]
-import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qaction, qapplication]
+import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication]
 
 type
   ToolMenuId* = enum
@@ -45,7 +45,9 @@ proc onTriggered*(
 
 proc build*(self: Toolbar) =
   self.toolbar = QToolbar.create()
-  QWidget(h: self.toolbar.h, owned: false).setStyleSheet("QToolBar { padding: 0px; spacing: 0px; border: none; }")
+  let tbLayout = QWidget(h: self.toolbar.h, owned: false).layout()
+  tbLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+  tbLayout.setSpacing(cint 2)
 
   self.fileMenu = ToolMenu(label: "File")
   self.fileMenu.build()
