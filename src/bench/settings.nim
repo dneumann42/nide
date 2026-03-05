@@ -11,7 +11,7 @@ type
 
   Settings* = object
     appearance: AppearanceSettings
-  
+
 proc load*(T: typedesc[Settings]): T {.raises: [].} =
   result = T(themeMode: Dark)
   try:
@@ -47,13 +47,3 @@ proc showSettingsDialog*(
     discard QDialog(h: dialogH, owned: false).exec()
   except:
     discard
-
-when isMainModule:
-  var settings = Settings.load()
-  echo settings
-  settings.transparent = not settings.transparent
-  settings.write()
-  block:
-    var settings = Settings.load()
-    echo settings
-  

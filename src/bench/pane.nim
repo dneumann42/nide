@@ -1,5 +1,5 @@
 import std/[os, strutils]
-import seaqt/[qwidget, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
+import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
               qstackedwidget, qfiledialog, qplaintextedit, qfont,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
@@ -37,6 +37,7 @@ type
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
+    saveShortcut:    QShortcut
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -115,6 +116,16 @@ proc runCheck*(pane: Pane) {.raises: [].} =
     proc(lines: seq[LogLine]) {.raises: [].} =
       pane.diagLines[] = lines
       applySelections(pane))
+
+proc doSave(pane: Pane) {.raises: [].} =
+  if pane.buffer != nil and pane.buffer.path.len > 0:
+    try:
+      writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
+      runCheck(pane)
+    except:
+      discard
+  pane.changed = false
+  pane.statusLabel.setText(StatusDark)
 
 proc newPane*(
   onFileSelected: proc(pane: Pane, path: string) {.raises: [].},
@@ -373,24 +384,17 @@ proc newPane*(
     applySelections(pane)
     QWidget(h: pane.editor.h, owned: false).setFocus()
 
-  proc doSave(pane: Pane) {.raises: [].} =
-    if pane.buffer != nil and pane.buffer.path.len > 0:
-      try:
-        writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
-        pane.changed = false
-        pane.statusLabel.setText(StatusDark)
-        runCheck(pane)
-      except:
-        discard
-
   saveBtn.onClicked do() {.raises: [].}: doSave(pane)
 
-  var saveShortcut = QShortcut.create(
+  result.saveShortcut = QShortcut.create(
     cint(QKeySequenceStandardKeyEnum.Save),
     QObject(h: pane.container.h, owned: false))
-  saveShortcut.owned = false
-  saveShortcut.setContext(cint 1)  # WidgetWithChildrenShortcut
-  saveShortcut.onActivated do() {.raises: [].}: doSave(pane)
+
+  result.saveShortcut.owned = false
+  result.saveShortcut.setContext(cint 1)  # WidgetWithChildrenShortcut
+  result.saveShortcut.onActivated do() {.raises: [].}: 
+    echo "SAVE"
+    doSave(pane)
 
   # --- Search signal connections ---
   searchInput.onTextChanged do(text: openArray[char]) {.raises: [].}:
@@ -498,6 +502,7 @@ proc clearBuffer*(pane: Pane) =
   pane.diagLines[] = @[]
 
 proc openModuleDialog*(pane: Pane) {.raises: [].} =
+  echo "OPEN"
   let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))
   if fn.len > 0:
     pane.fileSelectedCb(pane, fn)
