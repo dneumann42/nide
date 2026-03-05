@@ -1,12 +1,12 @@
-import std/os
+import std/[os, strutils]
 import seaqt/[qwidget, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
               qstackedwidget, qfiledialog, qplaintextedit, qfont,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
-              qregularexpression, qbrush, qtextformat, qtextobject]
-import bench/[buffers, highlight]
+              qregularexpression, qbrush, qtextformat, qtextobject, qprocess]
+import bench/[buffers, highlight, logparser, nimcheck]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -35,6 +35,8 @@ type
     regexCheckH:    pointer
     matchPositions: seq[(cint, cint)]
     matchIndex:     int
+    checkProcessH:  ref pointer
+    diagLines:      ref seq[LogLine]
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -55,6 +57,65 @@ proc svgIcon(svg: string, size: cint): QIcon =
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)
 
+proc applySelections*(pane: Pane) {.raises: [].} =
+  try:
+    let ed  = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let doc = ed.document()
+    var sels: seq[QTextEditExtraSelection]
+
+    # Search matches
+    if pane.matchPositions.len > 0:
+      var fmt = QTextCharFormat.create()
+      QTextFormat(h: fmt.h, owned: false).setBackground(
+        QBrush.create(QColor.create("#4a4a00")))
+      for (s, e) in pane.matchPositions:
+        var cur = ed.textCursor()
+        cur.setPosition(s)
+        cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
+        var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
+        sel.setCursor(cur)
+        sel.setFormat(fmt)
+        sels.add(sel)
+
+    # Diagnostics
+    if pane.diagLines != nil and pane.buffer != nil:
+      for ll in pane.diagLines[]:
+        if ll.level == llOther or ll.line < 1: continue
+        if ll.file != pane.buffer.path: continue
+        let colorStr = case ll.level
+          of llError:   "#ff5555"
+          of llWarning: "#ffaa00"
+          of llHint:    "#00cccc"
+          else:         continue
+        if doc.blockCount() < ll.line: continue
+        let blk = doc.findBlockByNumber(cint(ll.line - 1))
+        var cur = ed.textCursor()
+        cur.setPosition(blk.position() + cint(max(0, ll.col - 1)))
+        discard cur.movePosition(cint 14, cint 1)  # EndOfWord, KeepAnchor
+        var fmt = QTextCharFormat.create()
+        fmt.setUnderlineStyle(cint 7)  # SpellCheckUnderline
+        fmt.setUnderlineColor(QColor.create(colorStr))
+        var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
+        sel.setCursor(cur)
+        sel.setFormat(fmt)
+        sels.add(sel)
+
+    ed.setExtraSelections(sels)
+  except: discard
+
+proc runCheck*(pane: Pane) {.raises: [].} =
+  if pane.checkProcessH[] != nil:
+    try: QProcess(h: pane.checkProcessH[], owned: false).kill()
+    except: discard
+    pane.checkProcessH[] = nil
+  if pane.buffer == nil or pane.buffer.path.len == 0: return
+  if not pane.buffer.path.endsWith(".nim"): return
+  let filePath = pane.buffer.path
+  runNimCheck(pane.container.h, filePath, pane.checkProcessH,
+    proc(lines: seq[LogLine]) {.raises: [].} =
+      pane.diagLines[] = lines
+      applySelections(pane))
+
 proc newPane*(
   onFileSelected: proc(pane: Pane, path: string) {.raises: [].},
   onClose: proc(pane: Pane) {.raises: [].},
@@ -65,6 +126,8 @@ proc newPane*(
   onOpenProject: proc(pane: Pane) {.raises: [].}
 ): Pane =
   result = Pane()
+  new(result.checkProcessH); result.checkProcessH[] = nil
+  new(result.diagLines);     result.diagLines[]     = @[]
 
   # --- Open Project row (shown when no project is open) ---
   var openProjectBtn = QPushButton.create("Open Project")
@@ -252,24 +315,6 @@ proc newPane*(
   newModuleBtn.onClicked   do() {.raises: [].}: onNewModule(pane)
   openModuleBtn.onClicked  do() {.raises: [].}: onOpenModule(pane)
 
-  proc doSave(pane: Pane) {.raises: [].} =
-    if pane.buffer != nil and pane.buffer.path.len > 0:
-      try:
-        writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
-        pane.changed = false
-        pane.statusLabel.setText(StatusDark)
-      except:
-        discard
-
-  saveBtn.onClicked do() {.raises: [].}: doSave(pane)
-
-  var saveShortcut = QShortcut.create(
-    cint(QKeySequenceStandardKeyEnum.Save),
-    QObject(h: pane.container.h, owned: false))
-  saveShortcut.owned = false
-  saveShortcut.setContext(cint 1)  # WidgetWithChildrenShortcut
-  saveShortcut.onActivated do() {.raises: [].}: doSave(pane)
-
   vSplitBtn.onClicked do() {.raises: [].}: onVSplit(pane)
   hSplitBtn.onClicked do() {.raises: [].}: onHSplit(pane)
   closeBtn.onClicked do() {.raises: [].}: onClose(pane)
@@ -290,17 +335,13 @@ proc newPane*(
     let inp   = QLineEdit(h: pane.searchInputH, owned: false)
     let query = inp.text()
     if query.len == 0:
-      ed.setExtraSelections(newSeq[QTextEditExtraSelection]())
       pane.matchPositions = @[]
+      applySelections(pane)
       return
     let caseSens = QAbstractButton(h: pane.caseCheckH, owned: false).isChecked()
     let useRx    = QAbstractButton(h: pane.regexCheckH, owned: false).isChecked()
     let flags    = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively)
                    else: cint(0)
-
-    var fmt = QTextCharFormat.create()
-    QTextFormat(h: fmt.h, owned: false).setBackground(
-      QBrush.create(QColor.create("#4a4a00")))
 
     var rx = QRegularExpression.create(query)
     if not caseSens:
@@ -310,7 +351,6 @@ proc newPane*(
     let doc = ed.document()
     var pos     = cint(0)
     var matches: seq[(cint, cint)]
-    var sels:    seq[QTextEditExtraSelection]
 
     while true:
       var cur = if useRx: doc.find(rx, pos)
@@ -320,23 +360,37 @@ proc newPane*(
       let e = cur.selectionEnd()
       if e <= pos: break  # zero-length match guard
       matches.add((s, e))
-      var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
-      sel.setCursor(cur)
-      sel.setFormat(fmt)
-      sels.add(sel)
       pos = e
 
     pane.matchPositions = matches
     pane.matchIndex     = 0
-    ed.setExtraSelections(sels)
+    applySelections(pane)
     moveToCurrent(pane)
 
   proc closeSearch(pane: Pane) {.raises: [].} =
     QWidget(h: pane.searchBarH, owned: false).hide()
-    QPlainTextEdit(h: pane.editor.h, owned: false).setExtraSelections(
-      newSeq[QTextEditExtraSelection]())
     pane.matchPositions = @[]
+    applySelections(pane)
     QWidget(h: pane.editor.h, owned: false).setFocus()
+
+  proc doSave(pane: Pane) {.raises: [].} =
+    if pane.buffer != nil and pane.buffer.path.len > 0:
+      try:
+        writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
+        pane.changed = false
+        pane.statusLabel.setText(StatusDark)
+        runCheck(pane)
+      except:
+        discard
+
+  saveBtn.onClicked do() {.raises: [].}: doSave(pane)
+
+  var saveShortcut = QShortcut.create(
+    cint(QKeySequenceStandardKeyEnum.Save),
+    QObject(h: pane.container.h, owned: false))
+  saveShortcut.owned = false
+  saveShortcut.setContext(cint 1)  # WidgetWithChildrenShortcut
+  saveShortcut.onActivated do() {.raises: [].}: doSave(pane)
 
   # --- Search signal connections ---
   searchInput.onTextChanged do(text: openArray[char]) {.raises: [].}:
@@ -428,6 +482,9 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   pane.buffer = buf
   QWidget(h: pane.searchBarH, owned: false).hide()
   pane.matchPositions = @[]
+  pane.diagLines[] = @[]
+  applySelections(pane)
+  runCheck(pane)
 
 proc clearBuffer*(pane: Pane) =
   pane.label.setText("")
@@ -438,6 +495,7 @@ proc clearBuffer*(pane: Pane) =
   pane.buffer = nil
   QWidget(h: pane.searchBarH, owned: false).hide()
   pane.matchPositions = @[]
+  pane.diagLines[] = @[]
 
 proc openModuleDialog*(pane: Pane) {.raises: [].} =
   let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))

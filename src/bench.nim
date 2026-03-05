@@ -1,5 +1,5 @@
+import std/strutils
 import seaqt/[qapplication]
-
 import bench/[application, toolbar, buffers]
 
 proc start() =
