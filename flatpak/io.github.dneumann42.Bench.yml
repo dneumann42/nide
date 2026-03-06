@@ -1,0 +1,30 @@
+app-id: io.github.dneumann42.Bench
+runtime: org.kde.Platform
+runtime-version: '6.7'
+sdk: org.kde.Sdk
+command: bench
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # File access: bench opens Nim source files
+  - --filesystem=home
+
+modules:
+  - name: bench
+    # The host binary is pre-built via `nimble build` before running flatpak-builder.
+    # It links against Qt6 from the KDE runtime; the runtime version must match your
+    # host Qt6. For a fully self-contained Flathub build, compile bench inside
+    # flatpak-builder instead (requires vendoring all nimble deps).
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bench /app/bin/bench
+      - install -Dm644 data/icons/io.github.dneumann42.Bench.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.dneumann42.Bench.svg
+      - install -Dm644 data/io.github.dneumann42.Bench.desktop
+          /app/share/applications/io.github.dneumann42.Bench.desktop
+    sources:
+      - type: dir
+        path: ..

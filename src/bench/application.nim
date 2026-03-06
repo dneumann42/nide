@@ -374,6 +374,18 @@ proc build*(self: Application) =
         target.setBuffer(buf)
         target.jumpToLine(lineNum))
 
+  var saveSc = QShortcut.create(
+    cint(QKeySequenceStandardKeyEnum.Save),
+    QObject(h: self.root.h, owned: false))
+  saveSc.owned = false
+  saveSc.setContext(cint 2)  # WindowShortcut
+  saveSc.onActivated do() {.raises: [].}:
+    var target = self.lastFocusedPane
+    if target == nil and self.panels.len > 0:
+      target = self.panels[0]
+    if target != nil:
+      target.save()
+
   self.addColumn()  # initialize at least one
   self.equalizeSplits()
 

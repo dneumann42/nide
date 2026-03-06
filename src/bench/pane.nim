@@ -37,7 +37,6 @@ type
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
-    saveShortcut:    QShortcut
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -117,15 +116,14 @@ proc runCheck*(pane: Pane) {.raises: [].} =
       pane.diagLines[] = lines
       applySelections(pane))
 
-proc doSave(pane: Pane) {.raises: [].} =
+proc save*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
     try:
       writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
       runCheck(pane)
+      QPlainTextEdit(h: pane.editor.h, owned: false).document().setModified(false)
     except:
       discard
-  pane.changed = false
-  pane.statusLabel.setText(StatusDark)
 
 proc newPane*(
   onFileSelected: proc(pane: Pane, path: string) {.raises: [].},
@@ -318,9 +316,9 @@ proc newPane*(
   result.regexCheckH     = regexCheck.h
 
   let pane = result
-  QPlainTextEdit(h: pane.editor.h, owned: false).onTextChanged do() {.raises: [].}:
-    pane.changed = true
-    pane.statusLabel.setText(StatusLight)
+  QPlainTextEdit(h: pane.editor.h, owned: false).document().onModificationChanged do(modified: bool) {.raises: [].}:
+    pane.changed = modified
+    pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
 
   openProjectBtn.onClicked do() {.raises: [].}: onOpenProject(pane)
   newModuleBtn.onClicked   do() {.raises: [].}: onNewModule(pane)
@@ -384,17 +382,7 @@ proc newPane*(
     applySelections(pane)
     QWidget(h: pane.editor.h, owned: false).setFocus()
 
-  saveBtn.onClicked do() {.raises: [].}: doSave(pane)
-
-  result.saveShortcut = QShortcut.create(
-    cint(QKeySequenceStandardKeyEnum.Save),
-    QObject(h: pane.container.h, owned: false))
-
-  result.saveShortcut.owned = false
-  result.saveShortcut.setContext(cint 1)  # WidgetWithChildrenShortcut
-  result.saveShortcut.onActivated do() {.raises: [].}: 
-    echo "SAVE"
-    doSave(pane)
+  saveBtn.onClicked do() {.raises: [].}: save(pane)
 
   # --- Search signal connections ---
   searchInput.onTextChanged do(text: openArray[char]) {.raises: [].}:
@@ -480,8 +468,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   except: discard
   pane.label.setText(displayName)
   pane.editor.setPlainText(buf.content)
-  pane.changed = false
-  pane.statusLabel.setText(StatusDark)
+  QPlainTextEdit(h: pane.editor.h, owned: false).document().setModified(false)
   pane.stack.setCurrentIndex(cint(1))
   pane.buffer = buf
   QWidget(h: pane.searchBarH, owned: false).hide()
