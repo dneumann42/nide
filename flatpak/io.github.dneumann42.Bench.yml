@@ -9,10 +9,19 @@ finish-args:
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
-  # File access: bench opens Nim source files
   - --filesystem=home
 
 modules:
+  - name: ripgrep
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 rg /app/bin/rg
+    sources:
+      - type: archive
+        url: https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz
+        sha256: 4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e
+        strip-components: 1
+
   - name: bench
     # The host binary is pre-built via `nimble build` before running flatpak-builder.
     # It links against Qt6 from the KDE runtime; the runtime version must match your
