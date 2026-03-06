@@ -5,3 +5,5 @@
 nimble.develop
 nimble.paths
 nimbledeps
+.flatpak-builder
+.flatpak-repo

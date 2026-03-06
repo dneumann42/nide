@@ -33,7 +33,12 @@
       "Bash(nix flake:*)",
       "Bash(python3:*)",
       "Bash(echo:*)",
-      "Bash(printenv:*)"
+      "Bash(printenv:*)",
+      "Read(//usr/lib/pkgconfig/**)",
+      "Read(//usr/lib/qt6/**)",
+      "Read(//usr/**)",
+      "Bash(readelf:*)",
+      "Bash(flatpak remote-ls:*)"
     ]
   }
 }
