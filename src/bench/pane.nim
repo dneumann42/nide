@@ -6,12 +6,23 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess]
-import bench/[buffers, logparser, nimcheck]
+import bench/[buffers, logparser, nimcheck, widgetref]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
 
 type
+  PaneEventKind* = enum
+    peFileSelected, peClose, peVSplit, peHSplit,
+    peNewModule, peOpenModule, peOpenProject
+
+  PaneEvent* = object
+    pane*: Pane
+    case kind*: PaneEventKind
+    of peFileSelected:
+      path*: string
+    else: discard
+
   Pane* = ref object
     container: QWidget
     headerBar: QWidget
@@ -20,19 +31,16 @@ type
     stack: QStackedWidget
     openModuleWidget: QWidget
     editor: QPlainTextEdit
-    emptyDocH: pointer
+    emptyDoc: WidgetRef[QTextDocument]
     changed*: bool
     buffer*: Buffer
-    fileSelectedCb: proc(pane: Pane, path: string) {.raises: [].}
-    newModuleCb: proc(pane: Pane) {.raises: [].}
-    moduleBtnsRowH: pointer
-    openProjectRowH: pointer
-    openModuleCb: proc(pane: Pane) {.raises: [].}
-    openProjectCb: proc(pane: Pane) {.raises: [].}
-    searchBarH:     pointer
-    searchInputH:   pointer
-    caseCheckH:     pointer
-    regexCheckH:    pointer
+    eventCb: proc(ev: PaneEvent) {.raises: [].}
+    moduleBtnsRow: WidgetRef[QWidget]
+    openProjectRow: WidgetRef[QWidget]
+    searchBar:     WidgetRef[QWidget]
+    searchInput:   WidgetRef[QLineEdit]
+    caseCheck:     WidgetRef[QCheckBox]
+    regexCheck:    WidgetRef[QCheckBox]
     matchPositions: seq[(cint, cint)]
     matchIndex:     int
     checkProcessH:  ref pointer
@@ -126,13 +134,7 @@ proc save*(pane: Pane) {.raises: [].} =
       discard
 
 proc newPane*(
-  onFileSelected: proc(pane: Pane, path: string) {.raises: [].},
-  onClose: proc(pane: Pane) {.raises: [].},
-  onVSplit: proc(pane: Pane) {.raises: [].},
-  onHSplit: proc(pane: Pane) {.raises: [].},
-  onNewModule: proc(pane: Pane) {.raises: [].},
-  onOpenModule: proc(pane: Pane) {.raises: [].},
-  onOpenProject: proc(pane: Pane) {.raises: [].}
+  onEvent: proc(ev: PaneEvent) {.raises: [].}
 ): Pane =
   result = Pane()
   new(result.checkProcessH); result.checkProcessH[] = nil
@@ -303,27 +305,30 @@ proc newPane*(
   result.editor = editor
   var emptyDoc = QTextDocument.create()
   emptyDoc.owned = false
-  result.emptyDocH = emptyDoc.h
-  result.fileSelectedCb  = onFileSelected
-  result.newModuleCb     = onNewModule
-  result.moduleBtnsRowH  = moduleBtnsRow.h
-  result.openProjectRowH = openProjectRow.h
-  result.openModuleCb    = onOpenModule
-  result.openProjectCb   = onOpenProject
-  result.searchBarH      = searchBar.h
-  result.searchInputH    = searchInput.h
-  result.caseCheckH      = caseCheck.h
-  result.regexCheckH     = regexCheck.h
+  result.emptyDoc        = capture(emptyDoc)
+  result.eventCb         = onEvent
+  result.moduleBtnsRow   = capture(moduleBtnsRow)
+  result.openProjectRow  = capture(openProjectRow)
+  result.searchBar       = capture(searchBar)
+  result.searchInput     = capture(searchInput)
+  result.caseCheck       = capture(caseCheck)
+  result.regexCheck      = capture(regexCheck)
 
   let pane = result
 
-  openProjectBtn.onClicked do() {.raises: [].}: onOpenProject(pane)
-  newModuleBtn.onClicked   do() {.raises: [].}: onNewModule(pane)
-  openModuleBtn.onClicked  do() {.raises: [].}: onOpenModule(pane)
+  openProjectBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peOpenProject))
+  newModuleBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peNewModule))
+  openModuleBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peOpenModule))
 
-  vSplitBtn.onClicked do() {.raises: [].}: onVSplit(pane)
-  hSplitBtn.onClicked do() {.raises: [].}: onHSplit(pane)
-  closeBtn.onClicked do() {.raises: [].}: onClose(pane)
+  vSplitBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peVSplit))
+  hSplitBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peHSplit))
+  closeBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peClose))
 
   # --- Search helpers ---
   proc moveToCurrent(pane: Pane) {.raises: [].} =
@@ -338,14 +343,14 @@ proc newPane*(
 
   proc doSearch(pane: Pane) {.raises: [].} =
     let ed    = QPlainTextEdit(h: pane.editor.h, owned: false)
-    let inp   = QLineEdit(h: pane.searchInputH, owned: false)
+    let inp   = pane.searchInput.get()
     let query = inp.text()
     if query.len == 0:
       pane.matchPositions = @[]
       applySelections(pane)
       return
-    let caseSens = QAbstractButton(h: pane.caseCheckH, owned: false).isChecked()
-    let useRx    = QAbstractButton(h: pane.regexCheckH, owned: false).isChecked()
+    let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
+    let useRx    = QAbstractButton(h: pane.regexCheck.h, owned: false).isChecked()
     let flags    = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively)
                    else: cint(0)
 
@@ -374,7 +379,7 @@ proc newPane*(
     moveToCurrent(pane)
 
   proc closeSearch(pane: Pane) {.raises: [].} =
-    QWidget(h: pane.searchBarH, owned: false).hide()
+    pane.searchBar.get().hide()
     pane.matchPositions = @[]
     applySelections(pane)
     QWidget(h: pane.editor.h, owned: false).setFocus()
@@ -416,8 +421,8 @@ proc newPane*(
   findSc.owned = false
   findSc.setContext(cint 1)  # WidgetWithChildrenShortcut
   findSc.onActivated do() {.raises: [].}:
-    QWidget(h: pane.searchBarH, owned: false).show()
-    QWidget(h: pane.searchInputH, owned: false).setFocus()
+    pane.searchBar.get().show()
+    QWidget(h: pane.searchInput.h, owned: false).setFocus()
     doSearch(pane)
 
   # --- Escape shortcut ---
@@ -472,7 +477,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
     pane.changed = modified
     pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
   pane.stack.setCurrentIndex(cint(1))
-  QWidget(h: pane.searchBarH, owned: false).hide()
+  pane.searchBar.get().hide()
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
   applySelections(pane)
@@ -481,30 +486,29 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
 proc clearBuffer*(pane: Pane) =
   pane.label.setText("")
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-  ed.setDocument(QTextDocument(h: pane.emptyDocH, owned: false))
+  ed.setDocument(pane.emptyDoc.get())
   pane.changed = false
   pane.statusLabel.setText(StatusDark)
   pane.stack.setCurrentIndex(cint(0))
   pane.buffer = nil
-  QWidget(h: pane.searchBarH, owned: false).hide()
+  pane.searchBar.get().hide()
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
 
 proc openModuleDialog*(pane: Pane) {.raises: [].} =
-  echo "OPEN"
   let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))
   if fn.len > 0:
-    pane.fileSelectedCb(pane, fn)
+    pane.eventCb(PaneEvent(pane: pane, kind: peFileSelected, path: fn))
 
 proc triggerNewModule*(pane: Pane) {.raises: [].} =
-  pane.newModuleCb(pane)
+  pane.eventCb(PaneEvent(pane: pane, kind: peNewModule))
 
 proc triggerOpenModule*(pane: Pane) {.raises: [].} =
-  pane.openModuleCb(pane)
+  pane.eventCb(PaneEvent(pane: pane, kind: peOpenModule))
 
 proc setProjectOpen*(pane: Pane, open: bool) =
-  QWidget(h: pane.moduleBtnsRowH, owned: false).setVisible(open)
-  QWidget(h: pane.openProjectRowH, owned: false).setVisible(not open)
+  pane.moduleBtnsRow.get().setVisible(open)
+  pane.openProjectRow.get().setVisible(not open)
 
 proc focus*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil:
