@@ -1,9 +1,13 @@
 import std/[os]
+import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout]
+import bench/highlight
 
 type
   Buffer* = ref object
     name, path: string
     content: string
+    documentH: pointer
+    highlighter: NimHighlighter
 
   BufferManager* = object
     buffers: seq[Buffer]
@@ -28,6 +32,21 @@ proc path*(b: Buffer): string = b.path
 proc `path=`*(b: Buffer, p: string) = b.path = p
 proc content*(b: Buffer): string = b.content
 
+proc document*(b: Buffer): QTextDocument =
+  if b.documentH == nil:
+    var doc = QTextDocument.create()
+    doc.owned = false
+    b.documentH = doc.h
+    var layout = QPlainTextDocumentLayout.create(doc)
+    layout.owned = false
+    doc.setDocumentLayout(QAbstractTextDocumentLayout(h: layout.h, owned: false))
+    doc.setPlainText(b.content)
+    doc.setModified(false)
+    let hl = NimHighlighter()
+    hl.attach(QTextDocument(h: b.documentH, owned: false))
+    b.highlighter = hl
+  result = QTextDocument(h: b.documentH, owned: false)
+
 proc add*(bm: var BufferManager, buf: Buffer) =
   bm.buffers.add(buf)
 
@@ -46,6 +65,7 @@ proc openFile*(bm: var BufferManager, path: string): Buffer =
     result.content = readFile(path)
   except:
     discard
+  discard result.document()
   bm.add(result)
 
 proc close*(bm: var BufferManager, name: string) =

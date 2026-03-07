@@ -6,7 +6,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess]
-import bench/[buffers, highlight, logparser, nimcheck]
+import bench/[buffers, logparser, nimcheck]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -20,7 +20,7 @@ type
     stack: QStackedWidget
     openModuleWidget: QWidget
     editor: QPlainTextEdit
-    highlighter: NimHighlighter
+    emptyDocH: pointer
     changed*: bool
     buffer*: Buffer
     fileSelectedCb: proc(pane: Pane, path: string) {.raises: [].}
@@ -185,8 +185,6 @@ proc newPane*(
   var editorFont = QFont.create("Monospace")
   editorFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
   QWidget(h: editor.h, owned: false).setFont(editorFont)
-  let hl = NimHighlighter()
-  hl.attach(editor.document())
 
   var stack = QStackedWidget.create()
   stack.owned = false
@@ -303,7 +301,9 @@ proc newPane*(
   result.stack = stack
   result.openModuleWidget = openModuleWidget
   result.editor = editor
-  result.highlighter = hl
+  var emptyDoc = QTextDocument.create()
+  emptyDoc.owned = false
+  result.emptyDocH = emptyDoc.h
   result.fileSelectedCb  = onFileSelected
   result.newModuleCb     = onNewModule
   result.moduleBtnsRowH  = moduleBtnsRow.h
@@ -316,9 +316,6 @@ proc newPane*(
   result.regexCheckH     = regexCheck.h
 
   let pane = result
-  QPlainTextEdit(h: pane.editor.h, owned: false).document().onModificationChanged do(modified: bool) {.raises: [].}:
-    pane.changed = modified
-    pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
 
   openProjectBtn.onClicked do() {.raises: [].}: onOpenProject(pane)
   newModuleBtn.onClicked   do() {.raises: [].}: onNewModule(pane)
@@ -467,10 +464,14 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   try: displayName = relativePath(buf.name, getCurrentDir())
   except: discard
   pane.label.setText(displayName)
-  pane.editor.setPlainText(buf.content)
-  QPlainTextEdit(h: pane.editor.h, owned: false).document().setModified(false)
-  pane.stack.setCurrentIndex(cint(1))
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  ed.setDocument(buf.document())
   pane.buffer = buf
+  buf.document().onModificationChanged do(modified: bool) {.raises: [].}:
+    if pane.buffer != buf: return
+    pane.changed = modified
+    pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
+  pane.stack.setCurrentIndex(cint(1))
   QWidget(h: pane.searchBarH, owned: false).hide()
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
@@ -479,7 +480,8 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
 
 proc clearBuffer*(pane: Pane) =
   pane.label.setText("")
-  pane.editor.setPlainText("")
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  ed.setDocument(QTextDocument(h: pane.emptyDocH, owned: false))
   pane.changed = false
   pane.statusLabel.setText(StatusDark)
   pane.stack.setCurrentIndex(cint(0))
