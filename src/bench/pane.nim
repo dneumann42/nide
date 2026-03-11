@@ -1,6 +1,6 @@
 import std/[os, strutils]
 import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel, qpaintevent,
-              qstackedwidget, qfiledialog, qplaintextedit, qfont,
+              qstackedwidget, qfiledialog, qplaintextedit, qfont, qfontmetrics,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
               qpalette, qlineargradient,
@@ -11,6 +11,13 @@ import bench/[buffers, logparser, nimcheck, widgetref]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
+proc QWidget_virtbase(src: pointer, outQObject: ptr pointer, outPaintDevice: ptr pointer) {.importc: "QWidget_virtbase".}
+
+proc widgetToPaintDevice(w: QWidget): QPaintDevice =
+  var outQObject: pointer
+  var outPaintDevice: pointer
+  QWidget_virtbase(w.h, addr outQObject, addr outPaintDevice)
+  QPaintDevice(h: outPaintDevice, owned: false)
 
 type
   PaneEventKind* = enum
@@ -165,22 +172,34 @@ proc save*(pane: Pane) {.raises: [].} =
     except:
       discard
 
-proc lineNumberAreaWidth*(editor: QPlainTextEdit): int =
-  25
+proc lineNumberAreaWidth*(editor: QPlainTextEdit): cint =
+  let digits = max(1, ($editor.blockCount()).len)
+  let fm = QFontMetrics.create(editor.document().defaultFont())
+  cint(fm.horizontalAdvance("0") * digits + 8)
 
 proc updateLineNumberAreaWidth(editor: QPlainTextEdit) =
-  editor.setViewportMargins(editor.lineNumberAreaWidth().cint, 0, 0, 0)
+  editor.setViewportMargins(editor.lineNumberAreaWidth(), 0, 0, 0)
 
-proc updateLineNumberArea(editor: QPlainTextEdit, rect: QRect, dy: int) =
-  if dy >= 0:
-    discard
-  else:
-    discard
-  if rect.contains(editor.viewport().rect()):
-    editor.updateLineNumberAreaWidth()
-
-proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent) =
-  discard
+proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter: QWidget) {.raises: [].} =
+  try:
+    let editorFont = editor.document().defaultFont()
+    var painter = QPainter.create(widgetToPaintDevice(gutter))
+    painter.setFont(editorFont)
+    painter.fillRect(event.rect(), QColor.create("#1a1a1a"))
+    var blk = editor.firstVisibleBlock()
+    let offset = editor.contentOffset()
+    let w = gutter.width()
+    while blk.isValid():
+      let geo = editor.blockBoundingGeometry(blk)
+      let top = cint(geo.top() + offset.y())
+      let blockH = cint(geo.height())
+      if top >= gutter.height(): break
+      let numStr = $(blk.blockNumber() + 1)
+      painter.setPen(QColor.create("#606060"))
+      painter.drawText(0, top, w - 4, blockH, cint(0x0082), numStr)
+      blk = blk.next()
+    discard painter.endX()
+  except: discard
 
 proc newPane*(
   onEvent: proc(ev: PaneEvent) {.raises: [].}
@@ -232,7 +251,14 @@ proc newPane*(
   openModuleWidget.setLayout(QLayout(h: layout.h, owned: false))
   openModuleWidget.setFocusPolicy(cint 2)  # Qt::ClickFocus
 
+  var gutterH: pointer = nil
   var editorVtbl = new QPlainTextEditVTable
+  editorVtbl.resizeEvent = proc(self: QPlainTextEdit, e: QResizeEvent) {.raises: [], gcsafe.} =
+    QPlainTextEditresizeEvent(self, e)
+    if gutterH == nil: return
+    let cr = QWidget(h: self.h, owned: false).contentsRect()
+    QWidget(h: gutterH, owned: false).setGeometry(
+      cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height())
   editorVtbl.event = proc(self: QPlainTextEdit, e: QEvent): bool {.raises: [], gcsafe.} =
     if e.typeX() == cint(QEventTypeEnum.ToolTip):
       let he = QHelpEvent(h: e.h, owned: false)
@@ -249,13 +275,35 @@ proc newPane*(
   var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
   editor.setFrameStyle(0)
-  editor.updateLineNumberAreaWidth()
 
   var editorFont = QFont.create("Fira Code")
   editorFont.setPointSize(14)
   editorFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
 
   QWidget(h: editor.h, owned: false).setFont(editorFont)
+
+  let editorH = editor.h
+  var gutterVtbl = new QWidgetVTable
+  gutterVtbl.paintEvent = proc(self: QWidget, event: QPaintEvent) {.raises: [], gcsafe.} =
+    lineNumberAreaPaintEvent(QPlainTextEdit(h: editorH, owned: false), event, self)
+  var gutter = QWidget.create(QWidget(h: editor.h, owned: false), cint(0), vtbl = gutterVtbl)
+  gutter.owned = false
+  gutterH = gutter.h
+
+  editor.updateLineNumberAreaWidth()
+
+  editor.onBlockCountChanged do(count: cint) {.raises: [].}:
+    QPlainTextEdit(h: editorH, owned: false).updateLineNumberAreaWidth()
+
+  editor.onUpdateRequest do(rect: QRect, dy: cint) {.raises: [].}:
+    let g = QWidget(h: gutterH, owned: false)
+    if dy != 0:
+      g.scroll(cint 0, dy)
+    else:
+      g.update(0, rect.y(), g.width(), rect.height())
+    let ed = QPlainTextEdit(h: editorH, owned: false)
+    if rect.contains(ed.viewport().rect()):
+      ed.updateLineNumberAreaWidth()
 
   var stack = QStackedWidget.create()
   stack.owned = false
