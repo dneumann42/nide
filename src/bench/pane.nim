@@ -1,11 +1,12 @@
 import std/[os, strutils]
-import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel,
+import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel, qpaintevent,
               qstackedwidget, qfiledialog, qplaintextedit, qfont,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
-              qregularexpression, qbrush, qtextformat, qtextobject, qprocess]
+              qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
+              qevent, qhelpevent, qtooltip, qpoint, qrect]
 import bench/[buffers, logparser, nimcheck, widgetref]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -46,6 +47,8 @@ type
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
 
+  EditorWidget* = ref object of QPlainTextEdit
+
 const StatusDark = ""
 const StatusLight = "★"
 
@@ -64,6 +67,35 @@ proc svgIcon(svg: string, size: cint): QIcon =
 
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)
+
+proc formatDiagTooltip(diags: seq[LogLine]): string {.raises: [].} =
+  for d in diags:
+    let prefix = case d.level
+      of llError: "Error"
+      of llWarning: "Warning"
+      of llHint: "Hint"
+      else: "Note"
+    if result.len > 0: result.add "\n"
+    result.add prefix & ": " & d.raw
+
+proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
+  if pane.diagLines == nil or pane.buffer == nil: return
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let doc = ed.document()
+    for ll in pane.diagLines[]:
+      if ll.level == llOther or ll.line < 1: continue
+      if ll.file != pane.buffer.path: continue
+      if doc.blockCount() < ll.line: continue
+      let blk = doc.findBlockByNumber(cint(ll.line - 1))
+      let start = blk.position() + cint(max(0, ll.col - 1))
+      var cur = ed.textCursor()
+      cur.setPosition(start)
+      discard cur.movePosition(cint 14, cint 1)  # EndOfWord, KeepAnchor
+      let endPos = cur.position()
+      if pos >= start and pos < endPos:
+        result.add(ll)
+  except: discard
 
 proc applySelections*(pane: Pane) {.raises: [].} =
   try:
@@ -133,12 +165,30 @@ proc save*(pane: Pane) {.raises: [].} =
     except:
       discard
 
+proc lineNumberAreaWidth*(editor: QPlainTextEdit): int =
+  25
+
+proc updateLineNumberAreaWidth(editor: QPlainTextEdit) =
+  editor.setViewportMargins(editor.lineNumberAreaWidth().cint, 0, 0, 0)
+
+proc updateLineNumberArea(editor: QPlainTextEdit, rect: QRect, dy: int) =
+  if dy >= 0:
+    discard
+  else:
+    discard
+  if rect.contains(editor.viewport().rect()):
+    editor.updateLineNumberAreaWidth()
+
+proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent) =
+  discard
+
 proc newPane*(
   onEvent: proc(ev: PaneEvent) {.raises: [].}
 ): Pane =
   result = Pane()
   new(result.checkProcessH); result.checkProcessH[] = nil
   new(result.diagLines);     result.diagLines[]     = @[]
+  let pane = result
 
   # --- Open Project row (shown when no project is open) ---
   var openProjectBtn = QPushButton.create("Open Project")
@@ -182,10 +232,29 @@ proc newPane*(
   openModuleWidget.setLayout(QLayout(h: layout.h, owned: false))
   openModuleWidget.setFocusPolicy(cint 2)  # Qt::ClickFocus
 
-  var editor = QPlainTextEdit.create()
+  var editorVtbl = new QPlainTextEditVTable
+  editorVtbl.event = proc(self: QPlainTextEdit, e: QEvent): bool {.raises: [], gcsafe.} =
+    if e.typeX() == cint(QEventTypeEnum.ToolTip):
+      let he = QHelpEvent(h: e.h, owned: false)
+      let cur = self.cursorForPosition(he.pos())
+      let diags = diagAtPos(pane, cur.position())
+      if diags.len > 0:
+        QToolTip.showText(he.globalPos(), formatDiagTooltip(diags),
+          QWidget(h: self.h, owned: false))
+      else:
+        QToolTip.hideText()
+      return true
+    QPlainTextEditevent(self, e)
+  
+  var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
-  var editorFont = QFont.create("Monospace")
+  editor.setFrameStyle(0)
+  editor.updateLineNumberAreaWidth()
+
+  var editorFont = QFont.create("Fira Code")
+  editorFont.setPointSize(14)
   editorFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
+
   QWidget(h: editor.h, owned: false).setFont(editorFont)
 
   var stack = QStackedWidget.create()
@@ -305,6 +374,7 @@ proc newPane*(
   result.editor = editor
   var emptyDoc = QTextDocument.create()
   emptyDoc.owned = false
+  emptyDoc.setDefaultFont(editorFont)
   result.emptyDoc        = capture(emptyDoc)
   result.eventCb         = onEvent
   result.moduleBtnsRow   = capture(moduleBtnsRow)
@@ -313,8 +383,6 @@ proc newPane*(
   result.searchInput     = capture(searchInput)
   result.caseCheck       = capture(caseCheck)
   result.regexCheck      = capture(regexCheck)
-
-  let pane = result
 
   openProjectBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peOpenProject))
@@ -432,6 +500,22 @@ proc newPane*(
   escapeSc.setContext(cint 1)  # WidgetWithChildrenShortcut
   escapeSc.onActivated do() {.raises: [].}:
     closeSearch(pane)
+
+  # --- Ctrl+D shortcut: show diagnostics at cursor ---
+  var diagSc = QShortcut.create(QKeySequence.create("Ctrl+D"),
+                                QObject(h: pane.container.h, owned: false))
+  diagSc.owned = false
+  diagSc.setContext(cint 1)  # WidgetWithChildrenShortcut
+  diagSc.onActivated do() {.raises: [].}:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let cur = ed.textCursor()
+    let diags = diagAtPos(pane, cur.position())
+    if diags.len > 0:
+      let rect = ed.cursorRect()
+      let globalPos = QWidget(h: ed.h, owned: false).mapToGlobal(
+        QPoint.create(rect.left(), rect.top() + rect.height()))
+      QToolTip.showText(globalPos, formatDiagTooltip(diags),
+        QWidget(h: ed.h, owned: false))
 
 proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
   let hbw = QWidget(h: pane.headerBar.h, owned: false)

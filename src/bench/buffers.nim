@@ -1,5 +1,5 @@
 import std/[os]
-import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout]
+import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont]
 import bench/highlight
 
 type
@@ -40,6 +40,10 @@ proc document*(b: Buffer): QTextDocument =
     var layout = QPlainTextDocumentLayout.create(doc)
     layout.owned = false
     doc.setDocumentLayout(QAbstractTextDocumentLayout(h: layout.h, owned: false))
+    var font = QFont.create("Fira Code")
+    font.setPointSize(12)
+    font.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
+    doc.setDefaultFont(font)
     doc.setPlainText(b.content)
     doc.setModified(false)
     let hl = NimHighlighter()

@@ -1,4 +1,4 @@
-import seaqt/[qwidget, qdialog]
+import seaqt/[qwidget, qdialog, qformlayout]
 import toml_serialization, os
 
 import theme
@@ -8,6 +8,8 @@ type
     themeMode: Theme
     transparent: bool
     lineNumbers: bool
+    font = "Monospace"
+    fontSize = 12
 
   Settings* = object
     appearance: AppearanceSettings
@@ -43,6 +45,9 @@ proc showSettingsDialog*(
     
     QWidget(h: dialogH, owned: false).setWindowTitle("Settings")
     QWidget(h: dialogH, owned: false).resize(cint 640, cint 480)
+
+    var form = QFormLayout.create()
+    form.owned = false
 
     discard QDialog(h: dialogH, owned: false).exec()
   except:
