@@ -80,6 +80,21 @@ proc buildFormats*(theme: SyntaxTheme): HighlightFormats =
   result.operator = makeFormat(s.operator)
   result.funcName = makeFormat(s.funcName)
 
+proc buildDefaultFormats*(): HighlightFormats =
+  # Fallback hardcoded colors (VS Code Dark+ style)
+  result.keyword = makeFormat("#569cd6", bold = true)
+  result.`type` = makeFormat("#4ec9b0")
+  result.builtinType = makeFormat("#4ec9b0")
+  result.str = makeFormat("#ce9178")
+  result.charLit = makeFormat("#ce9178")
+  result.number = makeFormat("#b5cea8")
+  result.comment = makeFormat("#6a9955", italic = true)
+  result.docComment = makeFormat("#608b4e", italic = true)
+  result.blockComment = makeFormat("#6a9955", italic = true)
+  result.pragma = makeFormat("#9cdcfe")
+  result.operator = makeFormat("#d4d4d4")
+  result.funcName = makeFormat("#dcdcaa")
+
 # Global theme state
 var
   allThemes: OrderedTable[string, SyntaxTheme]
@@ -112,19 +127,34 @@ proc getTheme*(name: string): SyntaxTheme =
     for k, v in allThemes:
       return v
 
-proc setCurrentTheme*(name: string) =
-  loadAllThemes()
-  currentThemeName = name
-  currentTheme = getTheme(name)
-  currentFormats = buildFormats(currentTheme)
+proc setCurrentTheme*(name: string) {.raises: [].} =
+  try:
+    loadAllThemes()
+    currentThemeName = name
+    currentTheme = getTheme(name)
+    currentFormats = buildFormats(currentTheme)
+  except:
+    # Fallback to default formats if something goes wrong
+    currentThemeName = "Fallback"
+    currentFormats = buildDefaultFormats()
 
 proc initDefaultTheme*() {.raises: [].} =
   try:
-    loadAllThemes()
     if currentThemeName.len == 0:
+      loadAllThemes()
       setCurrentTheme("VS Code Dark+")
+    # Ensure formats are always set
+    if currentThemeName.len == 0:
+      currentFormats = buildDefaultFormats()
+      currentThemeName = "Fallback"
   except:
-    discard
+    currentFormats = buildDefaultFormats()
+    currentThemeName = "Fallback"
+
+# Initialize at module load time
+loadAllThemes()
+if currentThemeName.len == 0:
+  setCurrentTheme("VS Code Dark+")
 
 proc editorBackground*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.background
 proc editorForeground*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.foreground

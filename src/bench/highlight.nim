@@ -1,16 +1,49 @@
 import std/[sets]
-import seaqt/[qsyntaxhighlighter, qtextcharformat, qtextblock]
+import seaqt/[qsyntaxhighlighter, qtextcharformat, qtextblock, qcolor, qbrush, qfont]
 import bench/syntaxtheme
 
 type NimHighlighter* = ref object of VirtualQSyntaxHighlighter
 
-# Multi-line block state encoding:
-#   0  = normal (no multi-line state)
-#   1+ = inside block comment with nesting depth
-#  -1  = inside triple-quoted string
-const
-  StateNormal* = 0
-  StateTripleString* = -1
+var
+  fmtKeyword, fmtComment, fmtString, fmtNumber, fmtType: QTextCharFormat
+  fmtBuiltinType, fmtCharLit, fmtDocComment, fmtBlockComment: QTextCharFormat
+  fmtPragma, fmtOperator, fmtFuncName: QTextCharFormat
+  fmtsReady = false
+
+proc makeFormat(color: string, bold = false, italic = false): QTextCharFormat =
+  result = QTextCharFormat.create()
+  QTextFormat(h: result.h, owned: false).setForeground(
+    QBrush.create(QColor.fromString(color)))
+  if bold:
+    QTextCharFormat(h: result.h, owned: false).setFontWeight(cint(QFontWeightEnum.Bold))
+  if italic:
+    QTextCharFormat(h: result.h, owned: false).setFontItalic(true)
+
+proc ensureFormats() =
+  if fmtsReady: return
+  fmtsReady = true
+  
+  # Try to load from theme, fall back to hardcoded colors
+  let t = currentTheme.syntax
+  let kwColor = if t.keyword.len > 0: t.keyword else: "#569cd6"
+  let typeColor = if t.`type`.len > 0: t.`type` else: "#4ec9b0"
+  let builtinColor = if t.builtinType.len > 0: t.builtinType else: "#4ec9b0"
+  let strColor = if t.string.len > 0: t.string else: "#ce9178"
+  let numColor = if t.number.len > 0: t.number else: "#b5cea8"
+  let commentColor = if t.comment.len > 0: t.comment else: "#6a9955"
+  
+  fmtKeyword = makeFormat(kwColor, true, false)
+  fmtType = makeFormat(typeColor, false, false)
+  fmtBuiltinType = makeFormat(builtinColor, false, false)
+  fmtString = makeFormat(strColor)
+  fmtCharLit = makeFormat(if t.charLit.len > 0: t.charLit else: "#ce9178")
+  fmtNumber = makeFormat(numColor)
+  fmtComment = makeFormat(commentColor, italic = true)
+  fmtDocComment = makeFormat(if t.docComment.len > 0: t.docComment else: "#608b4e", italic = true)
+  fmtBlockComment = makeFormat(commentColor, italic = true)
+  fmtPragma = makeFormat(if t.pragma.len > 0: t.pragma else: "#9cdcfe")
+  fmtOperator = makeFormat(if t.operator.len > 0: t.operator else: "#d4d4d4")
+  fmtFuncName = makeFormat(if t.funcName.len > 0: t.funcName else: "#dcdcaa")
 
 const nimKeywords = [
   "addr", "and", "as", "asm",
@@ -36,7 +69,6 @@ const nimKeywords = [
   "true", "false",
 ]
 
-# Keywords that are followed by a function/routine name
 const routineKeywords = ["proc", "func", "method", "macro", "template", "iterator", "converter"]
 
 const nimBuiltinTypes = [
@@ -74,61 +106,9 @@ const operatorChars = {'+', '-', '*', '/', '\\', '<', '>', '!', '?', '^', '.',
 
 method highlightBlock*(self: NimHighlighter, text: openArray[char]) =
   ensureSets()
-
-  template fmts(): untyped = currentFormats
-
-  template applyFmt(start, count: int, fmtVar: QTextCharFormat) =
-    QSyntaxHighlighter(h: self[].h, owned: false).setFormat(
-      cint(start), cint(count), QTextCharFormat(h: fmtVar.h, owned: false))
-
-  template setState(s: int) =
-    QSyntaxHighlighter(h: self[].h, owned: false).setCurrentBlockState(cint(s))
-
-  template prevState(): int =
-    int(QSyntaxHighlighter(h: self[].h, owned: false).previousBlockState())
-
-  let prev = prevState()
-  setState(StateNormal)
+  ensureFormats()
 
   var i = 0
-
-  # Continue multi-line block comment from previous block
-  if prev > 0:
-    var depth = prev
-    let start = 0
-    while i < text.len:
-      if i + 1 < text.len and text[i] == '#' and text[i + 1] == '[':
-        inc depth
-        i += 2
-      elif i + 1 < text.len and text[i] == ']' and text[i + 1] == '#':
-        dec depth
-        i += 2
-        if depth == 0:
-          applyFmt(start, i - start, fmts.blockComment)
-          break
-      else:
-        inc i
-    if depth > 0:
-      applyFmt(start, text.len - start, fmts.blockComment)
-      setState(depth)
-      return
-
-  # Continue multi-line triple-quoted string from previous block
-  if prev == StateTripleString:
-    let start = 0
-    while i < text.len:
-      if i + 2 < text.len and text[i] == '"' and text[i + 1] == '"' and text[i + 2] == '"':
-        i += 3
-        applyFmt(start, i - start, fmts.str)
-        break
-      else:
-        inc i
-    if i >= text.len:
-      applyFmt(start, text.len - start, fmts.str)
-      setState(StateTripleString)
-      return
-
-  # Track whether previous token was a routine keyword (for funcName highlighting)
   var lastWasRoutineKw = false
 
   while i < text.len:
@@ -149,50 +129,45 @@ method highlightBlock*(self: NimHighlighter, text: openArray[char]) =
         else:
           inc i
       if depth > 0:
-        applyFmt(start, text.len - start, fmts.blockComment)
-        setState(depth)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(
+          cint(start), cint(text.len - start), fmtBlockComment)
         return
       else:
-        applyFmt(start, i - start, fmts.blockComment)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(
+          cint(start), cint(i - start), fmtBlockComment)
       lastWasRoutineKw = false
 
     # Doc comments: ## until end of line
     elif c == '#' and i + 1 < text.len and text[i + 1] == '#':
-      applyFmt(i, text.len - i, fmts.docComment)
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(
+        cint(i), cint(text.len - i), fmtDocComment)
       break
 
     # Single-line comments: # until end of line
     elif c == '#':
-      applyFmt(i, text.len - i, fmts.comment)
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(
+        cint(i), cint(text.len - i), fmtComment)
       break
 
     # Triple-quoted strings: """..."""
     elif c == '"' and i + 2 < text.len and text[i + 1] == '"' and text[i + 2] == '"':
       let start = i
       i += 3
-      var closed = false
       while i < text.len:
         if i + 2 < text.len and text[i] == '"' and text[i + 1] == '"' and text[i + 2] == '"':
           i += 3
-          closed = true
           break
         else:
           inc i
-      if not closed:
-        applyFmt(start, text.len - start, fmts.str)
-        setState(StateTripleString)
-        return
-      else:
-        applyFmt(start, i - start, fmts.str)
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtString)
       lastWasRoutineKw = false
 
     # Raw strings: r"..."
     elif c == 'r' and i + 1 < text.len and text[i + 1] == '"':
       let start = i
-      i += 2  # skip r"
+      i += 2
       while i < text.len:
         if text[i] == '"':
-          # In raw strings, "" is an escaped quote
           if i + 1 < text.len and text[i + 1] == '"':
             i += 2
           else:
@@ -200,7 +175,7 @@ method highlightBlock*(self: NimHighlighter, text: openArray[char]) =
             break
         else:
           inc i
-      applyFmt(start, i - start, fmts.str)
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtString)
       lastWasRoutineKw = false
 
     # Regular strings: "..."
@@ -216,23 +191,22 @@ method highlightBlock*(self: NimHighlighter, text: openArray[char]) =
           break
         else:
           inc i
-      applyFmt(start, i - start, fmts.str)
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtString)
       lastWasRoutineKw = false
 
-    # Character literals: 'x', '\n', etc.
+    # Character literals: 'x'
     elif c == '\'':
       let start = i
       inc i
       if i < text.len:
         if text[i] == '\\':
           inc i
-          if i < text.len: inc i  # skip escaped char
+          if i < text.len: inc i
         else:
-          inc i  # skip single char
+          inc i
       if i < text.len and text[i] == '\'':
         inc i
-        applyFmt(start, i - start, fmts.charLit)
-      # else: not a valid char literal, don't highlight (could be apostrophe in suffix)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtCharLit)
       lastWasRoutineKw = false
 
     # Pragmas: {. ... .}
@@ -245,100 +219,61 @@ method highlightBlock*(self: NimHighlighter, text: openArray[char]) =
           break
         else:
           inc i
-      applyFmt(start, i - start, fmts.pragma)
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtPragma)
       lastWasRoutineKw = false
 
-    # Numbers: integer, float, hex, octal, binary with optional type suffixes
+    # Numbers
     elif c in {'0'..'9'}:
       let start = i
       if c == '0' and i + 1 < text.len and text[i + 1] in {'x', 'X'}:
-        # Hex
         i += 2
-        while i < text.len and text[i] in {'0'..'9', 'a'..'f', 'A'..'F', '_'}:
-          inc i
+        while i < text.len and text[i] in {'0'..'9', 'a'..'f', 'A'..'F', '_'}: inc i
       elif c == '0' and i + 1 < text.len and text[i + 1] in {'o', 'O'}:
-        # Octal
         i += 2
-        while i < text.len and text[i] in {'0'..'7', '_'}:
-          inc i
+        while i < text.len and text[i] in {'0'..'7', '_'}: inc i
       elif c == '0' and i + 1 < text.len and text[i + 1] in {'b', 'B'}:
-        # Binary
         i += 2
-        while i < text.len and text[i] in {'0', '1', '_'}:
-          inc i
+        while i < text.len and text[i] in {'0', '1', '_'}: inc i
       else:
-        # Decimal integer or float
-        while i < text.len and text[i] in {'0'..'9', '_'}:
-          inc i
+        while i < text.len and text[i] in {'0'..'9', '_'}: inc i
         if i < text.len and text[i] == '.' and i + 1 < text.len and text[i + 1] in {'0'..'9'}:
-          inc i  # skip the dot
-          while i < text.len and text[i] in {'0'..'9', '_'}:
-            inc i
-        # Exponent
-        if i < text.len and text[i] in {'e', 'E'}:
           inc i
-          if i < text.len and text[i] in {'+', '-'}: inc i
-          while i < text.len and text[i] in {'0'..'9', '_'}:
-            inc i
-      # Type suffix: 'i8, 'i16, 'u32, 'f64, etc.
+          while i < text.len and text[i] in {'0'..'9', '_'}: inc i
       if i < text.len and text[i] == '\'':
         inc i
-        while i < text.len and text[i] in {'a'..'z', 'A'..'Z', '0'..'9'}:
-          inc i
-      applyFmt(start, i - start, fmts.number)
+        while i < text.len and text[i] in {'a'..'z', 'A'..'Z', '0'..'9'}: inc i
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtNumber)
       lastWasRoutineKw = false
 
     # Identifiers and keywords
     elif c in {'a'..'z', 'A'..'Z', '_'}:
       let start = i
-      while i < text.len and text[i] in {'a'..'z', 'A'..'Z', '0'..'9', '_'}:
-        inc i
+      while i < text.len and text[i] in {'a'..'z', 'A'..'Z', '0'..'9', '_'}: inc i
       var word = newStringOfCap(i - start)
-      for j in start..<i:
-        word.add(text[j])
+      for j in start..<i: word.add(text[j])
 
       if lastWasRoutineKw:
-        # This identifier follows proc/func/method/etc.
-        applyFmt(start, i - start, fmts.funcName)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtFuncName)
         lastWasRoutineKw = false
       elif word in kwSet:
-        applyFmt(start, i - start, fmts.keyword)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtKeyword)
         lastWasRoutineKw = word in routineKwSet
       elif word in builtinTypeSet:
-        applyFmt(start, i - start, fmts.builtinType)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtBuiltinType)
         lastWasRoutineKw = false
       elif word.len > 0 and word[0] in {'A'..'Z'}:
-        applyFmt(start, i - start, fmts.`type`)
+        QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtType)
         lastWasRoutineKw = false
       else:
         lastWasRoutineKw = false
 
-    # Backtick-quoted identifiers: `someIdent`
-    elif c == '`':
-      let start = i
-      inc i
-      while i < text.len and text[i] != '`':
-        inc i
-      if i < text.len:
-        inc i  # skip closing backtick
-      if lastWasRoutineKw:
-        applyFmt(start, i - start, fmts.funcName)
-      lastWasRoutineKw = false
-
     # Operators
     elif c in operatorChars:
       let start = i
-      while i < text.len and text[i] in operatorChars:
-        inc i
-      applyFmt(start, i - start, fmts.operator)
+      while i < text.len and text[i] in operatorChars: inc i
+      QSyntaxHighlighter(h: self[].h, owned: false).setFormat(cint(start), cint(i - start), fmtOperator)
       lastWasRoutineKw = false
 
-    # Skip whitespace but preserve routineKw state
-    elif c in {' ', '\t', '\r', '\n'}:
-      inc i
-      # Don't reset lastWasRoutineKw — allow whitespace between `proc` and name
-
-    # Other characters (braces, parens, brackets, semicolons, etc.)
     else:
       inc i
       lastWasRoutineKw = false

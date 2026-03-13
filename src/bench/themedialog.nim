@@ -1,6 +1,7 @@
 import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
               qlistwidget, qlistwidgetitem, qplaintextedit, qfont,
-              qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush]
+              qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush,
+              qshortcut, qkeysequence, qobject]
 import bench/[syntaxtheme, highlight]
 
 const SampleCode = """# Nim syntax highlighting preview
@@ -119,13 +120,13 @@ proc showThemeDialog*(
     var buttonBox = QDialogButtonBox.create(
       cint(0x00000400 or 0x00400000))  # Ok | Cancel
     buttonBox.owned = false
-    let buttonBoxH = buttonBox.h
 
     var outerLayout = QVBoxLayout.create()
     outerLayout.owned = false
-    outerLayout.addWidget(QWidget(h: titleLabel.h, owned: false))
-    outerLayout.addWidget(QWidget(h: splitter.h, owned: false))
-    outerLayout.addWidget(QWidget(h: buttonBox.h, owned: false))
+    # Use stretch: 0 for label to make it shrink to fit content
+    outerLayout.addWidget(QWidget(h: titleLabel.h, owned: false), cint 0)
+    outerLayout.addWidget(QWidget(h: splitter.h, owned: false), cint 1)
+    outerLayout.addWidget(QWidget(h: buttonBox.h, owned: false), cint 0)
     QWidget(h: dialogH, owned: false).setLayout(
       QLayout(h: outerLayout.h, owned: false))
 
@@ -142,6 +143,18 @@ proc showThemeDialog*(
 
     buttonBox.onRejected do() {.raises: [].}:
       QDialog(h: dialogH, owned: false).reject()
+
+    # Enter key to accept
+    var enterSc = QShortcut.create(QKeySequence.create("Return"),
+                                  QObject(h: dialogH, owned: false))
+    enterSc.owned = false
+    enterSc.setContext(cint 2)  # WindowShortcut
+    enterSc.onActivated do() {.raises: [].}:
+      let lw = QListWidget(h: listH, owned: false)
+      let row = lw.currentRow()
+      if row >= 0 and row < cint(themes.len):
+        QDialog(h: dialogH, owned: false).accept()
+        onSelected(themes[row])
 
     discard QDialog(h: dialogH, owned: false).exec()
   except: discard
