@@ -622,6 +622,7 @@ proc triggerOpenModule*(pane: Pane) {.raises: [].} =
 
 proc triggerFind*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().show()
+  QWidget(h: pane.searchInput.h, owned: false).setFocus()
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   let inp = pane.searchInput.get()
   let query = inp.text()
