@@ -2,7 +2,7 @@ import std/[os, strutils]
 import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel, qpaintevent,
               qstackedwidget, qfiledialog, qplaintextedit, qfont, qfontmetrics,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
-              qsvgrenderer, qabstractbutton, qshortcut, qkeysequence,
+              qsvgrenderer, qabstractbutton, qkeysequence,
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,

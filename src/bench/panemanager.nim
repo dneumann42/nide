@@ -110,6 +110,12 @@ proc closePane*(self: PaneManager, pane: Pane) {.raises: [].} =
           break
     except: discard
 
+proc splitRow*(self: PaneManager, pane: Pane) =
+  let parent = pane.widget().parentWidget()
+  if parent.h == nil: return
+  let col = capture(QSplitter(h: parent.h, owned: false))
+  self.insertRow(pane, col)
+
 proc setProjectOpen*(self: PaneManager, open: bool) =
   self.hasProject = open
   for panel in self.panels:

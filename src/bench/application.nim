@@ -10,6 +10,14 @@ type
   ApplicationState = object
     lastOpenedProjectPath: string
 
+  PaneKeyBinding* = object
+    sequence: string
+    callback*: proc(target: Pane) {.raises: [].}
+
+  GlobalKeyBinding* = object
+    sequence: string
+    callback*: proc() {.raises: [].}
+
   Application* = ref object
     bufferManager: BufferManager
     toolbar: Toolbar
@@ -24,6 +32,28 @@ type
     buildReopen: proc() {.raises: [].}
     opacityActive: bool
     opacityEffect: QGraphicsOpacityEffect
+
+proc getTargetPane*(self: Application): Pane =
+  result = self.paneManager.lastFocusedPane
+  if result == nil and self.paneManager.panels.len > 0:
+    result = self.paneManager.panels[0]
+
+proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(target: Pane): void {.raises: [].}) =
+  var sc = QShortcut.create(QKeySequence.create(sequence),
+                            QObject(h: self.root.h, owned: false))
+  sc.owned = false
+  sc.setContext(cint 2)
+  sc.onActivated do() {.raises: [].}:
+    let target = self.getTargetPane()
+    if target != nil:
+      callback(target)
+
+proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc(): void {.raises: [].}) =
+  var sc = QShortcut.create(QKeySequence.create(sequence),
+                            QObject(h: self.root.h, owned: false))
+  sc.owned = false
+  sc.setContext(cint 2)
+  sc.onActivated callback
 
 proc buffers*(app: Application): lent BufferManager =
   result = app.bufferManager
@@ -228,52 +258,23 @@ proc build*(self: Application) =
   self.toolbar.onSettings do():
     showSettingsDialog(QWidget(h: self.root.h, owned: false))
 
-  var finderSc = QShortcut.create(QKeySequence.create("Ctrl+P"),
-                                  QObject(h: self.root.h, owned: false))
-  finderSc.owned = false
-  finderSc.setContext(cint 2)   # WindowShortcut
-  finderSc.onActivated do() {.raises: [].}:
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
-    if target == nil: return
+  let cbFindFile = proc(target: Pane): void {.raises: [].} =
     showFileFinder(
       QWidget(h: self.root.h, owned: false),
       proc(path: string) {.raises: [].} =
         let buf = self.bufferManager.openFile(path)
         target.setBuffer(buf))
+  self.registerPaneShortcut("Ctrl+P", cbFindFile)
 
-  var findSc = QShortcut.create(QKeySequence.create("Ctrl+F"),
-                                 QObject(h: self.root.h, owned: false))
-  findSc.owned = false
-  findSc.setContext(cint 2)   # WindowShortcut
-  findSc.onActivated do() {.raises: [].}:
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
-    if target == nil: return
+  let cbFind = proc(target: Pane): void {.raises: [].} =
     target.triggerFind()
+  self.registerPaneShortcut("Ctrl+F", cbFind)
 
-  var escapeSc = QShortcut.create(QKeySequence.create("Escape"),
-                                 QObject(h: self.root.h, owned: false))
-  escapeSc.owned = false
-  escapeSc.setContext(cint 2)   # WindowShortcut
-  escapeSc.onActivated do() {.raises: [].}:
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
-    if target == nil: return
+  let cbEscape = proc(target: Pane): void {.raises: [].} =
     target.closeSearch()
+  self.registerPaneShortcut("Escape", cbEscape)
 
-  var bufferSc = QShortcut.create(QKeySequence.create("Ctrl+B"),
-                                  QObject(h: self.root.h, owned: false))
-  bufferSc.owned = false
-  bufferSc.setContext(cint 2)   # WindowShortcut
-  bufferSc.onActivated do() {.raises: [].}:
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
-    if target == nil: return
+  let cbBuffer = proc(target: Pane): void {.raises: [].} =
     var entries: seq[(string, string)]
     let cwd = try: getCurrentDir() except OSError: ""
     for buf in self.bufferManager:
@@ -291,34 +292,34 @@ proc build*(self: Application) =
           if buf.name == key:
             target.setBuffer(buf)
             break)
+  self.registerPaneShortcut("Ctrl+B", cbBuffer)
 
-  var rgSc = QShortcut.create(QKeySequence.create("Ctrl+Shift+F"),
-                              QObject(h: self.root.h, owned: false))
-  rgSc.owned = false
-  rgSc.setContext(cint 2)
-  rgSc.onActivated do() {.raises: [].}:
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
-    if target == nil: return
+  let cbRg = proc(target: Pane): void {.raises: [].} =
     showRipgrepFinder(
       QWidget(h: self.root.h, owned: false),
       proc(file: string, lineNum: int) {.raises: [].} =
         let buf = self.bufferManager.openFile(file)
         target.setBuffer(buf)
         target.jumpToLine(lineNum))
+  self.registerPaneShortcut("Ctrl+Shift+F", cbRg)
 
-  var saveSc = QShortcut.create(
-    cint(QKeySequenceStandardKeyEnum.Save),
-    QObject(h: self.root.h, owned: false))
-  saveSc.owned = false
-  saveSc.setContext(cint 2)  # WindowShortcut
-  saveSc.onActivated do() {.raises: [].}:
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
-    if target != nil:
-      target.save()
+  let cbSave = proc(target: Pane): void {.raises: [].} =
+    target.save()
+  self.registerPaneShortcut($cint(QKeySequenceStandardKeyEnum.Save), cbSave)
+
+  let cbClosePane = proc(target: Pane): void {.raises: [].} =
+    self.paneManager.closePane(target)
+  self.registerPaneShortcut("Ctrl+W", cbClosePane)
+
+  let cbNewPane = proc(): void {.raises: [].} =
+    self.paneManager.addColumn()
+    self.paneManager.equalizeSplits()
+  self.registerGlobalShortcut("Ctrl+\\", cbNewPane)
+
+  let cbHSplit = proc(target: Pane): void {.raises: [].} =
+    try: self.paneManager.splitRow(target)
+    except: discard
+  self.registerPaneShortcut("Ctrl+Shift+\\", cbHSplit)
 
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()
