@@ -10,12 +10,16 @@ type
     lineNumbers: bool
     font = "Monospace"
     fontSize = 12
+    syntaxTheme = "VS Code Dark+"
 
   Settings* = object
     appearance: AppearanceSettings
 
+proc syntaxTheme*(s: Settings): string = s.appearance.syntaxTheme
+proc `syntaxTheme=`*(s: var Settings, v: string) = s.appearance.syntaxTheme = v
+
 proc load*(T: typedesc[Settings]): T {.raises: [].} =
-  result = T(themeMode: Dark)
+  result = T()
   try:
     if not dirExists(getConfigDir() / "bench"):
       createDir(getConfigDir() / "bench")

@@ -1,0 +1,31 @@
+[meta]
+name = "GitHub Light"
+variant = "light"
+
+[editor]
+background = "#ffffff"
+foreground = "#24292e"
+lineNumber = "#babbbc"
+lineNumberBg = "#fafbfc"
+selection = "#c8c8fa"
+currentLine = "#f6f8fa"
+
+[syntax]
+keyword = "#d73a49"
+keywordBold = true
+keywordItalic = false
+type = "#005cc5"
+typeBold = false
+typeItalic = false
+builtinType = "#005cc5"
+string = "#032f62"
+charLit = "#032f62"
+number = "#005cc5"
+comment = "#6a737d"
+commentItalic = true
+docComment = "#6a737d"
+docCommentItalic = true
+blockComment = "#6a737d"
+pragma = "#6f42c1"
+operator = "#d73a49"
+funcName = "#6f42c1"

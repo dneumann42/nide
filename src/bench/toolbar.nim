@@ -28,6 +28,7 @@ type
     SaveProject
     OpenProject
     Quit
+    SyntaxTheme
 
   ToolMenu* = ref object
     label: string
@@ -38,6 +39,7 @@ type
   Toolbar* = ref object
     toolbar: QToolbar
     fileMenu: ToolMenu
+    viewMenu: ToolMenu
     projectLabel: QLabel
     newPaneBtn: QToolButton
     themeBtn: QToolButton
@@ -63,7 +65,10 @@ proc onTriggered*(
   event: ToolMenuId, 
   triggered: proc(): void {.raises: [].}
 ) =
-  self.fileMenu.actions[event].onTriggered(triggered)
+  if event in self.fileMenu.actions:
+    self.fileMenu.actions[event].onTriggered(triggered)
+  elif event in self.viewMenu.actions:
+    self.viewMenu.actions[event].onTriggered(triggered)
 
 proc buildFileMenu(self: Toolbar) =
   self.fileMenu = ToolMenu(label: "File")
@@ -81,6 +86,14 @@ proc buildFileMenu(self: Toolbar) =
 
   discard self.toolbar.addWidget(self.fileMenu.button)
 
+proc buildViewMenu(self: Toolbar) =
+  self.viewMenu = ToolMenu(label: "View")
+  self.viewMenu.build()
+
+  self.viewMenu.actions[SyntaxTheme] = self.viewMenu.menu.addAction("Syntax Theme...")
+
+  discard self.toolbar.addWidget(self.viewMenu.button)
+
 proc build*(self: Toolbar) =
   self.toolbar = QToolbar.create()
   self.toolbar.setMovable(false)
@@ -97,6 +110,7 @@ proc build*(self: Toolbar) =
   discard self.toolbar.addWidget(QWidget(h: self.projectLabel.h, owned: false))
 
   self.buildFileMenu()
+  self.buildViewMenu()
 
   var spacer = QWidget.create()
   spacer.owned = false

@@ -1,0 +1,31 @@
+[meta]
+name = "Solarized Light"
+variant = "light"
+
+[editor]
+background = "#fdf6e3"
+foreground = "#657b83"
+lineNumber = "#93a1a1"
+lineNumberBg = "#eee8d5"
+selection = "#eee8d5"
+currentLine = "#eee8d5"
+
+[syntax]
+keyword = "#859900"
+keywordBold = true
+keywordItalic = false
+type = "#268bd2"
+typeBold = false
+typeItalic = false
+builtinType = "#268bd2"
+string = "#2aa198"
+charLit = "#2aa198"
+number = "#d33682"
+comment = "#93a1a1"
+commentItalic = true
+docComment = "#839496"
+docCommentItalic = true
+blockComment = "#93a1a1"
+pragma = "#b58900"
+operator = "#586e75"
+funcName = "#268bd2"

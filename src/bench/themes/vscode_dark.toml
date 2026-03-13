@@ -1,0 +1,31 @@
+[meta]
+name = "VS Code Dark+"
+variant = "dark"
+
+[editor]
+background = "#1e1e1e"
+foreground = "#d4d4d4"
+lineNumber = "#858585"
+lineNumberBg = "#1e1e1e"
+selection = "#264f78"
+currentLine = "#2a2d2e"
+
+[syntax]
+keyword = "#569cd6"
+keywordBold = true
+keywordItalic = false
+type = "#4ec9b0"
+typeBold = false
+typeItalic = false
+builtinType = "#4ec9b0"
+string = "#ce9178"
+charLit = "#ce9178"
+number = "#b5cea8"
+comment = "#6a9955"
+commentItalic = true
+docComment = "#608b4e"
+docCommentItalic = true
+blockComment = "#6a9955"
+pragma = "#9cdcfe"
+operator = "#d4d4d4"
+funcName = "#dcdcaa"

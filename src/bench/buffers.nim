@@ -7,7 +7,7 @@ type
     name, path: string
     content: string
     documentH: pointer
-    highlighter: NimHighlighter
+    highlighter*: NimHighlighter
 
   BufferManager* = object
     buffers: seq[Buffer]
@@ -77,3 +77,9 @@ proc close*(bm: var BufferManager, name: string) =
     if bm.buffers[i].name == name:
       bm.buffers.delete(i)
       return
+
+proc rehighlightAll*(bm: BufferManager) =
+  ## Re-highlight all open buffers (call after syntax theme change)
+  for buf in bm.buffers:
+    if buf.highlighter != nil:
+      buf.highlighter.rehighlight()

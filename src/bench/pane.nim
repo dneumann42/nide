@@ -7,7 +7,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
               qevent, qhelpevent, qtooltip, qpoint, qrect]
-import bench/[buffers, logparser, nimcheck, widgetref]
+import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -55,6 +55,8 @@ type
     diagLines:      ref seq[LogLine]
 
   EditorWidget* = ref object of QPlainTextEdit
+
+proc applyEditorTheme*(pane: Pane) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -185,7 +187,7 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
     let editorFont = editor.document().defaultFont()
     var painter = QPainter.create(widgetToPaintDevice(gutter))
     painter.setFont(editorFont)
-    painter.fillRect(event.rect(), QColor.create("#1a1a1a"))
+    painter.fillRect(event.rect(), QColor.create(gutterBackground()))
     var blk = editor.firstVisibleBlock()
     let offset = editor.contentOffset()
     let w = gutter.width()
@@ -196,7 +198,7 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
       if top >= gutter.height(): break
       let numStr = $(blk.blockNumber() + 1)
       let lineH = cint(QFontMetrics.create(editorFont).height())
-      painter.setPen(QColor.create("#606060"))
+      painter.setPen(QColor.create(gutterForeground()))
       painter.drawText(0, top, w - 4, lineH, cint(0x0022), numStr)
       blk = blk.next()
     discard painter.endX()
@@ -596,6 +598,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
   applySelections(pane)
+  applyEditorTheme(pane)
   runCheck(pane)
 
 proc clearBuffer*(pane: Pane) =
@@ -699,6 +702,24 @@ proc focus*(pane: Pane) {.raises: [].} =
     QWidget(h: pane.editor.h, owned: false).setFocus()
   else:
     pane.container.setFocus()
+
+proc applyEditorTheme*(pane: Pane) {.raises: [].} =
+  ## Apply current syntax theme colors to the editor widget and gutter
+  try:
+    let ed = QWidget(h: pane.editor.h, owned: false)
+    var pal = ed.palette()
+    pal.setColor(cint QPaletteColorRoleEnum.Base,
+      QColor.fromString(editorBackground()))
+    pal.setColor(cint QPaletteColorRoleEnum.Text,
+      QColor.fromString(editorForeground()))
+    pal.setColor(cint QPaletteColorRoleEnum.Highlight,
+      QColor.fromString(selectionColor()))
+    ed.setPalette(pal)
+    # Force gutter repaint
+    let edObj = QPlainTextEdit(h: pane.editor.h, owned: false)
+    edObj.updateLineNumberAreaWidth()
+    edObj.viewport().update()
+  except: discard
 
 proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
   if pane.buffer == nil: return

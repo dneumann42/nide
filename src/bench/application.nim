@@ -4,7 +4,7 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qgraphicseffect]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
-              filefinder, rgfinder, settings, widgetref, panemanager]
+              filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog]
 
 type
   ApplicationState = object
@@ -126,6 +126,10 @@ proc build*(self: Application) =
 
   self.theme = Dark
   applyTheme(Dark)
+
+  # Initialize syntax theme (load from settings if available, otherwise default)
+  initDefaultTheme()
+  setCurrentTheme("VS Code Dark+")
 
   self.paneManager = PaneManager.init(splitter, PaneCallbacks(
     onFileSelected: proc(pane: Pane, path: string) {.raises: [].} =
@@ -250,6 +254,20 @@ proc build*(self: Application) =
 
   self.toolbar.onTriggered(Quit) do():
     QApplication.quit()
+
+  self.toolbar.onTriggered(SyntaxTheme) do():
+    showThemeDialog(
+      QWidget(h: self.root.h, owned: false),
+      currentThemeName,
+      proc(name: string) {.raises: [].} =
+        try:
+          setCurrentTheme(name)
+          self.bufferManager.rehighlightAll()
+          for panel in self.paneManager.panels:
+            panel.applyEditorTheme()
+        except:
+          discard
+    )
 
   self.toolbar.onNewPane do():
     self.paneManager.addColumn()
