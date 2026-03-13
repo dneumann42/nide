@@ -6,7 +6,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
-              qevent, qhelpevent, qtooltip, qpoint, qrect]
+              qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar]
 import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimfinddef]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -743,13 +743,15 @@ proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
   ed.setTextCursor(cur)
   ed.ensureCursorVisible()
 
-proc scrollToLine*(pane: Pane, line: int) {.raises: [].} =
+proc scrollToLine*(pane: Pane, line: int, col: int = 0) {.raises: [].} =
   if pane.buffer == nil: return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   let doc = ed.document()
   if line > 0 and line <= ed.blockCount():
-    let blk = doc.findBlockByNumber(cint(line - 1))
+    let targetBlock = doc.findBlockByNumber(cint(line - 1))
     var cur = ed.textCursor()
-    cur.setPosition(blk.position())
+    cur.setPosition(targetBlock.position())
+    if col > 0:
+      discard cur.movePosition(cint 19, cint 0, cint(col - 1))  # Right, MoveAnchor
     ed.setTextCursor(cur)
-    ed.ensureCursorVisible()
+    ed.centerCursor()

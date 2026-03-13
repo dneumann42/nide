@@ -329,7 +329,7 @@ proc build*(self: Application) =
       proc(file: string, lineNum: int) {.raises: [].} =
         let buf = self.bufferManager.openFile(file)
         target.setBuffer(buf)
-        target.jumpToLine(lineNum))
+        target.scrollToLine(lineNum))
   self.registerPaneShortcut("Ctrl+Shift+F", cbRg)
 
   let cbSave = proc(target: Pane): void {.raises: [].} =
