@@ -104,14 +104,14 @@ var
   themesLoaded = false
 
 proc loadAllThemes*() =
-  if themesLoaded: return
+  if themesLoaded and allThemes.len > 0: return
   themesLoaded = true
   for src in ThemeSources:
     try:
       let theme = Toml.decode(src, SyntaxTheme)
       allThemes[theme.meta.name] = theme
     except:
-      echo "Failed to load theme: ", getCurrentExceptionMsg()
+      discard
 
 proc availableThemes*(): seq[string] =
   loadAllThemes()
