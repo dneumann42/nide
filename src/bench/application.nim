@@ -4,7 +4,8 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
-              filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog]
+              filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
+              nimfinddef]
 
 type
   ApplicationState = object
@@ -32,6 +33,7 @@ type
     buildReopen: proc() {.raises: [].}
     opacityActive: bool
     opacityEffect: QGraphicsOpacityEffect
+    nimSuggest: NimSuggestClient
 
 proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
@@ -89,6 +91,12 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   try: setCurrentDir(dir) except OSError: discard
   self.toolbar.setProjectName(dir.lastPathPart)
   writeLastOpenedProject(path)
+  # Start nimsuggest for this project
+  if self.nimSuggest != nil:
+    self.nimSuggest.kill()
+  let entryFile = findNimbleEntry(path)
+  self.nimSuggest = NimSuggestClient.new(self.root.h, entryFile)
+  self.nimSuggest.start()
   self.paneManager.panels[0].triggerOpenModule()
 
 proc openProject(self: Application) {.raises: [].} =
@@ -151,7 +159,37 @@ proc build*(self: Application) =
     onGotoDefinition: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
       let buf = self.bufferManager.openFile(path)
       pane.setBuffer(buf)
-      pane.scrollToLine(line)
+      pane.scrollToLine(line, col),
+    onJumpBack: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
+      # Push current position onto the forward stack before navigating back
+      if pane.buffer != nil and pane.buffer.path.len > 0:
+        try:
+          let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+          let cur = ed.textCursor()
+          pane.jumpFuture.add(JumpLocation(
+            file: pane.buffer.path,
+            line: cur.blockNumber() + 1,
+            col:  cur.columnNumber()))
+        except: discard
+      if path.len > 0:
+        let buf = self.bufferManager.openFile(path)
+        pane.setBuffer(buf)
+      pane.scrollToLine(line, col),
+    onJumpForward: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
+      # Push current position onto the back stack before navigating forward
+      if pane.buffer != nil and pane.buffer.path.len > 0:
+        try:
+          let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+          let cur = ed.textCursor()
+          pane.jumpHistory.add(JumpLocation(
+            file: pane.buffer.path,
+            line: cur.blockNumber() + 1,
+            col:  cur.columnNumber()))
+        except: discard
+      if path.len > 0:
+        let buf = self.bufferManager.openFile(path)
+        pane.setBuffer(buf)
+      pane.scrollToLine(line, col)
     ))
 
   # Floating background-process indicator buttons (initially hidden, child of root)
@@ -282,6 +320,20 @@ proc build*(self: Application) =
   self.toolbar.onSettings do():
     showSettingsDialog(QWidget(h: self.root.h, owned: false))
 
+  self.toolbar.onTriggered(JumpBack) do():
+    let target = self.getTargetPane()
+    if target != nil:
+      target.triggerJumpBack()
+
+  self.toolbar.onTriggered(JumpForward) do():
+    let target = self.getTargetPane()
+    if target != nil:
+      target.triggerJumpForward()
+
+  self.toolbar.onTriggered(RestartNimSuggest) do():
+    if self.nimSuggest != nil:
+      self.nimSuggest.restart()
+
   let cbFindFile = proc(target: Pane): void {.raises: [].} =
     showFileFinder(
       QWidget(h: self.root.h, owned: false),
@@ -351,7 +403,8 @@ proc build*(self: Application) =
   self.registerPaneShortcut("Ctrl+Shift+\\", cbHSplit)
 
   let cbGotoDef = proc(target: Pane): void {.raises: [].} =
-    try: target.triggerGotoDefinition()
+    if self.nimSuggest == nil: return
+    try: target.triggerGotoDefinition(self.nimSuggest)
     except: discard
   self.registerPaneShortcut("F3", cbGotoDef)
 

@@ -6,7 +6,8 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
-              qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar]
+              qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar,
+              qmouseevent]
 import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimfinddef]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -23,7 +24,7 @@ type
   PaneEventKind* = enum
     peFileSelected, peClose, peVSplit, peHSplit,
     peNewModule, peOpenModule, peOpenProject,
-    peGotoDefinition
+    peGotoDefinition, peJumpBack, peJumpForward
 
   PaneEvent* = object
     pane*: Pane
@@ -34,7 +35,20 @@ type
       defFile*: string
       defLine*: int
       defCol*: int
+    of peJumpBack:
+      backFile*: string
+      backLine*: int
+      backCol*: int
+    of peJumpForward:
+      fwdFile*: string
+      fwdLine*: int
+      fwdCol*: int
     else: discard
+
+  JumpLocation* = object
+    file*: string
+    line*: int
+    col*: int
 
   Pane* = ref object
     container*: QWidget
@@ -55,6 +69,8 @@ type
     caseCheck:     WidgetRef[QCheckBox]
     regexCheck:    WidgetRef[QCheckBox]
     matchPositions: seq[(cint, cint)]
+    jumpHistory*:  seq[JumpLocation]
+    jumpFuture*:   seq[JumpLocation]
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
@@ -62,6 +78,8 @@ type
   EditorWidget* = ref object of QPlainTextEdit
 
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
+proc triggerJumpBack*(pane: Pane) {.raises: [].}
+proc triggerJumpForward*(pane: Pane) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -285,7 +303,35 @@ proc newPane*(
         QToolTip.hideText()
       return true
     QPlainTextEditevent(self, e)
-  
+  editorVtbl.mousePressEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
+    let btn = e.button()
+    if btn == cint(8):   # Qt::BackButton / XButton1
+      {.cast(gcsafe).}:
+        if pane.jumpHistory.len > 0:
+          let loc = pane.jumpHistory[^1]
+          pane.jumpHistory.setLen(pane.jumpHistory.len - 1)
+          pane.eventCb(PaneEvent(
+            pane: pane,
+            kind: peJumpBack,
+            backFile: loc.file,
+            backLine: loc.line,
+            backCol:  loc.col
+          ))
+    elif btn == cint(16):  # Qt::ForwardButton / XButton2
+      {.cast(gcsafe).}:
+        if pane.jumpFuture.len > 0:
+          let loc = pane.jumpFuture[^1]
+          pane.jumpFuture.setLen(pane.jumpFuture.len - 1)
+          pane.eventCb(PaneEvent(
+            pane: pane,
+            kind: peJumpForward,
+            fwdFile: loc.file,
+            fwdLine: loc.line,
+            fwdCol:  loc.col
+          ))
+    else:
+      QPlainTextEditmousePressEvent(self, e)
+
   var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
   editor.setFrameStyle(0)
@@ -648,7 +694,7 @@ proc triggerFind*(pane: Pane) {.raises: [].} =
     return
   let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
 
-proc triggerGotoDefinition*(pane: Pane) {.raises: [].} =
+proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
   if pane.buffer == nil or pane.buffer.path.len == 0:
     return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -657,18 +703,22 @@ proc triggerGotoDefinition*(pane: Pane) {.raises: [].} =
   let doc = ed.document()
   let textBlock = doc.findBlock(pos)
   let lineNum = textBlock.blockNumber() + 1
-  let colNum = cur.columnNumber() + 1
-  
+  let colNum = cur.columnNumber()   # nimsuggest expects 0-based columns
+
   let filePath = pane.buffer.path
   if filePath.len == 0:
     return
-  
-  runNimFindDef(
-    pane.container.h,
+
+  # Record current location before jumping so the back button can return here
+  let fromLoc = JumpLocation(file: filePath, line: lineNum, col: colNum)
+
+  client.queryDef(
     filePath,
     lineNum,
     colNum,
     proc(def: Definition) {.raises: [].} =
+      pane.jumpHistory.add(fromLoc)
+      pane.jumpFuture = @[]   # new branch clears forward history
       pane.eventCb(PaneEvent(
         pane: pane,
         kind: peGotoDefinition,
@@ -679,6 +729,32 @@ proc triggerGotoDefinition*(pane: Pane) {.raises: [].} =
     proc(msg: string) {.raises: [].} =
       echo "Goto definition error: " & msg
   )
+
+proc triggerJumpBack*(pane: Pane) {.raises: [].} =
+  ## Pop the last jump location and navigate back to it.
+  if pane.jumpHistory.len == 0: return
+  let loc = pane.jumpHistory[^1]
+  pane.jumpHistory.setLen(pane.jumpHistory.len - 1)
+  pane.eventCb(PaneEvent(
+    pane: pane,
+    kind: peJumpBack,
+    backFile: loc.file,
+    backLine: loc.line,
+    backCol:  loc.col
+  ))
+
+proc triggerJumpForward*(pane: Pane) {.raises: [].} =
+  ## Pop the next jump location and navigate forward to it.
+  if pane.jumpFuture.len == 0: return
+  let loc = pane.jumpFuture[^1]
+  pane.jumpFuture.setLen(pane.jumpFuture.len - 1)
+  pane.eventCb(PaneEvent(
+    pane: pane,
+    kind: peJumpForward,
+    fwdFile: loc.file,
+    fwdLine: loc.line,
+    fwdCol:  loc.col
+  ))
 
 proc closeSearch*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().hide()

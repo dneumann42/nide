@@ -29,6 +29,9 @@ type
     OpenProject
     Quit
     SyntaxTheme
+    RestartNimSuggest
+    JumpBack
+    JumpForward
 
   ToolMenu* = ref object
     label: string
@@ -40,6 +43,7 @@ type
     toolbar: QToolbar
     fileMenu: ToolMenu
     viewMenu: ToolMenu
+    nimMenu: ToolMenu
     projectLabel: QLabel
     newPaneBtn: QToolButton
     themeBtn: QToolButton
@@ -61,14 +65,16 @@ proc widget*(self: Toolbar): lent QWidget =
   result = self.toolbar
 
 proc onTriggered*(
-  self: Toolbar, 
-  event: ToolMenuId, 
+  self: Toolbar,
+  event: ToolMenuId,
   triggered: proc(): void {.raises: [].}
 ) =
   if event in self.fileMenu.actions:
     self.fileMenu.actions[event].onTriggered(triggered)
   elif event in self.viewMenu.actions:
     self.viewMenu.actions[event].onTriggered(triggered)
+  elif event in self.nimMenu.actions:
+    self.nimMenu.actions[event].onTriggered(triggered)
 
 proc buildFileMenu(self: Toolbar) =
   self.fileMenu = ToolMenu(label: "File")
@@ -94,6 +100,16 @@ proc buildViewMenu(self: Toolbar) =
 
   discard self.toolbar.addWidget(self.viewMenu.button)
 
+proc buildNimMenu(self: Toolbar) =
+  self.nimMenu = ToolMenu(label: "Nim")
+  self.nimMenu.build()
+
+  self.nimMenu.actions[JumpBack] = self.nimMenu.menu.addAction("Jump Back")
+  self.nimMenu.actions[JumpForward] = self.nimMenu.menu.addAction("Jump Forward")
+  self.nimMenu.actions[RestartNimSuggest] = self.nimMenu.menu.addAction("Restart nimsuggest")
+
+  discard self.toolbar.addWidget(self.nimMenu.button)
+
 proc build*(self: Toolbar) =
   self.toolbar = QToolbar.create()
   self.toolbar.setMovable(false)
@@ -111,6 +127,7 @@ proc build*(self: Toolbar) =
 
   self.buildFileMenu()
   self.buildViewMenu()
+  self.buildNimMenu()
 
   var spacer = QWidget.create()
   spacer.owned = false
