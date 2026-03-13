@@ -195,8 +195,9 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
       let blockH = cint(geo.height())
       if top >= gutter.height(): break
       let numStr = $(blk.blockNumber() + 1)
+      let lineH = cint(QFontMetrics.create(editorFont).height())
       painter.setPen(QColor.create("#606060"))
-      painter.drawText(0, top, w - 4, blockH, cint(0x0082), numStr)
+      painter.drawText(0, top, w - 4, lineH, cint(0x0022), numStr)
       blk = blk.next()
     discard painter.endX()
   except: discard
@@ -618,7 +619,10 @@ proc triggerNewModule*(pane: Pane) {.raises: [].} =
   pane.eventCb(PaneEvent(pane: pane, kind: peNewModule))
 
 proc triggerOpenModule*(pane: Pane) {.raises: [].} =
-  discard
+  pane.eventCb(PaneEvent(pane: pane, kind: peOpenModule))
+
+proc triggerOpenProject*(pane: Pane) {.raises: [].} =
+  pane.eventCb(PaneEvent(pane: pane, kind: peOpenProject))
 
 proc triggerFind*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().show()

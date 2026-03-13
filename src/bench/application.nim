@@ -274,6 +274,11 @@ proc build*(self: Application) =
     target.closeSearch()
   self.registerPaneShortcut("Escape", cbEscape)
 
+  let cbOpenProject = proc(target: Pane): void {.raises: [].} =
+    if target.buffer == nil:
+      target.triggerOpenProject()
+  self.registerPaneShortcut("Ctrl+O", cbOpenProject)
+
   let cbBuffer = proc(target: Pane): void {.raises: [].} =
     var entries: seq[(string, string)]
     let cwd = try: getCurrentDir() except OSError: ""
@@ -305,7 +310,7 @@ proc build*(self: Application) =
 
   let cbSave = proc(target: Pane): void {.raises: [].} =
     target.save()
-  self.registerPaneShortcut($cint(QKeySequenceStandardKeyEnum.Save), cbSave)
+  self.registerPaneShortcut("Ctrl+S", cbSave)
 
   let cbClosePane = proc(target: Pane): void {.raises: [].} =
     self.paneManager.closePane(target)
