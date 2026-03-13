@@ -7,6 +7,7 @@ type
     onNewModule*: proc(pane: Pane) {.raises: [].}
     onOpenModule*: proc(pane: Pane) {.raises: [].}
     onOpenProject*: proc(pane: Pane) {.raises: [].}
+    onGotoDefinition*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
 
   PaneManager* = ref object
     panels*: seq[Pane]
@@ -32,7 +33,8 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
       except: discard
     of peNewModule:    self.callbacks.onNewModule(ev.pane)
     of peOpenModule:   self.callbacks.onOpenModule(ev.pane)
-    of peOpenProject:  self.callbacks.onOpenProject(ev.pane))
+    of peOpenProject:  self.callbacks.onOpenProject(ev.pane)
+    of peGotoDefinition: self.callbacks.onGotoDefinition(ev.pane, ev.defFile, ev.defLine, ev.defCol))
   if self.hasProject:
     result.setProjectOpen(true)
 

@@ -2,7 +2,7 @@ import std/[os, json]
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
-              qgraphicseffect]
+              qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog]
 
@@ -147,7 +147,17 @@ proc build*(self: Application) =
           let buf = self.bufferManager.openFile(path)
           pane.setBuffer(buf)),
     onOpenProject: proc(pane: Pane) {.raises: [].} =
-      self.openProject()))
+      self.openProject(),
+    onGotoDefinition: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
+      let buf = self.bufferManager.openFile(path)
+      pane.setBuffer(buf)
+      let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+      let doc = ed.document()
+      if line <= ed.blockCount():
+        var cur = ed.textCursor()
+        discard cur.movePosition(cint(5), cint(0), cint(line - 1))  # Start, MoveMode, lines
+        ed.setTextCursor(cur)
+        ed.centerCursor()))
 
   # Floating background-process indicator buttons (initially hidden, child of root)
   var runStatusBtn = QToolButton.create()
@@ -344,6 +354,11 @@ proc build*(self: Application) =
     try: self.paneManager.splitRow(target)
     except: discard
   self.registerPaneShortcut("Ctrl+Shift+\\", cbHSplit)
+
+  let cbGotoDef = proc(target: Pane): void {.raises: [].} =
+    try: target.triggerGotoDefinition()
+    except: discard
+  self.registerPaneShortcut("F3", cbGotoDef)
 
   let cbZoomIn = proc(target: Pane): void {.raises: [].} =
     target.zoomIn()

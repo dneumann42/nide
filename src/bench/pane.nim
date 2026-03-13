@@ -7,7 +7,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
               qevent, qhelpevent, qtooltip, qpoint, qrect]
-import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme]
+import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimfinddef]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -22,23 +22,28 @@ proc widgetToPaintDevice(w: QWidget): QPaintDevice =
 type
   PaneEventKind* = enum
     peFileSelected, peClose, peVSplit, peHSplit,
-    peNewModule, peOpenModule, peOpenProject
+    peNewModule, peOpenModule, peOpenProject,
+    peGotoDefinition
 
   PaneEvent* = object
     pane*: Pane
     case kind*: PaneEventKind
     of peFileSelected:
       path*: string
+    of peGotoDefinition:
+      defFile*: string
+      defLine*: int
+      defCol*: int
     else: discard
 
   Pane* = ref object
-    container: QWidget
+    container*: QWidget
     headerBar: QWidget
     label: QLabel
     statusLabel: QLabel
     stack: QStackedWidget
     openModuleWidget: QWidget
-    editor: QPlainTextEdit
+    editor*: QPlainTextEdit
     emptyDoc: WidgetRef[QTextDocument]
     changed*: bool
     buffer*: Buffer
@@ -642,33 +647,38 @@ proc triggerFind*(pane: Pane) {.raises: [].} =
     applySelections(pane)
     return
   let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
-  let useRx = QAbstractButton(h: pane.regexCheck.h, owned: false).isChecked()
-  let flags = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively) else: cint(0)
-  var rx = QRegularExpression.create(query)
-  if not caseSens:
-    rx.setPatternOptions(cint(QRegularExpressionPatternOptionEnum.CaseInsensitiveOption))
+
+proc triggerGotoDefinition*(pane: Pane) {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.path.len == 0:
+    return
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let cur = ed.textCursor()
+  let pos = cur.position()
   let doc = ed.document()
-  var pos = cint(0)
-  var matches: seq[(cint, cint)]
-  while true:
-    var cur = if useRx: doc.find(rx, pos) else: doc.find(query, pos, flags)
-    if cur.isNull(): break
-    let s = cur.selectionStart()
-    let e = cur.selectionEnd()
-    if e <= pos: break
-    matches.add((s, e))
-    pos = e
-  pane.matchPositions = matches
-  pane.matchIndex = 0
-  applySelections(pane)
-  if pane.matchPositions.len > 0:
-    let s = pane.matchPositions[0][0]
-    let e = pane.matchPositions[0][1]
-    var cur = ed.textCursor()
-    cur.setPosition(s)
-    cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
-    ed.setTextCursor(cur)
-    ed.ensureCursorVisible()
+  let textBlock = doc.findBlock(pos)
+  let lineNum = textBlock.blockNumber() + 1
+  let colNum = cur.columnNumber() + 1
+  
+  let filePath = pane.buffer.path
+  if filePath.len == 0:
+    return
+  
+  runNimFindDef(
+    pane.container.h,
+    filePath,
+    lineNum,
+    colNum,
+    proc(def: Definition) {.raises: [].} =
+      pane.eventCb(PaneEvent(
+        pane: pane,
+        kind: peGotoDefinition,
+        defFile: def.file,
+        defLine: def.line,
+        defCol: def.col
+      )),
+    proc(msg: string) {.raises: [].} =
+      echo "Goto definition error: " & msg
+  )
 
 proc closeSearch*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().hide()
