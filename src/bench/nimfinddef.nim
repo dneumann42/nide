@@ -21,7 +21,7 @@ proc runNimFindDef*(
   
   try:
     let absPath = filePath
-    let cmd = "printf 'def %s:%s:%s\\n' '" & absPath & "' " & $line & " " & $(col - 1) & " | nimsuggest --stdin --refresh '" & absPath & "'"
+    let cmd = "printf 'def %s:%s:%s\\n' '" & absPath & "' " & $line & " " & $col & " | nimsuggest --stdin --refresh '" & absPath & "'"
     let shellCmd = "/bin/bash -c " & quoteShell(cmd)
     
     var process = QProcess.create(QObject(h: parentH, owned: false))

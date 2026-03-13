@@ -151,13 +151,8 @@ proc build*(self: Application) =
     onGotoDefinition: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
       let buf = self.bufferManager.openFile(path)
       pane.setBuffer(buf)
-      let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-      let doc = ed.document()
-      if line <= ed.blockCount():
-        var cur = ed.textCursor()
-        discard cur.movePosition(cint(5), cint(0), cint(line - 1))  # Start, MoveMode, lines
-        ed.setTextCursor(cur)
-        ed.centerCursor()))
+      pane.scrollToLine(line)
+    ))
 
   # Floating background-process indicator buttons (initially hidden, child of root)
   var runStatusBtn = QToolButton.create()

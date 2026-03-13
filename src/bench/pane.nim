@@ -742,3 +742,14 @@ proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
     discard cur.movePosition(cint 19, cint 0, cint(col - 1))  # Right, MoveAnchor, col-1 times
   ed.setTextCursor(cur)
   ed.ensureCursorVisible()
+
+proc scrollToLine*(pane: Pane, line: int) {.raises: [].} =
+  if pane.buffer == nil: return
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let doc = ed.document()
+  if line > 0 and line <= ed.blockCount():
+    let blk = doc.findBlockByNumber(cint(line - 1))
+    var cur = ed.textCursor()
+    cur.setPosition(blk.position())
+    ed.setTextCursor(cur)
+    ed.ensureCursorVisible()
