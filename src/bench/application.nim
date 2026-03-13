@@ -326,6 +326,14 @@ proc build*(self: Application) =
     except: discard
   self.registerPaneShortcut("Ctrl+Shift+\\", cbHSplit)
 
+  let cbZoomIn = proc(target: Pane): void {.raises: [].} =
+    target.zoomIn()
+  self.registerPaneShortcut("Ctrl+=", cbZoomIn)
+
+  let cbZoomOut = proc(target: Pane): void {.raises: [].} =
+    target.zoomOut()
+  self.registerPaneShortcut("Ctrl+-", cbZoomOut)
+
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()
 

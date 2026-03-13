@@ -669,6 +669,27 @@ proc closeSearch*(pane: Pane) {.raises: [].} =
   applySelections(pane)
   QWidget(h: pane.editor.h, owned: false).setFocus()
 
+proc zoomIn*(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    var font = ed.document().defaultFont()
+    font.setPointSize(font.pointSize() + cint 1)
+    QWidget(h: ed.h, owned: false).setFont(font)
+    ed.document().setDefaultFont(font)
+    ed.updateLineNumberAreaWidth()
+  except: discard
+
+proc zoomOut*(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    var font = ed.document().defaultFont()
+    let newSize = max(font.pointSize() - cint 1, cint 6)
+    font.setPointSize(newSize)
+    QWidget(h: ed.h, owned: false).setFont(font)
+    ed.document().setDefaultFont(font)
+    ed.updateLineNumberAreaWidth()
+  except: discard
+
 proc setProjectOpen*(pane: Pane, open: bool) =
   pane.moduleBtnsRow.get().setVisible(open)
   pane.openProjectRow.get().setVisible(not open)
