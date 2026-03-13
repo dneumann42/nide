@@ -3,12 +3,13 @@ name = "VS Code Dark+"
 variant = "dark"
 
 [editor]
-background = "#1e1e1e"
+background = "#000000"
 foreground = "#d4d4d4"
 lineNumber = "#858585"
-lineNumberBg = "#1e1e1e"
+lineNumberBg = "#000000"
 selection = "#264f78"
 currentLine = "#2a2d2e"
+primary = "#2a82da"
 
 [syntax]
 keyword = "#569cd6"

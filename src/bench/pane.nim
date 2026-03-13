@@ -177,7 +177,7 @@ proc save*(pane: Pane) {.raises: [].} =
 proc lineNumberAreaWidth*(editor: QPlainTextEdit): cint =
   let digits = max(1, ($editor.blockCount()).len)
   let fm = QFontMetrics.create(editor.document().defaultFont())
-  cint(fm.horizontalAdvance("0") * digits + 8)
+  cint(fm.horizontalAdvance("0") * digits + 12)
 
 proc updateLineNumberAreaWidth(editor: QPlainTextEdit) =
   editor.setViewportMargins(editor.lineNumberAreaWidth(), 0, 0, 0)
@@ -188,9 +188,15 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
     var painter = QPainter.create(widgetToPaintDevice(gutter))
     painter.setFont(editorFont)
     painter.fillRect(event.rect(), QColor.create(gutterBackground()))
+    # Draw right edge border
+    let w = gutter.width()
+    let h = gutter.height()
+    painter.setPen(QColor.create("#333333"))
+    painter.drawLine(cint(w - 1), 0, cint(w - 1), h)
+    # Draw bottom edge border
+    painter.drawLine(0, h - 1, w - 1, h - 1)
     var blk = editor.firstVisibleBlock()
     let offset = editor.contentOffset()
-    let w = gutter.width()
     while blk.isValid():
       let geo = editor.blockBoundingGeometry(blk)
       let top = cint(geo.top() + offset.y())
@@ -291,6 +297,7 @@ proc newPane*(
     lineNumberAreaPaintEvent(QPlainTextEdit(h: editorH, owned: false), event, self)
   var gutter = QWidget.create(QWidget(h: editor.h, owned: false), cint(0), vtbl = gutterVtbl)
   gutter.owned = false
+  QWidget(h: gutter.h, owned: false).setStyleSheet("background: #000000; border-bottom: 1px solid #333333;")
   gutterH = gutter.h
 
   editor.updateLineNumberAreaWidth()
@@ -552,34 +559,31 @@ proc newPane*(
 
 proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
   let hbw = QWidget(h: pane.headerBar.h, owned: false)
+  let (topColor, bottomColor) = headerGradientColors(isDark)
   if focused:
     var grad = QLinearGradient.create(0.0, 0.0, 0.0, 1.0)
     QGradient(h: grad.h, owned: false).setCoordinateMode(cint QGradientCoordinateModeEnum.ObjectMode)
-    if isDark:
-      QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.create("#1e3a5c"))
-      QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.create("#000000"))
-    else:
-      QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.create("#b8d4f0"))
-      QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.create("#e8e8e8"))
+    QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.fromString(topColor))
+    QGradient(h: grad.h, owned: false).setColorAt(0.25, QColor.fromString("#000000"))
+    QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.fromString(bottomColor))
     var brush = QBrush.create(QGradient(h: grad.h, owned: false))
     var pal = QPalette.create()
     pal.setBrush(cint QPaletteColorRoleEnum.Window, brush)
     hbw.setPalette(pal)
     hbw.setAutoFillBackground(true)
+    QWidget(h: hbw.h, owned: false).setStyleSheet("border-bottom: 1px solid #333333;")
   else:
     var grad = QLinearGradient.create(0.0, 0.0, 0.0, 1.0)
     QGradient(h: grad.h, owned: false).setCoordinateMode(cint QGradientCoordinateModeEnum.ObjectMode)
-    if isDark:
-      QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.create("#0b1623"))
-      QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.create("#000000"))
-    else:
-      QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.create("#596b7c"))
-      QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.create("#e8e8e8"))
+    # Unfocused: go to black
+    QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.fromString(bottomColor))
+    QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.fromString("#000000"))
     var brush = QBrush.create(QGradient(h: grad.h, owned: false))
     var pal = QPalette.create()
     pal.setBrush(cint QPaletteColorRoleEnum.Window, brush)
     hbw.setPalette(pal)
     hbw.setAutoFillBackground(true)
+    QWidget(h: hbw.h, owned: false).setStyleSheet("border-bottom: 1px solid #333333;")
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
   var displayName = buf.name
@@ -706,19 +710,15 @@ proc focus*(pane: Pane) {.raises: [].} =
 proc applyEditorTheme*(pane: Pane) {.raises: [].} =
   ## Apply current syntax theme colors to the editor widget and gutter
   try:
-    let ed = QWidget(h: pane.editor.h, owned: false)
-    var pal = ed.palette()
-    pal.setColor(cint QPaletteColorRoleEnum.Base,
-      QColor.fromString(editorBackground()))
-    pal.setColor(cint QPaletteColorRoleEnum.Text,
-      QColor.fromString(editorForeground()))
-    pal.setColor(cint QPaletteColorRoleEnum.Highlight,
-      QColor.fromString(selectionColor()))
-    ed.setPalette(pal)
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let bg = editorBackground()
+    let fg = editorForeground()
+    # Set background via stylesheet for QPlainTextEdit and its viewport
+    QWidget(h: pane.editor.h, owned: false).setStyleSheet(
+      "QPlainTextEdit, QPlainTextEdit viewport { background: " & bg & "; color: " & fg & "; }")
     # Force gutter repaint
-    let edObj = QPlainTextEdit(h: pane.editor.h, owned: false)
-    edObj.updateLineNumberAreaWidth()
-    edObj.viewport().update()
+    ed.updateLineNumberAreaWidth()
+    ed.viewport().update()
   except: discard
 
 proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =

@@ -3,12 +3,13 @@ name = "Nord"
 variant = "dark"
 
 [editor]
-background = "#2e3440"
+background = "#000000"
 foreground = "#d8dee9"
 lineNumber = "#4c566a"
-lineNumberBg = "#2e3440"
+lineNumberBg = "#000000"
 selection = "#434c5e"
 currentLine = "#3b4252"
+primary = "#88c0d0"
 
 [syntax]
 keyword = "#81a1c1"

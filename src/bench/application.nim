@@ -112,8 +112,9 @@ proc build*(self: Application) =
   self.root.addToolBar(QToolBar(h: self.toolbar.widget().h, owned: false))
 
   var splitter = QSplitter.create(cint(1))
-  splitter.setHandleWidth(cint 1)
+  splitter.setHandleWidth(cint 4)
   QWidget(h: splitter.h, owned: false).setAutoFillBackground(true)
+  QWidget(h: splitter.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   self.root.setCentralWidget(QWidget(h: splitter.h, owned: false))
   splitter.owned = false
 

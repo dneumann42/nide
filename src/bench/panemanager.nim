@@ -41,8 +41,9 @@ proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T
 
 proc addColumn*(self: PaneManager) =
   var col = QSplitter.create(cint 2)    # vertical
-  col.setHandleWidth(cint 1)
+  col.setHandleWidth(cint 4)
   QWidget(h: col.h, owned: false).setAutoFillBackground(true)
+  QWidget(h: col.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   col.owned = false
   let colRef = capture(col)
   let p = self.makePane(colRef)
@@ -58,8 +59,9 @@ proc insertCol*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter]) =
   let oldSizes = self.splitter.get().sizes()
   let srcW = oldSizes[idx]
   var newCol = QSplitter.create(cint 2)   # vertical
-  newCol.setHandleWidth(cint 1)
+  newCol.setHandleWidth(cint 4)
   QWidget(h: newCol.h, owned: false).setAutoFillBackground(true)
+  QWidget(h: newCol.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   newCol.owned = false
   let newColRef = capture(newCol)
   let p = self.makePane(newColRef)

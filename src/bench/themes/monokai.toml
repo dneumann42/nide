@@ -3,12 +3,13 @@ name = "Monokai"
 variant = "dark"
 
 [editor]
-background = "#272822"
+background = "#000000"
 foreground = "#f8f8f2"
 lineNumber = "#90908a"
-lineNumberBg = "#272822"
+lineNumberBg = "#000000"
 selection = "#49483e"
 currentLine = "#3e3d32"
+primary = "#f92672"
 
 [syntax]
 keyword = "#f92672"

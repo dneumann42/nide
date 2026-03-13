@@ -9,6 +9,7 @@ lineNumber = "#93a1a1"
 lineNumberBg = "#eee8d5"
 selection = "#eee8d5"
 currentLine = "#eee8d5"
+primary = "#268bd2"
 
 [syntax]
 keyword = "#859900"

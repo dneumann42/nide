@@ -14,6 +14,7 @@ type
     lineNumberBg*: string
     selection*: string
     currentLine*: string
+    primary*: string
 
   SyntaxThemeSyntax* = object
     keyword*: string
@@ -156,10 +157,19 @@ loadAllThemes()
 if currentThemeName.len == 0:
   setCurrentTheme("VS Code Dark+")
 
-proc editorBackground*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.background
+proc editorBackground*(): string {.gcsafe.} = {.cast(gcsafe).}: 
+  if currentTheme.editor.background.len > 0: currentTheme.editor.background
+  else: "#000000"
 proc editorForeground*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.foreground
 proc gutterBackground*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.lineNumberBg
 proc gutterForeground*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.lineNumber
 proc selectionColor*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.selection
 proc currentLineColor*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.currentLine
+proc primaryColor*(): string {.gcsafe.} = {.cast(gcsafe).}: currentTheme.editor.primary
 proc isDarkTheme*(): bool {.gcsafe.} = {.cast(gcsafe).}: currentTheme.meta.variant == "dark"
+
+proc headerGradientColors*(isDark: bool): (string, string) {.gcsafe.} =
+  var primary = primaryColor()
+  if primary.len == 0:
+    primary = "#2a82da"  # fallback
+  (primary, "#000000")
