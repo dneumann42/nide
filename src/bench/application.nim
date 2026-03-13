@@ -243,6 +243,28 @@ proc build*(self: Application) =
         let buf = self.bufferManager.openFile(path)
         target.setBuffer(buf))
 
+  var findSc = QShortcut.create(QKeySequence.create("Ctrl+F"),
+                                 QObject(h: self.root.h, owned: false))
+  findSc.owned = false
+  findSc.setContext(cint 2)   # WindowShortcut
+  findSc.onActivated do() {.raises: [].}:
+    var target = self.paneManager.lastFocusedPane
+    if target == nil and self.paneManager.panels.len > 0:
+      target = self.paneManager.panels[0]
+    if target == nil: return
+    target.triggerFind()
+
+  var escapeSc = QShortcut.create(QKeySequence.create("Escape"),
+                                 QObject(h: self.root.h, owned: false))
+  escapeSc.owned = false
+  escapeSc.setContext(cint 2)   # WindowShortcut
+  escapeSc.onActivated do() {.raises: [].}:
+    var target = self.paneManager.lastFocusedPane
+    if target == nil and self.paneManager.panels.len > 0:
+      target = self.paneManager.panels[0]
+    if target == nil: return
+    target.closeSearch()
+
   var bufferSc = QShortcut.create(QKeySequence.create("Ctrl+B"),
                                   QObject(h: self.root.h, owned: false))
   bufferSc.owned = false

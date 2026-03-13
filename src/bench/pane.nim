@@ -457,7 +457,7 @@ proc newPane*(
     ed.setTextCursor(cur)
     ed.ensureCursorVisible()
 
-  proc doSearch(pane: Pane) {.raises: [].} =
+  proc doSearchImpl(pane: Pane) {.raises: [].} =
     let ed    = QPlainTextEdit(h: pane.editor.h, owned: false)
     let inp   = pane.searchInput.get()
     let query = inp.text()
@@ -504,13 +504,13 @@ proc newPane*(
 
   # --- Search signal connections ---
   searchInput.onTextChanged do(text: openArray[char]) {.raises: [].}:
-    doSearch(pane)
+    doSearchImpl(pane)
 
   caseCheck.onStateChanged do(state: cint) {.raises: [].}:
-    doSearch(pane)
+    doSearchImpl(pane)
 
   regexCheck.onStateChanged do(state: cint) {.raises: [].}:
-    doSearch(pane)
+    doSearchImpl(pane)
 
   searchInput.onReturnPressed do() {.raises: [].}:
     if pane.matchPositions.len > 0:
@@ -529,24 +529,6 @@ proc newPane*(
       moveToCurrent(pane)
 
   searchCloseBtn.onClicked do() {.raises: [].}:
-    closeSearch(pane)
-
-  # --- Ctrl+F shortcut ---
-  var findSc = QShortcut.create(QKeySequence.create("Ctrl+F"),
-                                QObject(h: pane.container.h, owned: false))
-  findSc.owned = false
-  findSc.setContext(cint 1)  # WidgetWithChildrenShortcut
-  findSc.onActivated do() {.raises: [].}:
-    pane.searchBar.get().show()
-    QWidget(h: pane.searchInput.h, owned: false).setFocus()
-    doSearch(pane)
-
-  # --- Escape shortcut ---
-  var escapeSc = QShortcut.create(QKeySequence.create("Escape"),
-                                  QObject(h: pane.container.h, owned: false))
-  escapeSc.owned = false
-  escapeSc.setContext(cint 1)  # WidgetWithChildrenShortcut
-  escapeSc.onActivated do() {.raises: [].}:
     closeSearch(pane)
 
   # --- Ctrl+D shortcut: show diagnostics at cursor ---
@@ -636,7 +618,51 @@ proc triggerNewModule*(pane: Pane) {.raises: [].} =
   pane.eventCb(PaneEvent(pane: pane, kind: peNewModule))
 
 proc triggerOpenModule*(pane: Pane) {.raises: [].} =
-  pane.eventCb(PaneEvent(pane: pane, kind: peOpenModule))
+  discard
+
+proc triggerFind*(pane: Pane) {.raises: [].} =
+  pane.searchBar.get().show()
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let inp = pane.searchInput.get()
+  let query = inp.text()
+  if query.len == 0:
+    pane.matchPositions = @[]
+    applySelections(pane)
+    return
+  let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
+  let useRx = QAbstractButton(h: pane.regexCheck.h, owned: false).isChecked()
+  let flags = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively) else: cint(0)
+  var rx = QRegularExpression.create(query)
+  if not caseSens:
+    rx.setPatternOptions(cint(QRegularExpressionPatternOptionEnum.CaseInsensitiveOption))
+  let doc = ed.document()
+  var pos = cint(0)
+  var matches: seq[(cint, cint)]
+  while true:
+    var cur = if useRx: doc.find(rx, pos) else: doc.find(query, pos, flags)
+    if cur.isNull(): break
+    let s = cur.selectionStart()
+    let e = cur.selectionEnd()
+    if e <= pos: break
+    matches.add((s, e))
+    pos = e
+  pane.matchPositions = matches
+  pane.matchIndex = 0
+  applySelections(pane)
+  if pane.matchPositions.len > 0:
+    let s = pane.matchPositions[0][0]
+    let e = pane.matchPositions[0][1]
+    var cur = ed.textCursor()
+    cur.setPosition(s)
+    cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
+    ed.setTextCursor(cur)
+    ed.ensureCursorVisible()
+
+proc closeSearch*(pane: Pane) {.raises: [].} =
+  pane.searchBar.get().hide()
+  pane.matchPositions = @[]
+  applySelections(pane)
+  QWidget(h: pane.editor.h, owned: false).setFocus()
 
 proc setProjectOpen*(pane: Pane, open: bool) =
   pane.moduleBtnsRow.get().setVisible(open)
