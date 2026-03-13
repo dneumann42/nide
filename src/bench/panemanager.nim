@@ -1,5 +1,5 @@
 import seaqt/[qwidget, qsplitter]
-import bench/[pane, widgetref]
+import bench/[pane, widgetref, nimfinddef]
 
 type
   PaneCallbacks* = object
@@ -17,6 +17,7 @@ type
     lastFocusedPane*: Pane
     callbacks: PaneCallbacks
     hasProject: bool
+    nimSuggest*: NimSuggestClient
 
 proc closePane*(self: PaneManager, pane: Pane) {.raises: [].}
 proc insertCol*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter])
@@ -41,6 +42,7 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
     of peJumpForward: self.callbacks.onJumpForward(ev.pane, ev.fwdFile, ev.fwdLine, ev.fwdCol))
   if self.hasProject:
     result.setProjectOpen(true)
+  result.nimSuggest = self.nimSuggest
 
 proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T =
   T(splitter: capture(splitter), callbacks: cbs)

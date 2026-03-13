@@ -71,6 +71,7 @@ type
     matchPositions: seq[(cint, cint)]
     jumpHistory*:  seq[JumpLocation]
     jumpFuture*:   seq[JumpLocation]
+    nimSuggest*:   NimSuggestClient
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
@@ -80,6 +81,7 @@ type
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
 proc triggerJumpBack*(pane: Pane) {.raises: [].}
 proc triggerJumpForward*(pane: Pane) {.raises: [].}
+proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -329,6 +331,12 @@ proc newPane*(
             fwdLine: loc.line,
             fwdCol:  loc.col
           ))
+    elif btn == cint(1) and (e.modifiers() and cint(67108864)) != 0:  # LeftButton + Ctrl
+      # Let Qt place the cursor at the click position first, then query
+      QPlainTextEditmousePressEvent(self, e)
+      {.cast(gcsafe).}:
+        if pane.nimSuggest != nil:
+          pane.triggerGotoDefinition(pane.nimSuggest)
     else:
       QPlainTextEditmousePressEvent(self, e)
 

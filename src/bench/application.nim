@@ -97,6 +97,9 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   let entryFile = findNimbleEntry(path)
   self.nimSuggest = NimSuggestClient.new(self.root.h, entryFile)
   self.nimSuggest.start()
+  self.paneManager.nimSuggest = self.nimSuggest
+  for panel in self.paneManager.panels:
+    panel.nimSuggest = self.nimSuggest
   self.paneManager.panels[0].triggerOpenModule()
 
 proc openProject(self: Application) {.raises: [].} =
