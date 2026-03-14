@@ -47,7 +47,7 @@ proc showPrototype*(parent: QWidget,
     let dialogH = dialog.h
     w.dialogH = dialogH
 
-    dialog.setWindowTitle("Prototype")
+    dialog.setWindowTitle("Prototype - " & symbol)
     dialog.setWindowFlags(cint(0x00000008) or cint(0x00000080))
     dialog.setWindowFlags(cint(dialog.windowFlags()) and not cint(0x00000001))
 
@@ -56,28 +56,30 @@ proc showPrototype*(parent: QWidget,
     let labelH = label.h
     w.labelH = labelH
 
-    let displayText = "<span style='color: #cdd6f4;'>" & symbol & 
-                      "</span> <span style='color: #89b4fa;'>[" & moduleName & "]</span><br>" &
-                      "<span style='color: #a6e3a1; font-family: monospace;'>" & signature & "</span>"
+    let displayText = "<span style='color: #cdd6f4; font-weight: bold;'>" & symbol & 
+                      "</span> <span style='color: #89b4fa;'>[" & moduleName & "]</span><br><br>" &
+                      "<span style='color: #a6e3a1; font-family: monospace; font-size: 14px;'>" & signature & "</span>"
     label.setText(displayText)
     label.setStyleSheet("""
       background: #1e1e2e;
-      border: 1px solid #585b70;
-      padding: 8px 12px;
+      border: 2px solid #89b4fa;
+      border-radius: 8px;
+      padding: 12px 16px;
       color: #cdd6f4;
-      font-family: 'Fira Code', monospace;
+      font-family: 'Fira Code', 'Consolas', monospace;
       font-size: 13px;
     """)
 
-    label.setMinimumWidth(cint 400)
+    label.setMinimumWidth(cint 450)
     label.setTextFormat(cint(1))
 
     var layout = QVBoxLayout.create()
     layout.owned = false
+    layout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
     layout.addWidget(QWidget(h: labelH, owned: false))
     dialog.setLayout(QLayout(h: layout.h, owned: false))
 
-    dialog.setGeometry(100, 100, 500, 80)
+    dialog.setGeometry(150, 150, 550, 120)
     dialog.show()
 
   except:

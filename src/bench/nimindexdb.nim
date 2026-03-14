@@ -56,6 +56,7 @@ proc getSymbol*(db: NimIndexDb, name, module: string): Option[SymbolEntry] {.rai
 proc searchSymbols*(db: NimIndexDb, prefix: string): seq[SymbolEntry] {.raises: [].} =
   try:
     let pattern = prefix & "%"
+    echo "[nimindexdb] searchSymbols: pattern='", pattern, "'"
     for row in db.conn.fastRows(sql"SELECT id, name, module, signature FROM symbols WHERE name LIKE ? ORDER BY name LIMIT 20",
                                  pattern):
       result.add(SymbolEntry(
@@ -64,6 +65,7 @@ proc searchSymbols*(db: NimIndexDb, prefix: string): seq[SymbolEntry] {.raises: 
         module: row[2],
         signature: row[3]
       ))
+    echo "[nimindexdb] searchSymbols: found ", result.len, " results"
   except:
     echo "[nimindexdb] searchSymbols error: " & getCurrentExceptionMsg()
 

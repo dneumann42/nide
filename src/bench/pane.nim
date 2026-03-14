@@ -91,6 +91,9 @@ proc triggerJumpBack*(pane: Pane) {.raises: [].}
 proc triggerJumpForward*(pane: Pane) {.raises: [].}
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].}
+proc triggerPrototype*(pane: Pane) {.raises: [].}
+proc showPrototypeAtCursor*(pane: Pane) {.raises: [].}
+proc updatePrototypeAtCursor*(pane: Pane) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -333,9 +336,20 @@ proc newPane*(
     if pane.prototypeWindow.isPrototypeVisible():
       if key == cint(0x01000000):  # Escape
         {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
+        QPlainTextEditkeyPressEvent(self, e)
         return
       elif key == cint(0x01000004) or key == cint(0x01000005):  # Return
         {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
+        QPlainTextEditkeyPressEvent(self, e)
+        return
+      elif key == cint(0x01000021):  # Ctrl (shouldn't happen but just in case)
+        QPlainTextEditkeyPressEvent(self, e)
+        return
+      else:
+        QPlainTextEditkeyPressEvent(self, e)
+        {.cast(gcsafe).}:
+          pane.updatePrototypeAtCursor()
+        return
     
     if pane.autocompleteMenu.isOpen():
       let key = e.key()
@@ -1023,6 +1037,9 @@ proc triggerPrototype*(pane: Pane) {.raises: [].} =
     hidePrototype(addr pane.prototypeWindow)
     return
   
+  pane.showPrototypeAtCursor()
+
+proc showPrototypeAtCursor*(pane: Pane) {.raises: [].} =
   if pane.buffer == nil:
     return
   
@@ -1034,15 +1051,21 @@ proc triggerPrototype*(pane: Pane) {.raises: [].} =
   
   let word = getWordAtCursor(text, pos)
   if word.len == 0:
+    QLabel(h: pane.statusLabel.h, owned: false).setText("Prototype: no word at cursor")
     return
-  
-  echo "[pane] triggerPrototype for word: ", word
   
   let result = querySymbol(word)
   if result.isSome():
     let entry = result.get()
-    echo "[pane] Found symbol: ", entry.name, " ", entry.module, " ", entry.signature
+    QLabel(h: pane.statusLabel.h, owned: false).setText("Prototype: " & entry.name & " [" & entry.module & "]")
     showPrototype(QWidget(h: pane.editor.h, owned: false),
                   entry.name, entry.module, entry.signature,
                   addr pane.prototypeWindow)
+  else:
+    QLabel(h: pane.statusLabel.h, owned: false).setText("Prototype: not found - " & word)
+
+proc updatePrototypeAtCursor*(pane: Pane) {.raises: [].} =
+  if not pane.prototypeWindow.isPrototypeVisible():
+    return
+  pane.showPrototypeAtCursor()
 

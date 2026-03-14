@@ -7,3 +7,4 @@ nimble.paths
 nimbledeps
 .flatpak-builder
 .flatpak-repo
+*.out

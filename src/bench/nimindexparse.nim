@@ -1,4 +1,4 @@
-import std/[strutils]
+import std/[xmlparser, xmltree, strutils]
 
 type
   ParsedSymbol* = object
@@ -6,54 +6,58 @@ type
     module*: string
     signature*: string
 
-proc findMatchingBacktick(s: string; start: int): int =
-  var depth = 0
-  var i = start
-  while i < s.len:
-    if s[i] == '`':
-      if i + 1 < s.len:
-        if s[i + 1] == '$':
-          inc i
-        elif s[i + 1] == '`':
-          inc i
-      if i < s.len:
-        inc depth
-        if depth == 1:
-          return i
-    inc i
-  return -1
-
 proc parseIndexHtml*(html: string): seq[ParsedSymbol] {.raises: [].} =
   result = @[]
   try:
-    let lines = html.splitLines
+    let wrapped = "<root>" & html & "</root>"
+    let xml = parseXml(wrapped)
     var currentName = ""
+    var nodesToProcess: seq[XmlNode] = @[]
     
-    for i, line in lines:
-      let stripped = line.strip()
-      if stripped.len == 0:
-        continue
-      
-      if stripped.startsWith("`") and stripped.endsWith("`:"):
-        let endQuote = stripped.find("`", 1)
-        if endQuote > 1:
-          currentName = stripped[1 ..< endQuote]
-          continue
-      
-      if currentName.len > 0 and stripped.contains(": "):
-        let colonPos = stripped.find(": ")
-        if colonPos > 0:
-          let moduleName = stripped[0 ..< colonPos]
-          let sigStart = colonPos + 2
-          if sigStart < stripped.len and stripped[sigStart] == '`':
-            let sigEnd = findMatchingBacktick(stripped, sigStart + 1)
-            if sigEnd > sigStart:
-              var signature = stripped[(sigStart + 1) ..< sigEnd]
-              signature = signature.replace("`$`", "$").replace("``", "`")
-              result.add(ParsedSymbol(
-                name: currentName,
-                module: moduleName,
-                signature: signature
-              ))
+    for i in 0..<xml.len:
+      nodesToProcess.add(xml[i])
+    
+    while nodesToProcess.len > 0:
+      let node = nodesToProcess[0]
+      nodesToProcess.delete(0)
+      if node.kind == xnElement:
+        if node.tag == "dt":
+          proc findSpan(n: XmlNode): string =
+            for i in 0..<n.len:
+              let child = n[i]
+              if child.kind == xnElement:
+                if child.tag == "span":
+                  return child.innerText()
+                let nested = findSpan(child)
+                if nested.len > 0:
+                  return nested
+            return ""
+          let spanText = findSpan(node)
+          if spanText.len > 0 and spanText[^1] == ':':
+            currentName = spanText[0..^2]
+        elif currentName.len > 0 and node.tag == "dd":
+          for i in 0..<node.len:
+            let child = node[i]
+            if child.kind == xnElement and child.tag == "ul":
+              for j in 0..<child.len:
+                let li = child[j]
+                if li.kind == xnElement and li.tag == "li":
+                  for k in 0..<li.len:
+                    let a = li[k]
+                    if a.kind == xnElement and a.tag == "a":
+                      let tagAttr = a.attr("data-doc-search-tag")
+                      let tagStr = $tagAttr
+                      let colonPos = strutils.find(tagStr, ":")
+                      if colonPos >= 0:
+                        let moduleName = tagStr[0..<colonPos].strip()
+                        let signature = tagStr[colonPos+1..^1].strip()
+                        if moduleName.len > 0 and signature.len > 0:
+                          result.add(ParsedSymbol(
+                            name: currentName,
+                            module: moduleName,
+                            signature: signature
+                          ))
+        for i in 0..<node.len:
+          nodesToProcess.add(node[i])
   except:
     echo "[nimindexparse] Parse error: " & getCurrentExceptionMsg()
