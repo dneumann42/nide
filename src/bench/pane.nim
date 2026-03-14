@@ -1,4 +1,4 @@
-import std/[os, strutils]
+import std/[os, strutils, options]
 import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel, qpaintevent,
               qstackedwidget, qfiledialog, qplaintextedit, qfont, qfontmetrics,
               qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
@@ -9,7 +9,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar, qscroller,
               qscrollerproperties, qvariant,
               qmouseevent, qkeyevent, qwheelevent]
-import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete]
+import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -77,6 +77,7 @@ type
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
     autocompleteMenu: AutocompleteMenu
+    prototypeWindow: PrototypeWindow
     autocompleteJustOpened: bool  ## suppress the keyPressEvent that triggered open
     saveBtn:        WidgetRef[QPushButton]
     vSplitBtn:      WidgetRef[QPushButton]
@@ -326,6 +327,16 @@ proc newPane*(
       return true
     QPlainTextEditevent(self, e)
   editorVtbl.keyPressEvent = proc(self: QPlainTextEdit, e: QKeyEvent) {.raises: [], gcsafe.} =
+    let key = e.key()
+    let mods = e.modifiers()
+    
+    if pane.prototypeWindow.isPrototypeVisible():
+      if key == cint(0x01000000):  # Escape
+        {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
+        return
+      elif key == cint(0x01000004) or key == cint(0x01000005):  # Return
+        {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
+    
     if pane.autocompleteMenu.isOpen():
       let key = e.key()
       let mods = e.modifiers()
@@ -1006,3 +1017,32 @@ proc scrollToLine*(pane: Pane, line: int, col: int = 0) {.raises: [].} =
       discard cur.movePosition(cint 19, cint 0, cint(col - 1))  # Right, MoveAnchor
     ed.setTextCursor(cur)
     ed.centerCursor()
+
+proc triggerPrototype*(pane: Pane) {.raises: [].} =
+  if pane.prototypeWindow.isPrototypeVisible():
+    hidePrototype(addr pane.prototypeWindow)
+    return
+  
+  if pane.buffer == nil:
+    return
+  
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let cur = ed.textCursor()
+  let pos = cur.position()
+  let doc = ed.document()
+  let text = doc.toPlainText()
+  
+  let word = getWordAtCursor(text, pos)
+  if word.len == 0:
+    return
+  
+  echo "[pane] triggerPrototype for word: ", word
+  
+  let result = querySymbol(word)
+  if result.isSome():
+    let entry = result.get()
+    echo "[pane] Found symbol: ", entry.name, " ", entry.module, " ", entry.signature
+    showPrototype(QWidget(h: pane.editor.h, owned: false),
+                  entry.name, entry.module, entry.signature,
+                  addr pane.prototypeWindow)
+

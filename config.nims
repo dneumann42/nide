@@ -10,3 +10,4 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
 --stackTrace:on
 --lineTrace:on
 --panics:on
+--d:ssl

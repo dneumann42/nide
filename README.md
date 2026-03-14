@@ -38,7 +38,7 @@ Run with:
 
 ## Screenshots
 
-TODO: Add screenshots
+![Bench screenshot](screenshot.png)
 
 ## Keyboard Shortcuts
 

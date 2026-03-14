@@ -1,0 +1,91 @@
+import seaqt/[qwidget, qvboxlayout, qlabel, qdialog, qpainter, qrect, qcursor]
+import bench/nimsuggest
+
+type
+  PrototypeWindow* = ref object
+    dialogH*: pointer
+    labelH*: pointer
+    isVisible*: bool
+    currentSymbol*: string
+    currentModule*: string
+    currentSignature*: string
+
+proc closeWindow*(pw: PrototypeWindow) {.raises: [].} =
+  if pw.dialogH == nil: return
+  let d = QDialog(h: pw.dialogH, owned: false)
+  d.hide()
+  pw.dialogH = nil
+  pw.labelH = nil
+  pw.isVisible = false
+
+proc showPrototype*(parent: QWidget,
+                    symbol: string,
+                    moduleName: string,
+                    signature: string,
+                    outWindow: ptr PrototypeWindow) {.raises: [].} =
+  if signature.len == 0:
+    if outWindow[] != nil:
+      outWindow[].closeWindow()
+    return
+
+  try:
+    if outWindow[] != nil and outWindow[].isVisible:
+      if outWindow[].currentSymbol == symbol and outWindow[].currentModule == moduleName:
+        return
+      outWindow[].closeWindow()
+
+    var w = PrototypeWindow(
+      currentSymbol: symbol,
+      currentModule: moduleName,
+      currentSignature: signature,
+      isVisible: true
+    )
+    outWindow[] = w
+
+    var dialog = QDialog.create(parent)
+    dialog.owned = false
+    let dialogH = dialog.h
+    w.dialogH = dialogH
+
+    dialog.setWindowTitle("Prototype")
+    dialog.setWindowFlags(cint(0x00000008) or cint(0x00000080))
+    dialog.setWindowFlags(cint(dialog.windowFlags()) and not cint(0x00000001))
+
+    var label = QLabel.create()
+    label.owned = false
+    let labelH = label.h
+    w.labelH = labelH
+
+    let displayText = "<span style='color: #cdd6f4;'>" & symbol & 
+                      "</span> <span style='color: #89b4fa;'>[" & moduleName & "]</span><br>" &
+                      "<span style='color: #a6e3a1; font-family: monospace;'>" & signature & "</span>"
+    label.setText(displayText)
+    label.setStyleSheet("""
+      background: #1e1e2e;
+      border: 1px solid #585b70;
+      padding: 8px 12px;
+      color: #cdd6f4;
+      font-family: 'Fira Code', monospace;
+      font-size: 13px;
+    """)
+
+    label.setMinimumWidth(cint 400)
+    label.setTextFormat(cint(1))
+
+    var layout = QVBoxLayout.create()
+    layout.owned = false
+    layout.addWidget(QWidget(h: labelH, owned: false))
+    dialog.setLayout(QLayout(h: layout.h, owned: false))
+
+    dialog.setGeometry(100, 100, 500, 80)
+    dialog.show()
+
+  except:
+    echo "[funcprototype] showPrototype error: " & getCurrentExceptionMsg()
+
+proc isPrototypeVisible*(pw: PrototypeWindow): bool {.raises: [].} =
+  return pw != nil and pw.isVisible
+
+proc hidePrototype*(outWindow: ptr PrototypeWindow) {.raises: [].} =
+  if outWindow[] != nil:
+    outWindow[].closeWindow()

@@ -286,7 +286,7 @@ proc build*(self: Application) =
 
   self.toolbar.onOpacityToggle do():
     self.opacityActive = not self.opacityActive
-    let level = if self.opacityActive: 0.90 else: 1.0
+    let level = if self.opacityActive: 0.85 else: 1.0
     self.opacityEffect.setOpacity(level)
 
   self.toolbar.onFileTreeToggle do():
@@ -427,6 +427,10 @@ proc build*(self: Application) =
   self.registerPaneShortcut("Ctrl+Space") do(target: Pane) {.raises: [].}:
     if self.nimSuggest == nil: return
     try: target.triggerAutocomplete(self.nimSuggest)
+    except: discard
+
+  self.registerPaneShortcut("Ctrl+F3") do(target: Pane) {.raises: [].}:
+    try: target.triggerPrototype()
     except: discard
 
   self.registerPaneShortcut("Ctrl+=") do(target: Pane) {.raises: [].}:
