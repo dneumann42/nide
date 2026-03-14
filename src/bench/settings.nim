@@ -10,7 +10,7 @@ type
     lineNumbers: bool
     font = "Monospace"
     fontSize = 12
-    syntaxTheme = "VS Code Dark+"
+    syntaxTheme = "Monokai"
 
   Settings* = object
     appearance: AppearanceSettings

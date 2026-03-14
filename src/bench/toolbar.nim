@@ -129,10 +129,11 @@ proc build*(self: Toolbar) =
   self.buildViewMenu()
   self.buildNimMenu()
 
-  var spacer = QWidget.create()
-  spacer.owned = false
-  spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
-  discard self.toolbar.addWidget(spacer)
+  block:
+    var spacer = QWidget.create()
+    spacer.owned = false
+    spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
+    discard self.toolbar.addWidget(spacer)
 
   const IconSize = 12
   self.runBtn = QToolButton.create()
@@ -148,6 +149,12 @@ proc build*(self: Toolbar) =
   QAbstractButton(h: self.buildBtn.h, owned: false).setIcon(svgIcon(BuildSvg, cint IconSize))
   QAbstractButton(h: self.buildBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
   discard self.toolbar.addWidget(self.buildBtn)
+  
+  block:
+    var spacer = QWidget.create()
+    spacer.owned = false
+    spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
+    discard self.toolbar.addWidget(spacer)
 
   self.themeBtn = QToolButton.create()
   self.themeBtn.setAutoRaise(true)

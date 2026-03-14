@@ -14,7 +14,8 @@ proc fuzzyScore(query, target: string): int {.raises: [].} =
   if query.len == 0: return 0
   var qi = 0
   for ch in target:
-    if qi < query.len and ch == query[qi]: inc qi
+    if qi < query.len and ch == query[qi]: 
+      inc qi
   if qi == query.len: qi else: -1
 
 proc findNimFiles(root: string): seq[string] {.raises: [].} =

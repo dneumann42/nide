@@ -7,7 +7,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
               qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar,
-              qmouseevent]
+              qmouseevent, qkeyevent]
 import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -75,7 +75,8 @@ type
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
-    autocompleteDialogH: pointer
+    autocompleteMenu: AutocompleteMenu
+    autocompleteJustOpened: bool  ## suppress the keyPressEvent that triggered open
 
   EditorWidget* = ref object of QPlainTextEdit
 
@@ -296,7 +297,8 @@ proc newPane*(
     QWidget(h: gutterH, owned: false).setGeometry(
       cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height())
   editorVtbl.event = proc(self: QPlainTextEdit, e: QEvent): bool {.raises: [], gcsafe.} =
-    if e.typeX() == cint(QEventTypeEnum.ToolTip):
+    let evType = e.typeX()
+    if evType == cint(QEventTypeEnum.ToolTip):
       let he = QHelpEvent(h: e.h, owned: false)
       let cur = self.cursorForPosition(he.pos())
       let diags = diagAtPos(pane, cur.position())
@@ -307,7 +309,36 @@ proc newPane*(
         QToolTip.hideText()
       return true
     QPlainTextEditevent(self, e)
+  editorVtbl.keyPressEvent = proc(self: QPlainTextEdit, e: QKeyEvent) {.raises: [], gcsafe.} =
+    if pane.autocompleteMenu.isOpen():
+      let key = e.key()
+      let mods = e.modifiers()
+      let ctrlMod = cint(0x04000000)  # Qt::ControlModifier
+      if (mods and ctrlMod) != 0 and key == cint(0x4e):  # Ctrl+N
+        {.cast(gcsafe).}: pane.autocompleteMenu.nextItem()
+        return  # consume — do not pass to QPlainTextEdit
+      elif (mods and ctrlMod) != 0 and key == cint(0x50):  # Ctrl+P
+        {.cast(gcsafe).}: pane.autocompleteMenu.prevItem()
+        return
+      elif key == cint(0x01000004) or key == cint(0x01000005):  # Return / Enter
+        {.cast(gcsafe).}: pane.autocompleteMenu.accept()
+        return  # consume the Return so no newline is inserted
+      elif key == cint(0x01000000):  # Escape
+        {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
+        return
+      else:
+        # Suppress the very first keyPressEvent after the menu opens — it's
+        # the Ctrl+Space (or key repeat) that triggered the open.
+        if pane.autocompleteJustOpened:
+          {.cast(gcsafe).}: pane.autocompleteJustOpened = false
+        else:
+          echo "[pane] keyPress dismissing menu: key=0x", key.toHex(), " mods=0x", mods.toHex()
+          {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
+    QPlainTextEditkeyPressEvent(self, e)
   editorVtbl.mousePressEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
+    # Any mouse click dismisses the autocomplete menu
+    if pane.autocompleteMenu.isOpen():
+      {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
     let btn = e.button()
     if btn == cint(8):   # Qt::BackButton / XButton1
       {.cast(gcsafe).}:
@@ -428,6 +459,7 @@ proc newPane*(
 
   var headerBar = QWidget.create()
   headerBar.owned = false
+  headerBar.setObjectName("headerBar")
   headerBar.setLayout(QLayout(h: headerLayout.h, owned: false))
 
   # --- Search bar ---
@@ -620,31 +652,11 @@ proc newPane*(
 
 proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
   let hbw = QWidget(h: pane.headerBar.h, owned: false)
-  let (topColor, bottomColor) = headerGradientColors(isDark)
   if focused:
-    var grad = QLinearGradient.create(0.0, 0.0, 0.0, 1.0)
-    QGradient(h: grad.h, owned: false).setCoordinateMode(cint QGradientCoordinateModeEnum.ObjectMode)
-    QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.fromString(topColor))
-    QGradient(h: grad.h, owned: false).setColorAt(0.25, QColor.fromString("#000000"))
-    QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.fromString(bottomColor))
-    var brush = QBrush.create(QGradient(h: grad.h, owned: false))
-    var pal = QPalette.create()
-    pal.setBrush(cint QPaletteColorRoleEnum.Window, brush)
-    hbw.setPalette(pal)
-    hbw.setAutoFillBackground(true)
-    QWidget(h: hbw.h, owned: false).setStyleSheet("border-bottom: 1px solid #333333;")
+    let (rightColor, _) = headerGradientColors(isDark)
+    hbw.setStyleSheet("#headerBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #000000, stop:0.95 " & rightColor & "); }")
   else:
-    var grad = QLinearGradient.create(0.0, 0.0, 0.0, 1.0)
-    QGradient(h: grad.h, owned: false).setCoordinateMode(cint QGradientCoordinateModeEnum.ObjectMode)
-    # Unfocused: go to black
-    QGradient(h: grad.h, owned: false).setColorAt(0.0, QColor.fromString(bottomColor))
-    QGradient(h: grad.h, owned: false).setColorAt(1.0, QColor.fromString("#000000"))
-    var brush = QBrush.create(QGradient(h: grad.h, owned: false))
-    var pal = QPalette.create()
-    pal.setBrush(cint QPaletteColorRoleEnum.Window, brush)
-    hbw.setPalette(pal)
-    hbw.setAutoFillBackground(true)
-    QWidget(h: hbw.h, owned: false).setStyleSheet("border-bottom: 1px solid #333333;")
+    hbw.setStyleSheet("#headerBar { background: #000000; }")
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
   var displayName = buf.name
@@ -755,12 +767,18 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
   if filePath.len == 0:
     return
 
-  let edRef = ed
   let paneRef = pane
   echo "[pane] triggerAutocomplete called at ", lineNum, ":", colNum
-  if paneRef.autocompleteDialogH != nil:
-    echo "[pane] Dialog already showing, ignoring"
+  if paneRef.autocompleteMenu.isOpen():
+    echo "[pane] Autocomplete menu already showing, ignoring"
     return
+  if client.pending.len > 0:
+    echo "[pane] Query already in-flight, ignoring"
+    return
+  # Capture the trigger-time absolute character position so insertTextCb
+  # can locate and replace the typed prefix precisely at accept time.
+  let triggerPos = pos
+  let edRef = ed
   client.querySug(
     filePath,
     lineNum,
@@ -768,22 +786,37 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
     proc(completions: seq[Completion]) {.raises: [].} =
       if completions.len == 0:
         return
-      let rect = edRef.cursorRect()
-      let globalPos = QWidget(h: edRef.h, owned: false).mapToGlobal(
-        QPoint.create(rect.left(), rect.top() + rect.height()))
 
       proc insertTextCb(text: string) {.raises: [].} =
         let e = QPlainTextEdit(h: paneRef.editor.h, owned: false)
         let cur = e.textCursor()
+        # Move to the trigger position, then extend selection back to the
+        # start of the word — this selects only the typed prefix and replaces
+        # it with the chosen completion. We do NOT use select(WordUnderCursor)
+        # because that operates on the cursor's *current* position which may
+        # differ from where the user was when they triggered autocomplete.
+        let acceptPos = cur.position()
+        # Select from start-of-word at trigger position to acceptPos
+        cur.setPosition(triggerPos)
+        discard cur.movePosition(cint(QTextCursorMoveOperationEnum.StartOfWord),
+                                  cint(QTextCursorMoveModeEnum.MoveAnchor))
+        let wordStart = cur.position()
+        cur.setPosition(wordStart)
+        cur.setPosition(acceptPos, cint(QTextCursorMoveModeEnum.KeepAnchor))
         cur.insertText(text)
         e.setTextCursor(cur)
 
+      proc closeCb() {.raises: [].} =
+        echo "[pane] autocomplete closeCb fired"
+        paneRef.autocompleteMenu = nil
+
+      paneRef.autocompleteJustOpened = true
       showCompletions(
-        QWidget(h: edRef.h, owned: false),
+        edRef,
         completions,
         insertTextCb,
-        proc() {.raises: [].} = discard,
-        addr(paneRef.autocompleteDialogH)
+        closeCb,
+        addr(paneRef.autocompleteMenu)
       ),
     proc(msg: string) {.raises: [].} =
       echo "[autocomplete] Error callback: " & msg

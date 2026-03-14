@@ -5,7 +5,7 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimsuggest, nimfinddef, autocomplete]
+              nimsuggest]
 
 type
   ApplicationState = object
@@ -39,6 +39,34 @@ proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
   if result == nil and self.paneManager.panels.len > 0:
     result = self.paneManager.panels[0]
+
+proc getOrCreateTargetPane*(self: Application): Pane =
+  self.getTargetPane()
+
+proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} =
+  if pane.buffer != nil and pane.buffer.path.len > 0:
+    try:
+      let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+      let cur = ed.textCursor()
+      target.add(JumpLocation(
+        file: pane.buffer.path,
+        line: cur.blockNumber() + 1,
+        col:  cur.columnNumber()))
+    except: discard
+
+proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col: int) {.raises: [].} =
+  if path.len > 0:
+    let buf = self.bufferManager.openFile(path)
+    pane.setBuffer(buf)
+  pane.scrollToLine(line, col)
+
+proc createStatusButton*(self: Application, text: string, parentH: pointer): WidgetRef[QToolButton] =
+  var btn = QToolButton.create()
+  btn.owned = false
+  QAbstractButton(h: btn.h, owned: false).setText(text)
+  QWidget(h: btn.h, owned: false).setParent(QWidget(h: parentH, owned: false))
+  QWidget(h: btn.h, owned: false).hide()
+  capture(btn)
 
 proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(target: Pane): void {.raises: [].}) =
   var sc = QShortcut.create(QKeySequence.create(sequence),
@@ -139,9 +167,8 @@ proc build*(self: Application) =
   self.theme = Dark
   applyTheme(Dark)
 
-  # Initialize syntax theme (load from settings if available, otherwise default)
   initDefaultTheme()
-  setCurrentTheme("VS Code Dark+")
+  setCurrentTheme("Monokai")
 
   self.paneManager = PaneManager.init(splitter, PaneCallbacks(
     onFileSelected: proc(pane: Pane, path: string) {.raises: [].} =
@@ -164,58 +191,24 @@ proc build*(self: Application) =
       pane.setBuffer(buf)
       pane.scrollToLine(line, col),
     onJumpBack: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
-      # Push current position onto the forward stack before navigating back
-      if pane.buffer != nil and pane.buffer.path.len > 0:
-        try:
-          let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-          let cur = ed.textCursor()
-          pane.jumpFuture.add(JumpLocation(
-            file: pane.buffer.path,
-            line: cur.blockNumber() + 1,
-            col:  cur.columnNumber()))
-        except: discard
-      if path.len > 0:
-        let buf = self.bufferManager.openFile(path)
-        pane.setBuffer(buf)
-      pane.scrollToLine(line, col),
+      pane.pushJumpLocation(pane.jumpFuture)
+      self.navigateToLocation(pane, path, line, col),
     onJumpForward: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
-      # Push current position onto the back stack before navigating forward
-      if pane.buffer != nil and pane.buffer.path.len > 0:
-        try:
-          let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-          let cur = ed.textCursor()
-          pane.jumpHistory.add(JumpLocation(
-            file: pane.buffer.path,
-            line: cur.blockNumber() + 1,
-            col:  cur.columnNumber()))
-        except: discard
-      if path.len > 0:
-        let buf = self.bufferManager.openFile(path)
-        pane.setBuffer(buf)
-      pane.scrollToLine(line, col)
+      pane.pushJumpLocation(pane.jumpHistory)
+      self.navigateToLocation(pane, path, line, col)
     ))
 
-  # Floating background-process indicator buttons (initially hidden, child of root)
-  var runStatusBtn = QToolButton.create()
-  runStatusBtn.owned = false
-  QAbstractButton(h: runStatusBtn.h, owned: false).setText("nimble run")
-  QWidget(h: runStatusBtn.h, owned: false).setParent(QWidget(h: self.root.h, owned: false))
-  QWidget(h: runStatusBtn.h, owned: false).hide()
-  self.runStatusBtn = capture(runStatusBtn)
+  self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
+  self.buildStatusBtn = self.createStatusButton("nimble build", self.root.h)
 
-  var buildStatusBtn = QToolButton.create()
-  buildStatusBtn.owned = false
-  QAbstractButton(h: buildStatusBtn.h, owned: false).setText("nimble build")
-  QWidget(h: buildStatusBtn.h, owned: false).setParent(QWidget(h: self.root.h, owned: false))
-  QWidget(h: buildStatusBtn.h, owned: false).hide()
-  self.buildStatusBtn = capture(buildStatusBtn)
-
+  let runStatusBtn = QToolButton(h: self.runStatusBtn.h, owned: false)
   runStatusBtn.onClicked do() {.raises: [].}:
     QWidget(h: self.runStatusBtn.h, owned: false).hide()
     if self.runReopen != nil:
       self.runReopen()
       self.runReopen = nil
 
+  let buildStatusBtn = QToolButton(h: self.buildStatusBtn.h, owned: false)
   buildStatusBtn.onClicked do() {.raises: [].}:
     QWidget(h: self.buildStatusBtn.h, owned: false).hide()
     if self.buildReopen != nil:
@@ -232,9 +225,7 @@ proc build*(self: Application) =
       btn.raiseX()
     let gotoRun = proc(file: string, line, col: int) {.raises: [].} =
       try:
-        var target = self.paneManager.lastFocusedPane
-        if target == nil and self.paneManager.panels.len > 0:
-          target = self.paneManager.panels[0]
+        let target = self.getTargetPane()
         if target == nil: return
         let buf = self.bufferManager.openFile(file)
         target.setBuffer(buf)
@@ -252,9 +243,7 @@ proc build*(self: Application) =
       btn.raiseX()
     let gotoBuild = proc(file: string, line, col: int) {.raises: [].} =
       try:
-        var target = self.paneManager.lastFocusedPane
-        if target == nil and self.paneManager.panels.len > 0:
-          target = self.paneManager.panels[0]
+        let target = self.getTargetPane()
         if target == nil: return
         let buf = self.bufferManager.openFile(file)
         target.setBuffer(buf)
@@ -289,10 +278,7 @@ proc build*(self: Application) =
         QWidget(h: self.root.h, owned: false), "", "", "All files (*.*)")
     if file.len == 0: return
     let buf = self.bufferManager.openFile(file)
-    
-    var target = self.paneManager.lastFocusedPane
-    if target == nil and self.paneManager.panels.len > 0:
-      target = self.paneManager.panels[0]
+    let target = self.getTargetPane()
     if target == nil: return
     target.setBuffer(buf)
 
@@ -337,28 +323,22 @@ proc build*(self: Application) =
     if self.nimSuggest != nil:
       self.nimSuggest.restart()
 
-  let cbFindFile = proc(target: Pane): void {.raises: [].} =
-    showFileFinder(
-      QWidget(h: self.root.h, owned: false),
-      proc(path: string) {.raises: [].} =
-        let buf = self.bufferManager.openFile(path)
-        target.setBuffer(buf))
-  self.registerPaneShortcut("Ctrl+P", cbFindFile)
+  self.registerPaneShortcut("Ctrl+P") do(target: Pane) {.raises: []}:
+    showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
+      let buf = self.bufferManager.openFile(path)
+      target.setBuffer(buf)
 
-  let cbFind = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+F") do(target: Pane) {.raises: [].}:
     target.triggerFind()
-  self.registerPaneShortcut("Ctrl+F", cbFind)
 
-  let cbEscape = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Escape") do(target: Pane) {.raises: [].}:
     target.closeSearch()
-  self.registerPaneShortcut("Escape", cbEscape)
 
-  let cbOpenProject = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+O") do(target: Pane) {.raises: [].}:
     if target.buffer == nil:
       target.triggerOpenProject()
-  self.registerPaneShortcut("Ctrl+O", cbOpenProject)
 
-  let cbBuffer = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+B") do(target: Pane) {.raises: [].}:
     var entries: seq[(string, string)]
     let cwd = try: getCurrentDir() except OSError: ""
     for buf in self.bufferManager:
@@ -368,62 +348,47 @@ proc build*(self: Application) =
         except: discard
       entries.add((display, buf.name))
     if entries.len == 0: return
-    showBufferFinder(
-      QWidget(h: self.root.h, owned: false),
-      entries,
-      proc(key: string) {.raises: [].} =
-        for buf in self.bufferManager:
-          if buf.name == key:
-            target.setBuffer(buf)
-            break)
-  self.registerPaneShortcut("Ctrl+B", cbBuffer)
+    showBufferFinder(QWidget(h: self.root.h, owned: false), entries) do(key: string) {.raises: [].}:
+      for buf in self.bufferManager:
+        if buf.name == key:
+          target.setBuffer(buf)
+          break
 
-  let cbRg = proc(target: Pane): void {.raises: [].} =
-    showRipgrepFinder(
-      QWidget(h: self.root.h, owned: false),
-      proc(file: string, lineNum: int) {.raises: [].} =
-        let buf = self.bufferManager.openFile(file)
-        target.setBuffer(buf)
-        target.scrollToLine(lineNum))
-  self.registerPaneShortcut("Ctrl+Shift+F", cbRg)
+  self.registerPaneShortcut("Ctrl+Shift+F") do(target: Pane) {.raises: [].}:
+    showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
+      let buf = self.bufferManager.openFile(file)
+      target.setBuffer(buf)
+      target.scrollToLine(lineNum)
 
-  let cbSave = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+S") do(target: Pane) {.raises: [].}:
     target.save()
-  self.registerPaneShortcut("Ctrl+S", cbSave)
 
-  let cbClosePane = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+W") do(target: Pane) {.raises: [].}:
     self.paneManager.closePane(target)
-  self.registerPaneShortcut("Ctrl+W", cbClosePane)
 
-  let cbNewPane = proc(): void {.raises: [].} =
+  self.registerGlobalShortcut("Ctrl+\\") do() {.raises: [].}:
     self.paneManager.addColumn()
     self.paneManager.equalizeSplits()
-  self.registerGlobalShortcut("Ctrl+\\", cbNewPane)
 
-  let cbHSplit = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+Shift+\\") do(target: Pane) {.raises: [].}:
     try: self.paneManager.splitRow(target)
     except: discard
-  self.registerPaneShortcut("Ctrl+Shift+\\", cbHSplit)
 
-  let cbGotoDef = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("F3") do(target: Pane) {.raises: [].}:
     if self.nimSuggest == nil: return
     try: target.triggerGotoDefinition(self.nimSuggest)
     except: discard
-  self.registerPaneShortcut("F3", cbGotoDef)
 
-  let cbAutocomplete = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+Space") do(target: Pane) {.raises: [].}:
     if self.nimSuggest == nil: return
     try: target.triggerAutocomplete(self.nimSuggest)
     except: discard
-  self.registerPaneShortcut("Ctrl+Space", cbAutocomplete)
 
-  let cbZoomIn = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+=") do(target: Pane) {.raises: [].}:
     target.zoomIn()
-  self.registerPaneShortcut("Ctrl+=", cbZoomIn)
 
-  let cbZoomOut = proc(target: Pane): void {.raises: [].} =
+  self.registerPaneShortcut("Ctrl+-") do(target: Pane) {.raises: [].}:
     target.zoomOut()
-  self.registerPaneShortcut("Ctrl+-", cbZoomOut)
 
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()
@@ -432,7 +397,8 @@ proc build*(self: Application) =
   appInstance.onFocusChanged do(old, now: QWidget):
     try:
       self.paneManager.updateFocus(now, self.theme == Dark)
-    except: discard
+    except: 
+      discard
 
 proc show*(self: Application) =
   self.root.show()

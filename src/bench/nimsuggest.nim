@@ -36,31 +36,30 @@ type
     debug*:        bool
 
 proc findNimbleEntry*(fromFile: string): string {.raises: [].} =
-  try:
-    var dir = fromFile.parentDir()
-    var prev = ""
-    while dir != prev:
-      for kind, path in walkDir(dir):
-        if kind == pcFile and path.endsWith(".nimble"):
-          let content = readFile(path)
-          for line in content.splitLines():
-            let stripped = line.strip()
-            if stripped.startsWith("bin"):
-              let eq = stripped.find('=')
-              if eq >= 0:
-                let rhs = stripped[eq+1..^1].strip()
-                let q1 = rhs.find('"')
-                if q1 >= 0:
-                  let q2 = rhs.find('"', q1+1)
-                  if q2 > q1:
-                    let binName = rhs[q1+1 ..< q2]
-                    let candidate = dir / "src" / binName & ".nim"
-                    if fileExists(candidate):
-                      return candidate
-          return fromFile
-      prev = dir
-      dir = dir.parentDir()
-  except: discard
+  var dir = fromFile.parentDir()
+  var prev = ""
+  while dir != prev:
+    let nimblePath = dir.addFileExt(".nimble")
+    if nimblePath.fileExists:
+      try:
+        for line in nimblePath.readFile.splitLines:
+          let stripped = line.strip()
+          if stripped.startsWith("bin"):
+            let eq = stripped.find('=')
+            if eq < 0: continue
+            let rhs = stripped[eq + 1..^1].strip()
+            let q1 = rhs.find('"')
+            if q1 < 0: continue
+            let q2 = rhs.find('"', q1 + 1)
+            if q2 <= q1: continue
+            let binName = rhs[q1 + 1 ..< q2]
+            let candidate = dir / "src" / binName & ".nim"
+            if candidate.fileExists:
+              return candidate
+      except: discard
+      return fromFile
+    prev = dir
+    dir = dir.parentDir()
   return fromFile
 
 proc parseSugResponse*(lines: seq[string]): seq[Completion] {.raises: [].} =
@@ -105,7 +104,7 @@ proc onSocketConnected(client: NimSuggestClient) {.raises: [].} =
   client.state = csReady
   client.responseLines = @[]
   client.responseBuf = ""
-  client.log("Socket connected, state=Ready")
+  client.log("Socket connected, state=Ready, pending=" & $client.pending.len)
   if client.pending.len > 0:
     client.sendFront()
 
@@ -114,6 +113,7 @@ proc onSocketReadyRead(client: NimSuggestClient) {.raises: [].} =
   try:
     let io = QIODevice(h: client.socketH, owned: false)
     let bytes = io.readAll()
+    client.log("onSocketReadyRead: " & $bytes.len & " bytes, pending=" & $client.pending.len & " bufLen=" & $client.responseBuf.len)
     if bytes.len > 0:
       var s = newString(bytes.len)
       for i in 0..<bytes.len: s[i] = char(bytes[i])
@@ -124,13 +124,15 @@ proc onSocketReadyRead(client: NimSuggestClient) {.raises: [].} =
       let line = client.responseBuf[0 ..< nl].strip(chars={'\r', '\n', ' '})
       client.responseBuf = client.responseBuf[nl+1 .. ^1]
       if line.len == 0:
+        client.log("onSocketReadyRead: blank line -> handleResponse, pending=" & $client.pending.len)
         client.handleResponse()
       else:
         client.responseLines.add(line)
-  except: discard
+  except:
+    client.log("onSocketReadyRead error: " & getCurrentExceptionMsg())
 
 proc onSocketDead(client: NimSuggestClient, msg: string) {.raises: [].} =
-  client.log("Socket dead: " & msg & ", pending: " & $client.pending.len)
+  client.log("Socket dead: " & msg & ", state=" & $client.state & ", pending=" & $client.pending.len)
   if client.state == csIdle: return
   let hadPending = client.pending.len > 0
   client.state = csDead
@@ -143,8 +145,9 @@ proc onSocketDead(client: NimSuggestClient, msg: string) {.raises: [].} =
 
 proc sendFront*(client: NimSuggestClient) {.raises: [].} =
   if client.pending.len == 0: return
+  client.log("sendFront: state=" & $client.state & " socketH=" & (if client.socketH == nil: "nil" else: "ok") & " port=" & $client.port)
   if client.socketH == nil or client.state != csReady:
-    client.log("Socket not ready, restarting")
+    client.log("sendFront: not ready, calling doStart")
     doStart(client)
     return
   try:
@@ -152,7 +155,45 @@ proc sendFront*(client: NimSuggestClient) {.raises: [].} =
     client.log("Sending: " & req.strip())
     let io = QIODevice(h: client.socketH, owned: false)
     discard io.write(req.cstring)
-  except: discard
+  except:
+    client.log("sendFront write error: " & getCurrentExceptionMsg())
+
+proc reconnect*(client: NimSuggestClient) {.raises: [].} =
+  ## Reconnect to the already-running nimsuggest process on the known port.
+  ## nimsuggest (--autobind) closes the socket after each response, so we
+  ## need a fresh TCP connection for each query without restarting the process.
+  client.log("reconnect: port=" & $client.port & " processH=" & (if client.processH == nil: "nil" else: "ok") & " pending=" & $client.pending.len)
+  if client.port <= 0 or client.processH == nil:
+    client.log("reconnect: no port or process, falling back to doStart")
+    doStart(client)
+    return
+  client.state = csStarting
+  try:
+    let parent = QObject(h: client.parentH, owned: false)
+    var sock = QTcpSocket.create(parent)
+    sock.owned = false
+    client.socketH = sock.h
+    let sockH = sock.h
+    let clientRef = client
+    QAbstractSocket(h: sockH, owned: false).onConnected do() {.raises: [].}:
+      clientRef.onSocketConnected()
+    QIODevice(h: sockH, owned: false).onReadyRead do() {.raises: [].}:
+      clientRef.onSocketReadyRead()
+    QAbstractSocket(h: sockH, owned: false).onDisconnected do() {.raises: [].}:
+      clientRef.log("reconnect socket disconnected, state=" & $clientRef.state)
+      if clientRef.socketH == sockH: clientRef.socketH = nil
+      if clientRef.state != csIdle and clientRef.pending.len > 0:
+        clientRef.onSocketDead("socket disconnected")
+    QAbstractSocket(h: sockH, owned: false).onErrorOccurred do(err: cint) {.raises: [].}:
+      clientRef.log("reconnect socket error=" & $err)
+      if clientRef.socketH == sockH: clientRef.socketH = nil
+      if clientRef.state != csIdle and clientRef.pending.len > 0:
+        clientRef.onSocketDead("socket error: " & $err)
+    sock.connectToHost("127.0.0.1", cushort(client.port), cint(3), cint(0))
+  except:
+    client.state = csDead
+    client.log("reconnect failed: " & getCurrentExceptionMsg())
+    client.drainPending("reconnect failed")
 
 proc handleResponse(client: NimSuggestClient) {.raises: [].} =
   if client.pending.len == 0:
@@ -173,13 +214,17 @@ proc handleResponse(client: NimSuggestClient) {.raises: [].} =
     client.log("Calling def callback")
     try: pq.onResultSug(@[]) except: discard
     client.responseLines = @[]
-  # Check if socket is still connected - nimsuggest closes after each request
+  # nimsuggest closes the TCP connection after each response (--autobind mode).
+  # Reconnect to the same port so the next query doesn't restart the process.
+  # Always close and reconnect after each response. nimsuggest (--autobind)
+  # may or may not keep the connection alive — we never reuse it to avoid
+  # writing to a half-closed socket that silently drops data.
+  client.log("Post-response: closing socket and reconnecting for next query")
   if client.socketH != nil:
-    let sock = QAbstractSocket(h: client.socketH, owned: false)
-    if sock.state() != cint(3):  # ConnectedState
-      client.log("Socket closed by server after response")
-      client.socketH = nil
-      client.state = csIdle
+    try: QAbstractSocket(h: client.socketH, owned: false).close() except: discard
+    client.socketH = nil
+  client.state = csIdle
+  client.reconnect()
 
 proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
   if client.processH == nil: return
@@ -210,12 +255,14 @@ proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
     QIODevice(h: sockH, owned: false).onReadyRead do() {.raises: [].}:
       clientRef.onSocketReadyRead()
     QAbstractSocket(h: sockH, owned: false).onDisconnected do() {.raises: [].}:
+      clientRef.log("startNimSuggest socket disconnected, state=" & $clientRef.state)
+      if clientRef.socketH == sockH: clientRef.socketH = nil
       if clientRef.state != csIdle and clientRef.pending.len > 0:
-        clientRef.socketH = nil
         clientRef.onSocketDead("socket disconnected")
     QAbstractSocket(h: sockH, owned: false).onErrorOccurred do(err: cint) {.raises: [].}:
+      clientRef.log("startNimSuggest socket error=" & $err)
+      if clientRef.socketH == sockH: clientRef.socketH = nil
       if clientRef.state != csIdle and clientRef.pending.len > 0:
-        clientRef.socketH = nil
         clientRef.onSocketDead("socket error: " & $err)
   except: discard
 
@@ -323,16 +370,24 @@ proc querySug*(client: NimSuggestClient,
 
   let pq = PendingQuery(request: request, isSug: true, onResultSug: onResult, onError: onError)
 
+  client.log("querySug dispatch: state=" & $client.state & " port=" & $client.port & " processH=" & (if client.processH == nil: "nil" else: "ok") & " socketH=" & (if client.socketH == nil: "nil" else: "ok"))
   case client.state
   of csReady:
     client.pending.add(pq)
     client.sendFront()
   of csStarting:
+    client.log("querySug: csStarting, queued (will send on connect)")
     client.pending.add(pq)
   of csIdle:
     client.pending.add(pq)
-    doStart(client)
+    if client.port > 0 and client.processH != nil:
+      client.log("querySug: csIdle with known port, reconnecting")
+      client.reconnect()
+    else:
+      client.log("querySug: csIdle, calling doStart")
+      doStart(client)
   of csDead:
+    client.log("querySug: csDead, calling doStart")
     client.pending.add(pq)
     doStart(client)
 
