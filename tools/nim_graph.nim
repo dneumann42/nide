@@ -111,6 +111,23 @@ const
     "logic": @["process", "exec", "subprocess"]
   })
 
+proc normalizeImport*(raw: string): string =
+  ## Strip `as alias`, surrounding quotes, and take last path component.
+  var s = raw.strip()
+  # Remove " as <alias>" suffix (case-insensitive won't matter here)
+  let asIdx = s.find(" as ")
+  if asIdx >= 0:
+    s = s[0..<asIdx].strip()
+  # Strip surrounding quotes (e.g. import "../../tools/nim_graph")
+  if s.len >= 2 and s[0] == '"' and s[^1] == '"':
+    s = s[1..^2]
+  # Take last path component
+  if '/' in s:
+    s = s.split('/')[^1]
+  elif '\\' in s:
+    s = s.split('\\')[^1]
+  return s
+
 proc matchPattern(name: string, patterns: seq[string]): bool =
   for p in patterns:
     if p.startswith("*") and p.endswith("*"):
@@ -240,13 +257,9 @@ proc scanModules*(srcDir: string, skipPatterns: seq[string]): seq[Module] =
               if braceEnd > braceStart:
                 let inside = rest[braceStart+1..<braceEnd]
                 for imp in inside.split(","):
-                  var cleaned = imp.strip()
+                  let cleaned = normalizeImport(imp)
                   if cleaned.len > 0 and cleaned != "std" and cleaned != "pkg":
-                    if '/' in cleaned:
-                      let base = cleaned.split('/')[^1]
-                      imports.add(base)
-                    else:
-                      imports.add(cleaned)
+                    imports.add(cleaned)
               rest = rest[0..<bracketStart]
             else:
               inBracket = true
@@ -260,23 +273,15 @@ proc scanModules*(srcDir: string, skipPatterns: seq[string]): seq[Module] =
               if finish > start:
                 let inner = rest[start+1..<finish]
                 for imp in inner.split(","):
-                  var cleaned = imp.strip()
+                  let cleaned = normalizeImport(imp)
                   if cleaned.len > 0 and cleaned != "std" and cleaned != "pkg":
-                    if '/' in cleaned:
-                      let base = cleaned.split('/')[^1]
-                      imports.add(base)
-                    else:
-                      imports.add(cleaned)
+                    imports.add(cleaned)
                 rest = rest[0..<start] & rest[finish+1..^1]
             
             for imp in rest.split(","):
-              var cleaned = imp.strip()
+              let cleaned = normalizeImport(imp)
               if cleaned.len > 0 and cleaned != "std" and cleaned != "pkg":
-                if '/' in cleaned:
-                  let base = cleaned.split('/')[^1]
-                  imports.add(base)
-                else:
-                  imports.add(cleaned)
+                imports.add(cleaned)
         elif inBracket and trimmed.len > 0:
           pendingImport &= " " & trimmed
           
@@ -289,25 +294,17 @@ proc scanModules*(srcDir: string, skipPatterns: seq[string]): seq[Module] =
               if finish > start:
                 let inner = rest[start+1..<finish]
                 for imp in inner.split(","):
-                  var cleaned = imp.strip()
+                  let cleaned = normalizeImport(imp)
                   if cleaned.len > 0 and cleaned != "std" and cleaned != "pkg":
-                    if '/' in cleaned:
-                      let base = cleaned.split('/')[^1]
-                      imports.add(base)
-                    else:
-                      imports.add(cleaned)
+                    imports.add(cleaned)
             pendingImport = ""
             
         elif trimmed.startswith("include "):
           let rest = trimmed[8..^1].strip()
           for inc in rest.split(","):
-            var cleaned = inc.strip()
+            let cleaned = normalizeImport(inc)
             if cleaned.len > 0:
-              if '/' in cleaned:
-                let base = cleaned.split('/')[^1]
-                imports.add(base)
-              else:
-                imports.add(cleaned)
+              imports.add(cleaned)
     except:
       discard
     

@@ -7,7 +7,8 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
 
 import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimsuggest, filetree
+              nimsuggest, filetree, graphdialog
+import "../../tools/nim_graph" as nim_graph
 
 type
   ApplicationState = object
@@ -279,7 +280,25 @@ proc build*(self: Application) =
       except: discard
     runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; nim cpp --out:./$b src/$b.nim", onBg, gotoBuild)
 
-  # graph button disabled
+  self.toolbar.onGraph do():
+    try:
+      let srcDir = if self.currentProject.len > 0: self.currentProject / "src"
+                   else: getCurrentDir() / "src"
+      echo "=== graph srcDir: ", srcDir, " exists: ", dirExists(srcDir)
+      let config = nim_graph.Config(
+        srcDir: srcDir,
+        outputFile: "",
+        depth: 1,
+        groupBy: "category",
+        includeStd: false,
+        skipPatterns: @["tests/*", "test/*", ".git/*"]
+      )
+      let modules = nim_graph.scanModules(config.srcDir, config.skipPatterns)
+      let projectName = nim_graph.getProjectName(config.srcDir)
+      let dot = nim_graph.generateDot(modules, projectName, config)
+      showGraphDialog(QWidget(h: self.root.h, owned: false), dot)
+    except:
+      echo "=== graph error: ", getCurrentExceptionMsg()
 
   self.toolbar.onThemeToggle do():
     self.theme = if self.theme == Dark: Light else: Dark
