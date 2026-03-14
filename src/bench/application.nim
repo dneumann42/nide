@@ -2,10 +2,11 @@ import std/[os, json]
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
-              qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit]
+              qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit,
+              qresizeevent]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimsuggest]
+              nimsuggest, filetree]
 
 type
   ApplicationState = object
@@ -25,6 +26,7 @@ type
     projectManager: ProjectManager
     root: QMainWindow
     paneManager: PaneManager
+    fileTree: FileTree
     theme: Theme
     currentProject: string
     runStatusBtn:  WidgetRef[QToolButton]
@@ -119,6 +121,9 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   try: setCurrentDir(dir) except OSError: discard
   self.toolbar.setProjectName(dir.lastPathPart)
   writeLastOpenedProject(path)
+  self.fileTree.setRoot(dir)
+  self.toolbar.setFileTreeEnabled(true)
+  self.toolbar.setFileTreeIconColor("#ffffff")
   # Start nimsuggest for this project
   if self.nimSuggest != nil:
     self.nimSuggest.kill()
@@ -150,12 +155,27 @@ proc build*(self: Application) =
 
   self.root.addToolBar(QToolBar(h: self.toolbar.widget().h, owned: false))
 
-  var splitter = QSplitter.create(cint(1))
+  # Pane columns splitter — override resizeEvent to reposition the floating file tree.
+  # The vtable proc captures fileTreeRef via a ref-cell so it can be assigned after create.
+  var splitterVtbl = new QSplitterVTable
+  var fileTreeCell: ref FileTree
+  new(fileTreeCell)
+  splitterVtbl.resizeEvent = proc(self: QSplitter, e: QResizeEvent) {.raises: [], gcsafe.} =
+    QSplitterresizeEvent(self, e)
+    if fileTreeCell[] != nil and fileTreeCell[].isVisible():
+      {.cast(gcsafe).}: fileTreeCell[].reposition()
+
+  var splitter = QSplitter.create(cint(1), vtbl = splitterVtbl)
   splitter.setHandleWidth(cint 4)
   QWidget(h: splitter.h, owned: false).setAutoFillBackground(true)
   QWidget(h: splitter.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   self.root.setCentralWidget(QWidget(h: splitter.h, owned: false))
   splitter.owned = false
+
+  # File tree panel — child of main window, positioned manually over content
+  self.fileTree = newFileTree(self.root)
+  self.fileTree.splitterH = self.root.h  # store main window for repositioning
+  fileTreeCell[] = self.fileTree
 
   var opEff = QGraphicsOpacityEffect.create()
   opEff.setOpacity(1.0)
@@ -197,6 +217,13 @@ proc build*(self: Application) =
       pane.pushJumpLocation(pane.jumpHistory)
       self.navigateToLocation(pane, path, line, col)
     ))
+
+  # Wire file tree: clicking a file opens it in the active pane
+  self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
+    let target = self.getTargetPane()
+    if target == nil: return
+    let buf = self.bufferManager.openFile(path)
+    target.setBuffer(buf)
 
   self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
   self.buildStatusBtn = self.createStatusButton("nimble build", self.root.h)
@@ -261,6 +288,10 @@ proc build*(self: Application) =
     self.opacityActive = not self.opacityActive
     let level = if self.opacityActive: 0.90 else: 1.0
     self.opacityEffect.setOpacity(level)
+
+  self.toolbar.onFileTreeToggle do():
+    if self.currentProject.len > 0:
+      self.fileTree.toggle()
 
   self.toolbar.onTriggered(NewProject) do():
     showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager)
@@ -369,6 +400,10 @@ proc build*(self: Application) =
   self.registerGlobalShortcut("Ctrl+\\") do() {.raises: [].}:
     self.paneManager.addColumn()
     self.paneManager.equalizeSplits()
+
+  self.registerGlobalShortcut("Ctrl+Shift+E") do() {.raises: [].}:
+    if self.currentProject.len > 0:
+      self.fileTree.toggle()
 
   self.registerGlobalShortcut("Alt+J") do() {.raises: [].}:
     let target = self.getTargetPane()

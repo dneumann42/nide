@@ -78,6 +78,10 @@ type
     diagLines:      ref seq[LogLine]
     autocompleteMenu: AutocompleteMenu
     autocompleteJustOpened: bool  ## suppress the keyPressEvent that triggered open
+    saveBtn:        WidgetRef[QPushButton]
+    vSplitBtn:      WidgetRef[QPushButton]
+    hSplitBtn:      WidgetRef[QPushButton]
+    closeBtn:       WidgetRef[QPushButton]
 
   EditorWidget* = ref object of QPlainTextEdit
 
@@ -99,6 +103,17 @@ proc svgIcon(svg: string, size: cint): QIcon =
   pm.fill(QColor.create("transparent"))
   var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
   var renderer = QSvgRenderer.create(svg.toOpenArrayByte(0, svg.high))
+  renderer.render(painter)
+  discard painter.endX()
+  QIcon.create(pm)
+
+proc svgIcon(svg: string, size: cint, color: string): QIcon =
+  var coloredSvg = svg.replace("fill=\"white\"", "fill=\"" & color & "\"")
+  coloredSvg = coloredSvg.replace("stroke=\"white\"", "stroke=\"" & color & "\"")
+  var pm = QPixmap.create(size, size)
+  pm.fill(QColor.create("transparent"))
+  var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
+  var renderer = QSvgRenderer.create(coloredSvg.toOpenArrayByte(0, coloredSvg.high))
   renderer.render(painter)
   discard painter.endX()
   QIcon.create(pm)
@@ -551,6 +566,10 @@ proc newPane*(
   result.searchInput     = capture(searchInput)
   result.caseCheck       = capture(caseCheck)
   result.regexCheck      = capture(regexCheck)
+  result.saveBtn         = capture(saveBtn)
+  result.vSplitBtn       = capture(vSplitBtn)
+  result.hSplitBtn       = capture(hSplitBtn)
+  result.closeBtn        = capture(closeBtn)
 
   openProjectBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peOpenProject))
@@ -669,11 +688,17 @@ proc newPane*(
 
 proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
   let hbw = QWidget(h: pane.headerBar.h, owned: false)
+  let iconColor = if focused: "#000000" else: "#ffffff"
+  const headerIconSize = 10
   if focused:
     let (rightColor, _) = headerGradientColors(isDark)
     hbw.setStyleSheet("#headerBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #000000, stop:0.95 " & rightColor & "); }")
   else:
     hbw.setStyleSheet("#headerBar { background: #000000; }")
+  QAbstractButton(h: pane.saveBtn.get().h, owned: false).setIcon(svgIcon(SaveSvg, cint headerIconSize, iconColor))
+  QAbstractButton(h: pane.vSplitBtn.get().h, owned: false).setIcon(svgIcon(VsplitSvg, cint headerIconSize, iconColor))
+  QAbstractButton(h: pane.hSplitBtn.get().h, owned: false).setIcon(svgIcon(HsplitSvg, cint headerIconSize, iconColor))
+  QWidget(h: pane.closeBtn.get().h, owned: false).setStyleSheet("QPushButton { color: " & iconColor & "; }")
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
   var displayName = buf.name

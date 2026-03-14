@@ -1,20 +1,33 @@
-import std/[tables]
+import std/[tables, strutils]
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
               qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qlabel]
 
-const SunSvg     = staticRead("icons/sun.svg")
-const MoonSvg    = staticRead("icons/moon.svg")
-const RunSvg     = staticRead("icons/run.svg")
-const BuildSvg   = staticRead("icons/build.svg")
-const OpacitySvg = staticRead("icons/opacity.svg")
-const GearSvg    = staticRead("icons/gear.svg")
+const SunSvg      = staticRead("icons/sun.svg")
+const MoonSvg     = staticRead("icons/moon.svg")
+const RunSvg      = staticRead("icons/run.svg")
+const BuildSvg    = staticRead("icons/build.svg")
+const OpacitySvg  = staticRead("icons/opacity.svg")
+const GearSvg     = staticRead("icons/gear.svg")
+const FileTreeSvg = staticRead("icons/filetree.svg")
 
 proc svgIcon(svg: string, size: cint): QIcon =
   var pm = QPixmap.create(size, size)
   pm.fill(QColor.create("transparent"))
   var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
   var renderer = QSvgRenderer.create(svg.toOpenArrayByte(0, svg.high))
+  renderer.render(painter)
+  discard painter.endX()
+  QIcon.create(pm)
+
+proc svgIcon(svg: string, size: cint, color: string): QIcon =
+  var coloredSvg = svg.replace("fill=\"white\"", "fill=\"" & color & "\"")
+  coloredSvg = coloredSvg.replace("stroke=\"white\"", "stroke=\"" & color & "\"")
+  coloredSvg = coloredSvg.replace("currentColor", color)
+  var pm = QPixmap.create(size, size)
+  pm.fill(QColor.create("transparent"))
+  var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
+  var renderer = QSvgRenderer.create(coloredSvg.toOpenArrayByte(0, coloredSvg.high))
   renderer.render(painter)
   discard painter.endX()
   QIcon.create(pm)
@@ -46,6 +59,7 @@ type
     nimMenu: ToolMenu
     projectLabel: QLabel
     newPaneBtn: QToolButton
+    fileTreeBtn: QToolButton
     themeBtn: QToolButton
     opacityBtn: QToolButton
     runBtn: QToolButton
@@ -125,6 +139,15 @@ proc build*(self: Toolbar) =
     "QLabel { background: #1e3a5c; color: #cce0ff; border-radius: 4px; padding: 1px 7px; }")
   discard self.toolbar.addWidget(QWidget(h: self.projectLabel.h, owned: false))
 
+  const IconSize = 12
+  self.fileTreeBtn = QToolButton.create()
+  self.fileTreeBtn.setAutoRaise(true)
+  QWidget(h: self.fileTreeBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QAbstractButton(h: self.fileTreeBtn.h, owned: false).setIcon(svgIcon(FileTreeSvg, cint IconSize))
+  QAbstractButton(h: self.fileTreeBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  QWidget(h: self.fileTreeBtn.h, owned: false).setEnabled(false)
+  discard self.toolbar.addWidget(self.fileTreeBtn)
+
   self.buildFileMenu()
   self.buildViewMenu()
   self.buildNimMenu()
@@ -135,7 +158,6 @@ proc build*(self: Toolbar) =
     spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
     discard self.toolbar.addWidget(spacer)
 
-  const IconSize = 12
   self.runBtn = QToolButton.create()
   self.runBtn.setAutoRaise(true)
   QWidget(h: self.runBtn.h, owned: false).setFixedSize(cint 18, cint 18)
@@ -205,3 +227,13 @@ proc setThemeIcon*(self: Toolbar, isDark: bool) =
   let (bg, fg) = if isDark: ("#1e3a5c", "#cce0ff") else: ("#b8d4f0", "#1a2a3a")
   QWidget(h: self.projectLabel.h, owned: false).setStyleSheet(
     "QLabel { background: " & bg & "; color: " & fg & "; border-radius: 4px; padding: 1px 7px; }")
+
+proc setFileTreeEnabled*(self: Toolbar, enabled: bool) =
+  QWidget(h: self.fileTreeBtn.h, owned: false).setEnabled(enabled)
+
+proc setFileTreeIconColor*(self: Toolbar, color: string) =
+  const IconSize = 12
+  QAbstractButton(h: self.fileTreeBtn.h, owned: false).setIcon(svgIcon(FileTreeSvg, cint IconSize, color))
+
+proc onFileTreeToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.fileTreeBtn.onClicked(triggered)
