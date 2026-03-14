@@ -5,7 +5,7 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit]
 import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimfinddef]
+              nimsuggest, nimfinddef, autocomplete]
 
 type
   ApplicationState = object
@@ -95,8 +95,8 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   if self.nimSuggest != nil:
     self.nimSuggest.kill()
   let entryFile = findNimbleEntry(path)
-  self.nimSuggest = NimSuggestClient.new(self.root.h, entryFile)
-  self.nimSuggest.start()
+  self.nimSuggest = NimSuggestClient.new(self.root.h, entryFile, debug = true)
+  startNimSuggest(self.nimSuggest)
   self.paneManager.nimSuggest = self.nimSuggest
   for panel in self.paneManager.panels:
     panel.nimSuggest = self.nimSuggest
@@ -410,6 +410,12 @@ proc build*(self: Application) =
     try: target.triggerGotoDefinition(self.nimSuggest)
     except: discard
   self.registerPaneShortcut("F3", cbGotoDef)
+
+  let cbAutocomplete = proc(target: Pane): void {.raises: [].} =
+    if self.nimSuggest == nil: return
+    try: target.triggerAutocomplete(self.nimSuggest)
+    except: discard
+  self.registerPaneShortcut("Ctrl+Space", cbAutocomplete)
 
   let cbZoomIn = proc(target: Pane): void {.raises: [].} =
     target.zoomIn()

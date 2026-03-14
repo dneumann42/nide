@@ -8,7 +8,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
               qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar,
               qmouseevent]
-import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimfinddef]
+import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -75,6 +75,7 @@ type
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
+    autocompleteDialogH: pointer
 
   EditorWidget* = ref object of QPlainTextEdit
 
@@ -82,6 +83,7 @@ proc applyEditorTheme*(pane: Pane) {.raises: [].}
 proc triggerJumpBack*(pane: Pane) {.raises: [].}
 proc triggerJumpForward*(pane: Pane) {.raises: [].}
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
+proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -736,6 +738,55 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
       )),
     proc(msg: string) {.raises: [].} =
       echo "Goto definition error: " & msg
+  )
+
+proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.path.len == 0:
+    return
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let cur = ed.textCursor()
+  let pos = cur.position()
+  let doc = ed.document()
+  let textBlock = doc.findBlock(pos)
+  let lineNum = textBlock.blockNumber() + 1
+  let colNum = cur.columnNumber()
+
+  let filePath = pane.buffer.path
+  if filePath.len == 0:
+    return
+
+  let edRef = ed
+  let paneRef = pane
+  echo "[pane] triggerAutocomplete called at ", lineNum, ":", colNum
+  if paneRef.autocompleteDialogH != nil:
+    echo "[pane] Dialog already showing, ignoring"
+    return
+  client.querySug(
+    filePath,
+    lineNum,
+    colNum,
+    proc(completions: seq[Completion]) {.raises: [].} =
+      if completions.len == 0:
+        return
+      let rect = edRef.cursorRect()
+      let globalPos = QWidget(h: edRef.h, owned: false).mapToGlobal(
+        QPoint.create(rect.left(), rect.top() + rect.height()))
+
+      proc insertTextCb(text: string) {.raises: [].} =
+        let e = QPlainTextEdit(h: paneRef.editor.h, owned: false)
+        let cur = e.textCursor()
+        cur.insertText(text)
+        e.setTextCursor(cur)
+
+      showCompletions(
+        QWidget(h: edRef.h, owned: false),
+        completions,
+        insertTextCb,
+        proc() {.raises: [].} = discard,
+        addr(paneRef.autocompleteDialogH)
+      ),
+    proc(msg: string) {.raises: [].} =
+      echo "[autocomplete] Error callback: " & msg
   )
 
 proc triggerJumpBack*(pane: Pane) {.raises: [].} =
