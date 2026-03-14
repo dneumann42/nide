@@ -278,6 +278,8 @@ proc build*(self: Application) =
       except: discard
     runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; nim cpp --out:./$b src/$b.nim", onBg, gotoBuild)
 
+  # graph button disabled
+
   self.toolbar.onThemeToggle do():
     self.theme = if self.theme == Dark: Light else: Dark
     applyTheme(self.theme)

@@ -1,4 +1,4 @@
-import std/[xmlparser, xmltree, strutils]
+import std/[xmlparser, xmltree, strutils, re]
 
 type
   ParsedSymbol* = object
@@ -6,10 +6,21 @@ type
     module*: string
     signature*: string
 
+proc fixBrokenHtml(html: string): string =
+  result = html
+  
+  result = result.replace(re"<script[^>]*>.*?</script>", "")
+  
+  let selfClosing = ["link", "meta", "br", "hr", "input", "img", "area", "base", "col", "embed", "source", "track", "wbr", "param"]
+  for tag in selfClosing:
+    result = result.replace("<" & tag & " ", "<" & tag & " /> ")
+    result = result.replace("<" & tag & ">", "<" & tag & " />")
+
 proc parseIndexHtml*(html: string): seq[ParsedSymbol] {.raises: [].} =
   result = @[]
   try:
-    let wrapped = "<root>" & html & "</root>"
+    let fixedHtml = fixBrokenHtml(html)
+    let wrapped = "<root>" & fixedHtml & "</root>"
     let xml = parseXml(wrapped)
     var currentName = ""
     var nodesToProcess: seq[XmlNode] = @[]

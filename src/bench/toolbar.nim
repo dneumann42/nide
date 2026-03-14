@@ -10,6 +10,7 @@ const BuildSvg    = staticRead("icons/build.svg")
 const OpacitySvg  = staticRead("icons/opacity.svg")
 const GearSvg     = staticRead("icons/gear.svg")
 const FileTreeSvg = staticRead("icons/filetree.svg")
+# const GraphSvg    = staticRead("icons/graph.svg")
 
 proc svgIcon(svg: string, size: cint): QIcon =
   var pm = QPixmap.create(size, size)
@@ -60,6 +61,7 @@ type
     projectLabel: QLabel
     newPaneBtn: QToolButton
     fileTreeBtn: QToolButton
+    # graphBtn: QToolButton
     themeBtn: QToolButton
     opacityBtn: QToolButton
     runBtn: QToolButton
@@ -148,6 +150,14 @@ proc build*(self: Toolbar) =
   QWidget(h: self.fileTreeBtn.h, owned: false).setEnabled(false)
   discard self.toolbar.addWidget(self.fileTreeBtn)
 
+# graph button disabled
+  # self.graphBtn = QToolButton.create()
+  # self.graphBtn.setAutoRaise(true)
+  # QWidget(h: self.graphBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  # QAbstractButton(h: self.graphBtn.h, owned: false).setIcon(svgIcon(GraphSvg, cint IconSize))
+  # QAbstractButton(h: self.graphBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  # discard self.toolbar.addWidget(self.graphBtn)
+
   self.buildFileMenu()
   self.buildViewMenu()
   self.buildNimMenu()
@@ -207,6 +217,9 @@ proc onRun*(self: Toolbar, triggered: proc() {.raises: [].}) =
 
 proc onBuild*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.buildBtn.onClicked(triggered)
+
+# proc onGraph*(self: Toolbar, triggered: proc() {.raises: [].}) =
+#   self.graphBtn.onClicked(triggered)
 
 proc onSettings*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.settingsBtn.onCLicked(triggered)
