@@ -1,7 +1,7 @@
 import std/[strutils, options]
-import bench/nimindexdb
-import bench/nimindexfetch
-import bench/nimindexparse
+import nimindexdb
+import nimindexfetch
+import nimindexparse
 
 var gIndexDb*: NimIndexDb
 var gIndexLoaded*: bool = false

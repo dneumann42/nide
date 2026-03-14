@@ -1,6 +1,6 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject]
-import bench/logparser
+import logparser
 
 proc runNimCheck*(
     parentH:  pointer,

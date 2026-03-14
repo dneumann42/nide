@@ -1,5 +1,5 @@
 import seaqt/[qwidget, qvboxlayout, qlabel, qdialog, qpainter, qrect, qcursor]
-import bench/nimsuggest
+import nimsuggest
 
 type
   PrototypeWindow* = ref object

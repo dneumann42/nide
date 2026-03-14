@@ -1,6 +1,6 @@
 import std/[os]
 import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont]
-import bench/highlight
+import highlight
 
 type
   Buffer* = ref object

@@ -1,5 +1,5 @@
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout, qdialogbuttonbox, qpushbutton, qfiledialog]
-import bench/projects
+import projects
 
 proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   var dialog = QDialog.create(parent)

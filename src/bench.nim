@@ -1,5 +1,5 @@
 import seaqt/[qapplication]
-import bench/[application, toolbar, buffers]
+import bench/application
 
 proc start() =
   let _ = QApplication.create()

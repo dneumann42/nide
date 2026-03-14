@@ -6,7 +6,7 @@
 
 import seaqt/[qwidget, qvboxlayout, qlistwidget, qlistwidgetitem,
               qrect, qplaintextedit, qobject]
-import bench/nimsuggest
+import nimsuggest
 
 type
   AutocompleteMenu* = ref object

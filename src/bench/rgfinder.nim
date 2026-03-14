@@ -2,7 +2,7 @@ import std/[strutils, os, osproc]
 import seaqt/[qwidget, qvboxlayout, qlayout, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer,
               qsplitter, qplaintextedit, qtextdocument, qtextcursor, qtextobject]
-import bench/[highlight, codepreview]
+import highlight, codepreview
 
 proc dbg(msg: string) {.raises: [].} =
   try: stderr.write(msg & "\n") except: discard

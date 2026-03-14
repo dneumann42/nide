@@ -1,6 +1,6 @@
 import std/[sets]
 import seaqt/[qsyntaxhighlighter, qtextblock]
-import bench/syntaxtheme
+import syntaxtheme
 
 type NimHighlighter* = ref object of VirtualQSyntaxHighlighter
 

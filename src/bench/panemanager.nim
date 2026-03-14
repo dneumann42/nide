@@ -1,5 +1,5 @@
 import seaqt/[qwidget, qsplitter]
-import bench/[pane, widgetref, nimsuggest]
+import pane, widgetref, nimsuggest
 
 type
   PaneCallbacks* = object

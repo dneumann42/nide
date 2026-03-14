@@ -4,9 +4,10 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit,
               qresizeevent]
-import bench/[toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
+
+import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimsuggest, filetree]
+              nimsuggest, filetree
 
 type
   ApplicationState = object

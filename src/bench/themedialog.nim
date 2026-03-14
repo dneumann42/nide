@@ -2,7 +2,7 @@ import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
               qlistwidget, qlistwidgetitem, qplaintextedit, qfont,
               qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush,
               qshortcut, qkeysequence, qobject]
-import bench/[syntaxtheme, highlight]
+import syntaxtheme, highlight
 
 const SampleCode = """# Nim syntax highlighting preview
 import std/[strutils, tables]

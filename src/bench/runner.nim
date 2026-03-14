@@ -4,7 +4,7 @@ import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qfont,
               qdialog, qpushbutton, qlabel, qprocess, qobject,
               qlistwidget, qlistwidgetitem, qbrush, qcolor,
               qguiapplication, qclipboard]
-import bench/logparser
+import logparser
 
 proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,

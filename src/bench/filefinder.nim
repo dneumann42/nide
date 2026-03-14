@@ -2,7 +2,7 @@ import std/[os, algorithm, strutils]
 import seaqt/[qwidget, qvboxlayout, qlayout, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject,
               qsplitter, qplaintextedit]
-import bench/[highlight, codepreview]
+import highlight, codepreview
 
 proc toStr(oa: openArray[char]): string {.raises: [].} =
   result = newString(oa.len)

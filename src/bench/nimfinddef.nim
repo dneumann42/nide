@@ -1,6 +1,6 @@
 import std/[strutils]
 import seaqt/[qprocess, qobject, qtcpsocket, qabstractsocket, qiodevice]
-import bench/nimsuggest
+import nimsuggest
 
 type
   Definition* = object

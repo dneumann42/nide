@@ -2,7 +2,7 @@ import std/unittest
 import std/tempfiles
 import std/os
 import std/options
-import bench/nimindexdb
+import nimindexdb
 
 suite "nimindexdb":
   let testDb = openMemDb()

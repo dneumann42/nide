@@ -1,5 +1,5 @@
 import std/unittest
-import bench/logparser
+import logparser
 
 suite "parseLine":
   test "error line":
