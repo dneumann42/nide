@@ -6,8 +6,9 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
-              qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar,
-              qmouseevent, qkeyevent]
+              qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar, qscroller,
+              qscrollerproperties, qvariant,
+              qmouseevent, qkeyevent, qwheelevent]
 import bench/[buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -372,6 +373,22 @@ proc newPane*(
           pane.triggerGotoDefinition(pane.nimSuggest)
     else:
       QPlainTextEditmousePressEvent(self, e)
+
+  editorVtbl.wheelEvent = proc(self: QPlainTextEdit, e: QWheelEvent) {.raises: [], gcsafe.} =
+    try:
+      let vp = self.viewport()
+      let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
+      let curY = scroller.finalPosition().y
+      let maxY = float64(self.verticalScrollBar().maximum())
+      var dy: float64
+      if e.hasPixelDelta():
+        dy = float64(-e.pixelDelta().y)
+      else:
+        # angleDelta: 120 units per notch on a standard mouse wheel
+        dy = float64(-e.angleDelta().y) / 120.0 * 20.0
+      let newY = min(max(curY + dy, 0.0), maxY)
+      scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
+    except: discard
 
   var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
@@ -873,6 +890,47 @@ proc zoomOut*(pane: Pane) {.raises: [].} =
     QWidget(h: ed.h, owned: false).setFont(font)
     ed.document().setDefaultFont(font)
     ed.updateLineNumberAreaWidth()
+  except: discard
+
+proc scrollUp*(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let vp = ed.viewport()
+    let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
+    let curY = scroller.finalPosition().y
+    let newY = max(curY - 60.0, 0.0)
+    scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
+  except: discard
+
+proc scrollDown*(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let vp = ed.viewport()
+    let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
+    let curY = scroller.finalPosition().y
+    let maxY = float(ed.verticalScrollBar().maximum())
+    let newY = min(curY + 60.0, maxY)
+    scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
+  except: discard
+
+proc setupSmoothScrolling*(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let vp = ed.viewport()
+    let vpObj = QObject(h: vp.h, owned: false)
+    # grabGesture connects QScroller to the viewport so scrollTo uses pixel coords
+    discard QScroller.grabGesture(vpObj,
+      cint(QScrollerScrollerGestureTypeEnum.LeftMouseButtonGesture))
+    let scroller = QScroller.scroller(vpObj)
+    var props = scroller.scrollerProperties()
+    # Disable overshoot bounce — unwanted in an editor
+    props.setScrollMetric(
+      cint(QScrollerPropertiesScrollMetricEnum.VerticalOvershootPolicy),
+      QVariant.create(cint(QScrollerPropertiesOvershootPolicyEnum.OvershootAlwaysOff)))
+    props.setScrollMetric(
+      cint(QScrollerPropertiesScrollMetricEnum.HorizontalOvershootPolicy),
+      QVariant.create(cint(QScrollerPropertiesOvershootPolicyEnum.OvershootAlwaysOff)))
+    scroller.setScrollerProperties(props)
   except: discard
 
 proc setProjectOpen*(pane: Pane, open: bool) =

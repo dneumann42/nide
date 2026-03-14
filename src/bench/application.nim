@@ -370,6 +370,16 @@ proc build*(self: Application) =
     self.paneManager.addColumn()
     self.paneManager.equalizeSplits()
 
+  self.registerGlobalShortcut("Alt+J") do() {.raises: [].}:
+    let target = self.getTargetPane()
+    if target != nil:
+      target.scrollUp()
+
+  self.registerGlobalShortcut("Alt+K") do() {.raises: [].}:
+    let target = self.getTargetPane()
+    if target != nil:
+      target.scrollDown()
+
   self.registerPaneShortcut("Ctrl+Shift+\\") do(target: Pane) {.raises: [].}:
     try: self.paneManager.splitRow(target)
     except: discard

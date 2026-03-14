@@ -43,6 +43,7 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
   if self.hasProject:
     result.setProjectOpen(true)
   result.nimSuggest = self.nimSuggest
+  result.setupSmoothScrolling()
 
 proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T =
   T(splitter: capture(splitter), callbacks: cbs)
