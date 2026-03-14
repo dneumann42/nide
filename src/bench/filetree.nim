@@ -1,8 +1,8 @@
 import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemview,
                qabstractitemmodel, qheaderview, qlabel]
 
-const TreeWidth = 320*4
-const TreeHeight = 420*4
+const TreeWidth = 320
+const TreeHeight = 420
 
 type
   FileTree* = ref object
@@ -16,13 +16,9 @@ proc reposition*(self: FileTree) {.raises: [].} =
   ## Repositions the floating panel to the top-left of the main window content area.
   if self.splitterH == nil: return
   try:
-    # self.splitterH is actually the mainWindow handle for positioning
     let mainWin = QWidget(h: self.splitterH, owned: false)
-    let toolbarHeight = cint 28  # fixed toolbar height
-    let winH = mainWin.height()
-    # Position below toolbar, fixed height (or full if window is smaller)
-    let h = if winH - toolbarHeight > cint(TreeHeight): cint(TreeHeight) else: winH - toolbarHeight
-    self.container.setGeometry(cint 0, toolbarHeight, cint TreeWidth, h)
+    let toolbarHeight = cint 28
+    self.container.setGeometry(cint 0, toolbarHeight, cint TreeWidth, cint TreeHeight)
     self.container.raiseX()
   except:
     discard
@@ -31,11 +27,10 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   result = FileTree()
   let self = result
 
-  # Create as a child of the main window (plain widget, not a window)
-  # We'll position it manually over the content area.
-  self.container = QWidget.create(mainWindow, cint 0)
+  # Create as a top-level widget positioned manually over the content area.
+  # Parent is mainWindow so it stays on top, but with Tool flag for floating behavior.
+  self.container = QWidget.create(mainWindow, cint 0x00000008)  # Qt.Tool
   self.container.owned = false
-  self.container.setWindowFlags(cint 0)  # ensure it's a plain widget, not a window
 
   let layout = QVBoxLayout.create()
   layout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
@@ -47,6 +42,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   header.owned = false
   QWidget(h: header.h, owned: false).setStyleSheet(
     "QLabel { padding: 4px 8px; font-weight: bold; }")
+  QWidget(h: header.h, owned: false).setFixedHeight(cint 28)
   layout.addWidget(QWidget(h: header.h, owned: false))
 
   # File system model
@@ -57,6 +53,8 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   # Tree view
   self.treeView = QTreeView.create()
   self.treeView.owned = false
+  QWidget(h: self.treeView.h, owned: false).setSizePolicy(cint 7, cint 7)  # Expanding
+  QWidget(h: self.treeView.h, owned: false).setMinimumSize(cint TreeWidth, cint TreeHeight)
   self.treeView.setModel(QAbstractItemModel(h: self.model.h, owned: false))
   self.treeView.setHeaderHidden(true)
   self.treeView.setAnimated(true)
@@ -68,6 +66,8 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   hdr.hideSection(cint 1)
   hdr.hideSection(cint 2)
   hdr.hideSection(cint 3)
+  hdr.setSectionResizeMode(cint 0, cint 1)  # Stretch
+  hdr.setStretchLastSection(false)
 
   layout.addWidget(QWidget(h: self.treeView.h, owned: false))
 
@@ -83,6 +83,8 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
           self.onFileSelected(path)
     except:
       discard
+
+  self.container.resize(cint TreeWidth, cint TreeHeight)
 
   # Start hidden
   self.container.hide()
@@ -100,8 +102,9 @@ proc toggle*(self: FileTree) {.raises: [].} =
       self.container.hide()
     else:
       self.reposition()
+      QWidget(h: self.container.h, owned: false).setFixedSize(cint TreeWidth, cint TreeHeight)
       self.container.show()
-      self.container.raiseX()
+      self.reposition()
   except:
     discard
 
