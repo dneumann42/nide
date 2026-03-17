@@ -375,6 +375,30 @@ proc newPane*(
         else:
           echo "[pane] keyPress dismissing menu: key=0x", key.toHex(), " mods=0x", mods.toHex()
           {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
+    elif key == cint(0x01000001):  # Qt::Key_Tab → insert 2 spaces
+      let cur = self.textCursor()
+      if cur.hasSelection():
+        # Indent every selected line by 2 spaces
+        let startPos = cur.selectionStart()
+        let endPos   = cur.selectionEnd()
+        let c = self.textCursor()
+        c.beginEditBlock()
+        c.setPosition(endPos)
+        let endBlock = c.blockNumber()
+        c.setPosition(startPos)
+        while true:
+          discard c.movePosition(cint(QTextCursorMoveOperationEnum.StartOfBlock),
+                                  cint(QTextCursorMoveModeEnum.MoveAnchor))
+          c.insertText("  ")
+          if c.blockNumber() >= endBlock: break
+          discard c.movePosition(cint(QTextCursorMoveOperationEnum.NextBlock),
+                                  cint(QTextCursorMoveModeEnum.MoveAnchor))
+        c.endEditBlock()
+        self.setTextCursor(c)
+      else:
+        cur.insertText("  ")
+        self.setTextCursor(cur)
+      return
     QPlainTextEditkeyPressEvent(self, e)
   editorVtbl.mousePressEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
     # Any mouse click dismisses the autocomplete menu
@@ -948,7 +972,7 @@ proc scrollUp*(pane: Pane) {.raises: [].} =
     let vp = ed.viewport()
     let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
     let curY = scroller.finalPosition().y
-    let newY = max(curY - 60.0, 0.0)
+    let newY = max(curY - 10.0, 0.0)
     scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
   except: discard
 
@@ -959,7 +983,7 @@ proc scrollDown*(pane: Pane) {.raises: [].} =
     let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
     let curY = scroller.finalPosition().y
     let maxY = float(ed.verticalScrollBar().maximum())
-    let newY = min(curY + 60.0, maxY)
+    let newY = min(curY + 10.0, maxY)
     scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
   except: discard
 

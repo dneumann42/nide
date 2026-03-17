@@ -1,10 +1,11 @@
+import std/[strutils, tables]
 import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
               qlistwidget, qlistwidgetitem, qplaintextedit, qfont,
               qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush,
-              qshortcut, qkeysequence, qobject]
+              qshortcut, qkeysequence, qobject, qcombobox]
 import syntaxtheme, highlight
 
-const SampleCode = """# Nim syntax highlighting preview
+const SampleCode* = """# Nim syntax highlighting preview
 import std/[strutils, tables]
 
 type
@@ -44,6 +45,90 @@ when isMainModule:
   discard factorial(10)
 """
 
+type
+  ThemePickerWidget* = object
+    ## Owns a QSplitter containing a theme list and a live syntax preview.
+    ## Call `currentName()` to read the selection at any time.
+    splitter*:    QSplitter
+    listWidget*:  QListWidget
+    preview*:     QPlainTextEdit
+    themes*:      seq[string]   # ordered list matching list-widget rows
+
+proc buildThemePickerWidget*(
+  parent:      QWidget,
+  currentName: string,
+): ThemePickerWidget {.raises: [].} =
+  ## Build a reusable list + preview widget for picking a syntax theme.
+  ## The caller is responsible for parenting / laying out `result.splitter`.
+  try:
+    let themes = availableThemes()
+    result.themes = themes
+
+    result.listWidget = QListWidget.create()
+    result.listWidget.owned = false
+    let listH = result.listWidget.h
+
+    var selectedIdx = 0
+    for idx, name in themes:
+      QListWidget(h: listH, owned: false).addItem(name)
+      if name == currentName:
+        selectedIdx = idx
+    QListWidget(h: listH, owned: false).setCurrentRow(cint selectedIdx)
+
+    result.preview = QPlainTextEdit.create()
+    result.preview.owned = false
+    result.preview.setReadOnly(true)
+    var previewFont = QFont.create("Fira Code")
+    previewFont.setPointSize(11)
+    previewFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
+    QWidget(h: result.preview.h, owned: false).setFont(previewFont)
+    let previewH = result.preview.h
+
+    let previewHl = NimHighlighter()
+    previewHl.attach(result.preview.document())
+
+    result.preview.setPlainText(SampleCode)
+
+    proc applyPreviewTheme(name: string) {.raises: [].} =
+      try:
+        let theme = getTheme(name)
+        let pw = QWidget(h: previewH, owned: false)
+        var pal = pw.palette()
+        pal.setColor(cint QPaletteColorRoleEnum.Base,
+          QColor.fromString(theme.editor.background))
+        pal.setColor(cint QPaletteColorRoleEnum.Text,
+          QColor.fromString(theme.editor.foreground))
+        pw.setPalette(pal)
+        let savedName = currentThemeName
+        setCurrentTheme(name)
+        previewHl.rehighlight()
+        setCurrentTheme(savedName)
+      except: discard
+
+    applyPreviewTheme(currentName)
+
+    result.splitter = QSplitter.create(cint 1)   # horizontal
+    result.splitter.owned = false
+    result.splitter.addWidget(QWidget(h: listH,              owned: false))
+    result.splitter.addWidget(QWidget(h: previewH,           owned: false))
+    result.splitter.setStretchFactor(cint 0, cint 1)
+    result.splitter.setStretchFactor(cint 1, cint 2)
+
+    QListWidget(h: listH, owned: false).onCurrentRowChanged do(row: cint) {.raises: [].}:
+      if row >= 0 and row < cint(themes.len):
+        applyPreviewTheme(themes[row])
+  except: discard
+
+proc currentThemeSelection*(picker: ThemePickerWidget): string {.raises: [].} =
+  ## Return the name of the currently highlighted theme in the picker.
+  try:
+    let row = QListWidget(h: picker.listWidget.h, owned: false).currentRow()
+    if row >= 0 and row < cint(picker.themes.len):
+      return picker.themes[row]
+  except: discard
+
+# ── Standalone theme-picker dialog ─────────────────────────────────────────
+
 proc showThemeDialog*(
   parent: QWidget,
   currentName: string,
@@ -59,63 +144,8 @@ proc showThemeDialog*(
     var titleLabel = QLabel.create("Select a syntax highlighting theme:")
     titleLabel.owned = false
 
-    var listWidget = QListWidget.create()
-    listWidget.owned = false
-    let listH = listWidget.h
-
-    let themes = availableThemes()
-    var selectedIdx = 0
-    for idx, name in themes:
-      QListWidget(h: listH, owned: false).addItem(name)
-      if name == currentName:
-        selectedIdx = idx
-    QListWidget(h: listH, owned: false).setCurrentRow(cint selectedIdx)
-
-    var preview = QPlainTextEdit.create()
-    preview.owned = false
-    preview.setReadOnly(true)
-    var previewFont = QFont.create("Fira Code")
-    previewFont.setPointSize(11)
-    previewFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
-    QWidget(h: preview.h, owned: false).setFont(previewFont)
-    let previewH = preview.h
-
-    # Attach highlighter to preview
-    let previewHl = NimHighlighter()
-    previewHl.attach(preview.document())
-
-    preview.setPlainText(SampleCode)
-
-    proc applyPreviewTheme(name: string) {.raises: [].} =
-      try:
-        let theme = getTheme(name)
-        # Update preview editor colors
-        let pw = QWidget(h: previewH, owned: false)
-        var pal = pw.palette()
-        pal.setColor(cint QPaletteColorRoleEnum.Base,
-          QColor.fromString(theme.editor.background))
-        pal.setColor(cint QPaletteColorRoleEnum.Text,
-          QColor.fromString(theme.editor.foreground))
-        pw.setPalette(pal)
-
-        # Save and restore global theme, apply preview theme temporarily
-        let savedName = currentThemeName
-        setCurrentTheme(name)
-        previewHl.rehighlight()
-        # Restore previous theme (don't apply to main editor yet)
-        setCurrentTheme(savedName)
-      except:
-        discard
-
-    # Apply initial preview
-    applyPreviewTheme(currentName)
-
-    var splitter = QSplitter.create(cint 1)  # horizontal
-    splitter.owned = false
-    splitter.addWidget(QWidget(h: listWidget.h, owned: false))
-    splitter.addWidget(QWidget(h: preview.h, owned: false))
-    splitter.setStretchFactor(cint 0, cint 1)
-    splitter.setStretchFactor(cint 1, cint 2)
+    let picker = buildThemePickerWidget(
+      QWidget(h: dialogH, owned: false), currentName)
 
     var buttonBox = QDialogButtonBox.create(
       cint(0x00000400 or 0x00400000))  # Ok | Cancel
@@ -123,38 +153,31 @@ proc showThemeDialog*(
 
     var outerLayout = QVBoxLayout.create()
     outerLayout.owned = false
-    # Use stretch: 0 for label to make it shrink to fit content
-    outerLayout.addWidget(QWidget(h: titleLabel.h, owned: false), cint 0)
-    outerLayout.addWidget(QWidget(h: splitter.h, owned: false), cint 1)
-    outerLayout.addWidget(QWidget(h: buttonBox.h, owned: false), cint 0)
+    outerLayout.addWidget(QWidget(h: titleLabel.h,         owned: false), cint 0)
+    outerLayout.addWidget(QWidget(h: picker.splitter.h,    owned: false), cint 1)
+    outerLayout.addWidget(QWidget(h: buttonBox.h,          owned: false), cint 0)
     QWidget(h: dialogH, owned: false).setLayout(
       QLayout(h: outerLayout.h, owned: false))
 
-    listWidget.onCurrentRowChanged do(row: cint) {.raises: [].}:
-      if row >= 0 and row < cint(themes.len):
-        applyPreviewTheme(themes[row])
-
     buttonBox.onAccepted do() {.raises: [].}:
-      let lw = QListWidget(h: listH, owned: false)
-      let row = lw.currentRow()
-      if row >= 0 and row < cint(themes.len):
+      let name = picker.currentThemeSelection()
+      if name.len > 0:
         QDialog(h: dialogH, owned: false).accept()
-        onSelected(themes[row])
+        onSelected(name)
 
     buttonBox.onRejected do() {.raises: [].}:
       QDialog(h: dialogH, owned: false).reject()
 
     # Enter key to accept
     var enterSc = QShortcut.create(QKeySequence.create("Return"),
-                                  QObject(h: dialogH, owned: false))
+                                   QObject(h: dialogH, owned: false))
     enterSc.owned = false
     enterSc.setContext(cint 2)  # WindowShortcut
     enterSc.onActivated do() {.raises: [].}:
-      let lw = QListWidget(h: listH, owned: false)
-      let row = lw.currentRow()
-      if row >= 0 and row < cint(themes.len):
+      let name = picker.currentThemeSelection()
+      if name.len > 0:
         QDialog(h: dialogH, owned: false).accept()
-        onSelected(themes[row])
+        onSelected(name)
 
     discard QDialog(h: dialogH, owned: false).exec()
   except: discard

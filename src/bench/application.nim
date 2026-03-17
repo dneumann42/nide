@@ -1,4 +1,5 @@
 import std/[os, json]
+import toml_serialization
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
@@ -38,6 +39,7 @@ type
     opacityActive: bool
     opacityEffect: QGraphicsOpacityEffect
     nimSuggest: NimSuggestClient
+    settings: Settings
 
 proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
@@ -189,8 +191,12 @@ proc build*(self: Application) =
   self.theme = Dark
   applyTheme(Dark)
 
+  # Load the settings
+  echo "Loading settings..."
+  self.settings = Settings.load()
+  
   initDefaultTheme()
-  setCurrentTheme("Monokai")
+  setCurrentTheme(self.settings.appearance.syntaxTheme)
 
   self.paneManager = PaneManager.init(splitter, PaneCallbacks(
     onFileSelected: proc(pane: Pane, path: string) {.raises: [].} =
@@ -360,7 +366,18 @@ proc build*(self: Application) =
     self.paneManager.equalizeSplits()
 
   self.toolbar.onSettings do():
-    showSettingsDialog(QWidget(h: self.root.h, owned: false))
+    showSettingsDialog(
+      QWidget(h: self.root.h, owned: false),
+      self.settings,
+      proc(updated: Settings) {.raises: [].} =
+        self.settings = updated
+        self.settings.write()
+        applyTheme(updated.appearance.themeMode)
+        setCurrentTheme(updated.appearance.syntaxTheme)
+        self.bufferManager.rehighlightAll()
+        for pane in self.paneManager.panels:
+          pane.applyEditorTheme()
+    )
 
   self.toolbar.onTriggered(JumpBack) do():
     let target = self.getTargetPane()
