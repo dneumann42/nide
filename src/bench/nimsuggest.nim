@@ -275,34 +275,38 @@ proc kill*(client: NimSuggestClient) {.raises: [].} =
   client.portBuf = ""
   client.port = 0
   if client.socketH != nil:
+    let h = client.socketH
+    client.socketH = nil  # clear before ops — disconnectFromHost fires onDisconnected synchronously
     try:
-      QAbstractSocket(h: client.socketH, owned: false).disconnectFromHost()
-      QAbstractSocket(h: client.socketH, owned: false).close()
+      QAbstractSocket(h: h, owned: false).disconnectFromHost()
+      QAbstractSocket(h: h, owned: false).close()
     except: discard
-    client.socketH = nil
   if client.processH != nil:
+    let h = client.processH
+    client.processH = nil  # clear before ops — kill() fires onFinished synchronously
     try:
-      QProcess(h: client.processH, owned: false).kill()
-      discard QProcess(h: client.processH, owned: false).waitForFinished(cint 2000)
+      QProcess(h: h, owned: false).kill()
+      discard QProcess(h: h, owned: false).waitForFinished(cint 2000)
     except: discard
-    client.processH = nil
   discard prevState
 
 proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
   let prevState = client.state
   client.state = csIdle
   if client.socketH != nil:
-    try:
-      QAbstractSocket(h: client.socketH, owned: false).disconnectFromHost()
-      QAbstractSocket(h: client.socketH, owned: false).close()
-    except: discard
+    let h = client.socketH
     client.socketH = nil
-  if client.processH != nil:
     try:
-      QProcess(h: client.processH, owned: false).kill()
-      discard QProcess(h: client.processH, owned: false).waitForFinished(cint 2000)
+      QAbstractSocket(h: h, owned: false).disconnectFromHost()
+      QAbstractSocket(h: h, owned: false).close()
     except: discard
+  if client.processH != nil:
+    let h = client.processH
     client.processH = nil
+    try:
+      QProcess(h: h, owned: false).kill()
+      discard QProcess(h: h, owned: false).waitForFinished(cint 2000)
+    except: discard
   client.port = 0
   client.portBuf = ""
   client.responseLines = @[]
