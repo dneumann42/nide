@@ -34,8 +34,7 @@ proc showFileFinder*(parent: QWidget,
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Open File")
-    let dialogWidth = if recentFiles.len > 0: cint 1100 else: cint 900
-    QWidget(h: dialogH, owned: false).resize(dialogWidth, cint 500)
+    QWidget(h: dialogH, owned: false).resize(cint 1100, cint 550)
 
     var searchBox = QLineEdit.create()
     searchBox.owned = false
@@ -50,6 +49,28 @@ proc showFileFinder*(parent: QWidget,
     leftLayout.addWidget(QWidget(h: searchBox.h, owned: false))
     leftLayout.addWidget(QWidget(h: listWidget.h, owned: false))
 
+    # Recent files section below the file list
+    var recentListH: pointer = nil
+    if recentFiles.len > 0:
+      var recentLabel = QLabel.create("Recent"); recentLabel.owned = false
+      var recentList = QListWidget.create(); recentList.owned = false
+      recentListH = recentList.h
+      let root = try: getCurrentDir() except OSError: "."
+      for f in recentFiles:
+        recentList.addItem(f.relativePath(root))
+      leftLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
+      leftLayout.addWidget(QWidget(h: recentList.h, owned: false))
+
+      recentList.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
+        try:
+          let lw = QListWidget(h: recentListH, owned: false)
+          let row = lw.row(item)
+          if row >= 0 and row < cint(recentFiles.len):
+            let path = recentFiles[row]
+            QDialog(h: dialogH, owned: false).accept()
+            onFileSelected(path)
+        except: discard
+
     var leftPanel = QWidget.create()
     leftPanel.owned = false
     leftPanel.setLayout(QLayout(h: leftLayout.h, owned: false))
@@ -62,41 +83,9 @@ proc showFileFinder*(parent: QWidget,
     var splitter = QSplitter.create(cint 1)
     splitter.owned = false
     splitter.addWidget(QWidget(h: leftPanel.h, owned: false))
-
-    # Middle panel: recent files
-    var recentListH: pointer = nil
-    if recentFiles.len > 0:
-      var recentLayout = QVBoxLayout.create(); recentLayout.owned = false
-      var recentLabel = QLabel.create("Recent"); recentLabel.owned = false
-      var recentList = QListWidget.create(); recentList.owned = false
-      recentListH = recentList.h
-      let root = try: getCurrentDir() except OSError: "."
-      for f in recentFiles:
-        recentList.addItem(f.relativePath(root))
-      recentLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
-      recentLayout.addWidget(QWidget(h: recentList.h, owned: false))
-      var recentPanel = QWidget.create(); recentPanel.owned = false
-      recentPanel.setLayout(QLayout(h: recentLayout.h, owned: false))
-      splitter.addWidget(QWidget(h: recentPanel.h, owned: false))
-
-      recentList.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
-        try:
-          let lw = QListWidget(h: recentListH, owned: false)
-          let row = lw.row(item)
-          if row >= 0 and row < cint(recentFiles.len):
-            let path = recentFiles[row]
-            QDialog(h: dialogH, owned: false).accept()
-            onFileSelected(path)
-        except: discard
-
     splitter.addWidget(QWidget(h: preview.h, owned: false))
-    if recentFiles.len > 0:
-      splitter.setStretchFactor(cint 0, cint 2)
-      splitter.setStretchFactor(cint 1, cint 1)
-      splitter.setStretchFactor(cint 2, cint 3)
-    else:
-      splitter.setStretchFactor(cint 0, cint 1)
-      splitter.setStretchFactor(cint 1, cint 2)
+    splitter.setStretchFactor(cint 0, cint 1)
+    splitter.setStretchFactor(cint 1, cint 2)
 
     var outerLayout = QVBoxLayout.create()
     outerLayout.owned = false
