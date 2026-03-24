@@ -4,7 +4,7 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
               qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qplaintextedit, qtextdocument, qtextcursor, qtextedit,
-              qresizeevent, qfilesystemwatcher]
+              qresizeevent, qfilesystemwatcher, qtimer]
 
 import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
@@ -41,6 +41,7 @@ type
     nimSuggest: NimSuggestClient
     settings: Settings
     fileWatcher: QFileSystemWatcher
+    loaderTimer: QTimer
 
 proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
@@ -172,6 +173,20 @@ proc build*(self: Application) =
   self.toolbar.build()
 
   self.root.addToolBar(QToolBar(h: self.toolbar.widget().h, owned: false))
+
+  # Loader timer to update spinner based on nimsuggest state
+  self.loaderTimer = QTimer.create()
+  self.loaderTimer.owned = false
+  self.loaderTimer.setInterval(cint 200)
+  let appRef = self
+  self.loaderTimer.onTimeout do() {.raises: [].}:
+    if appRef.nimSuggest != nil:
+      let ns = appRef.nimSuggest
+      let isLoading = ns.state == csStarting or ns.pending.len > 0
+      appRef.toolbar.setLoading(isLoading)
+    else:
+      appRef.toolbar.setLoading(false)
+  self.loaderTimer.start()
 
   # Pane columns splitter — override resizeEvent to reposition the floating file tree.
   # The vtable proc captures fileTreeRef via a ref-cell so it can be assigned after create.

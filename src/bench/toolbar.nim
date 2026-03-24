@@ -1,13 +1,15 @@
 import std/[tables, strutils]
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
               qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
-              qsvgrenderer, qlabel]
+              qsvgrenderer, qlabel, qhboxlayout]
 
 const RunSvg      = staticRead("icons/run.svg")
 const BuildSvg    = staticRead("icons/build.svg")
 const GearSvg     = staticRead("icons/gear.svg")
 const FileTreeSvg = staticRead("icons/filetree.svg")
 const GraphSvg    = staticRead("icons/graph.svg")
+const LoadingSvg  = staticRead("icons/loading.svg")
+const NimSvg      = staticRead("../res/Nim_logo.svg")
 
 proc svgIcon(svg: string, size: cint): QIcon =
   var pm = QPixmap.create(size, size)
@@ -62,6 +64,7 @@ type
     runBtn: QToolButton
     buildBtn: QToolButton
     settingsBtn: QToolButton
+    loaderLabel: QLabel
 
 proc build(self: ToolMenu) =
   self.button = QToolButton.create()
@@ -130,11 +133,28 @@ proc build*(self: Toolbar) =
   let tbLayout = QWidget(h: self.toolbar.h, owned: false).layout()
   tbLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
   tbLayout.setSpacing(cint 2)
+
+  var chipWidget = QWidget.create()
+  chipWidget.owned = false
+  chipWidget.setStyleSheet(
+    "QWidget { background: #1e3a5c; color: #cce0ff; border-radius: 4px; padding: 2px 6px; }")
+
+  var chipLayout = QHBoxLayout.create()
+  chipLayout.owned = false
+  chipLayout.setContentsMargins(cint 2, cint 0, cint 2, cint 0)
+  chipLayout.setSpacing(cint 4)
+  QWidget(h: chipWidget.h, owned: false).setLayout(chipLayout)
+
   self.projectLabel = QLabel.create("—")
   self.projectLabel.owned = false
-  QWidget(h: self.projectLabel.h, owned: false).setStyleSheet(
-    "QLabel { background: #1e3a5c; color: #cce0ff; border-radius: 4px; padding: 1px 7px; }")
-  discard self.toolbar.addWidget(QWidget(h: self.projectLabel.h, owned: false))
+  chipLayout.addWidget(QWidget(h: self.projectLabel.h, owned: false))
+
+  self.loaderLabel = QLabel.create("")
+  self.loaderLabel.owned = false
+  self.loaderLabel.setPixmap(svgIcon(NimSvg, cint 12).pixmap(cint 12, cint 12))
+  chipLayout.addWidget(QWidget(h: self.loaderLabel.h, owned: false))
+
+  discard self.toolbar.addWidget(chipWidget)
 
   const IconSize = 12
   self.fileTreeBtn = QToolButton.create()
@@ -210,3 +230,9 @@ proc setFileTreeIconColor*(self: Toolbar, color: string) =
 
 proc onFileTreeToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.fileTreeBtn.onClicked(triggered)
+
+proc setLoading*(self: Toolbar, loading: bool) =
+  if loading:
+    self.loaderLabel.setPixmap(svgIcon(LoadingSvg, cint 12).pixmap(cint 12, cint 12))
+  else:
+    self.loaderLabel.setPixmap(svgIcon(NimSvg, cint 12).pixmap(cint 12, cint 12))
