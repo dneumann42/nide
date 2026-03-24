@@ -4,6 +4,8 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
   include "nimble.paths"
 # end Nimble config
 
+switch("path", thisDir() & "/src")
+
 --mm:orc
 --debugger:native
 --app:gui

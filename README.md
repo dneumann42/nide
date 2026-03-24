@@ -17,6 +17,18 @@ A productive, keyboard-driven development environment for Nim, built with Qt.
 - [Nimble](https://github.com/nim-lang/nimble) >= 0.22.2
 - Qt 6.4+ (via [seaqt](https://github.com/seaqt/nim-seaqt))
 
+### Fedora
+
+```bash
+sudo dnf install qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel qt6-qtmultimedia-devel
+```
+
+### Arch Linux
+
+```bash
+sudo pacman -S qt6-base qt6-svg qt6-multimedia
+```
+
 ## Installation
 
 ### Flatpak

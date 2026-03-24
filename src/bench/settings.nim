@@ -1,12 +1,16 @@
 import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbuttonbox,
               qlineedit, qcheckbox, qspinbox, qcombobox, qabstractbutton, qlabel,
               qabstractspinbox, qsplitter, qlayout, qslider, qabstractslider,
-              qgraphicsopacityeffect, qgraphicseffect]
+              qgraphicsopacityeffect, qgraphicseffect,
+              qtabwidget, qtablewidget, qheaderview, qpushbutton, qkeysequenceedit,
+              qkeysequence, qtableview, qabstractitemview]
 import toml_serialization, os
+import std/[tables, algorithm, strutils]
 
 import theme
 import themedialog
 import opacity
+import ../commands
 
 type
   AppearanceSettings* = object
@@ -19,14 +23,25 @@ type
     opacityEnabled*: bool
     opacityLevel*:   int = 85
 
+  KeybindingOverride* = object
+    command*: string
+    key*:     string
+
   Settings* = object
-    appearance*: AppearanceSettings
+    appearance*:  AppearanceSettings
+    keybindings*: seq[KeybindingOverride]  ## user-defined overrides, e.g. {command: "editor.forwardChar", key: "Ctrl+T"}
 
 const 
   SettingsFile = "settings.toml"
 
 proc syntaxTheme*(s: Settings): string = s.appearance.syntaxTheme
 proc `syntaxTheme=`*(s: var Settings, v: string) = s.appearance.syntaxTheme = v
+
+proc toTable*(overrides: seq[KeybindingOverride]): Table[string, string] =
+  for o in overrides: result[o.command] = o.key
+
+proc toOverrides*(t: Table[string, string]): seq[KeybindingOverride] =
+  for cmd, key in t: result.add(KeybindingOverride(command: cmd, key: key))
 
 proc load*(T: typedesc[Settings]): T {.raises: [].} =
   result = T()
@@ -60,7 +75,7 @@ proc showSettingsDialog*(
     let dialogH = dialog.h
 
     QWidget(h: dialogH, owned: false).setWindowTitle("Settings")
-    QWidget(h: dialogH, owned: false).resize(cint 900, cint 560)
+    QWidget(h: dialogH, owned: false).resize(cint 900, cint 600)
     # Content container — opacity effect goes on this child, not the dialog itself
     var contentWidget = QWidget.create(QWidget(h: dialogH, owned: false))
     contentWidget.owned = false
@@ -72,7 +87,17 @@ proc showSettingsDialog*(
       current.appearance.opacityLevel)
     let contentEffectH = contentEff.h
 
-    # ── Appearance controls ─────────────────────────────────────────────────
+    # ── Tab widget ───────────────────────────────────────────────────────────
+    var tabs = QTabWidget.create(QWidget(h: contentH, owned: false))
+    tabs.owned = false
+    let tabsH = tabs.h
+
+    # ════════════════════════════════════════════════════════════════════════
+    # Tab 1 — Appearance
+    # ════════════════════════════════════════════════════════════════════════
+    var appearTab = QWidget.create(QWidget(h: tabsH, owned: false))
+    appearTab.owned = false
+    let appearTabH = appearTab.h
 
     # Theme mode (Light / Dark)
     var themeModeCombo = QComboBox.create()
@@ -107,8 +132,8 @@ proc showSettingsDialog*(
     QAbstractButton(h: opacityCheck.h, owned: false).setChecked(
       current.appearance.opacityEnabled)
 
-    # Opacity slider — horizontal (Qt::Horizontal = 2)
-    var opacitySlider = QSlider.create(cint 1)  # Qt::Horizontal = 1
+    # Opacity slider — Qt::Horizontal = 1
+    var opacitySlider = QSlider.create(cint 1)
     opacitySlider.owned = false
     QWidget(h: opacitySlider.h, owned: false).setMinimumHeight(cint 24)
     QAbstractSlider(h: opacitySlider.h, owned: false).setMinimum(cint 20)
@@ -125,10 +150,10 @@ proc showSettingsDialog*(
     QWidget(h: opacityLabel.h, owned: false).setMinimumWidth(cint 36)
 
     # Wire checkbox → enable/disable slider + live preview
-    let sliderH        = opacitySlider.h
-    let labelH         = opacityLabel.h
-    let checkH         = opacityCheck.h
-    let previewCb      = onOpacityPreview
+    let sliderH   = opacitySlider.h
+    let labelH    = opacityLabel.h
+    let checkH    = opacityCheck.h
+    let previewCb = onOpacityPreview
     opacityCheck.onStateChanged do(state: cint) {.raises: [].}:
       let enabled = state != 0
       QWidget(h: sliderH, owned: false).setEnabled(enabled)
@@ -145,14 +170,14 @@ proc showSettingsDialog*(
       if previewCb != nil:
         previewCb(enabled, int v)
 
-    # Slider row — add HBoxLayout directly to form (no intermediate QWidget)
+    # Slider row
     var opacityRowLayout = QHBoxLayout.create()
     opacityRowLayout.owned = false
     opacityRowLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
     opacityRowLayout.addWidget(QWidget(h: opacitySlider.h, owned: false), cint 1)
     opacityRowLayout.addWidget(QWidget(h: opacityLabel.h,  owned: false), cint 0)
 
-    # ── Form (top section) ──────────────────────────────────────────────────
+    # Form layout
     var form = QFormLayout.create()
     form.owned = false
     form.addRow("Theme mode",    QWidget(h: themeModeCombo.h,   owned: false))
@@ -162,13 +187,137 @@ proc showSettingsDialog*(
     form.addRow("",              QWidget(h: opacityCheck.h,     owned: false))
     form.addRow("Opacity level", QLayout(h: opacityRowLayout.h, owned: false))
 
-    # ── Syntax theme picker (list + live preview) ───────────────────────────
+    # Syntax theme picker
     var syntaxLabel = QLabel.create("Syntax theme")
     syntaxLabel.owned = false
 
     let picker = buildThemePickerWidget(
-      QWidget(h: dialogH, owned: false),
+      QWidget(h: appearTabH, owned: false),
       current.appearance.syntaxTheme)
+
+    # Appearance tab layout
+    var appearLayout = QVBoxLayout.create()
+    appearLayout.owned = false
+    appearLayout.addLayout(QLayout(h: form.h, owned: false))
+    appearLayout.addWidget(QWidget(h: syntaxLabel.h,     owned: false), cint 0)
+    appearLayout.addWidget(QWidget(h: picker.splitter.h, owned: false), cint 1)
+    QWidget(h: appearTabH, owned: false).setLayout(
+      QLayout(h: appearLayout.h, owned: false))
+
+    discard QTabWidget(h: tabsH, owned: false).addTab(
+      QWidget(h: appearTabH, owned: false), "Appearance")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # Tab 2 — Keybindings
+    # ════════════════════════════════════════════════════════════════════════
+    var kbTab = QWidget.create(QWidget(h: tabsH, owned: false))
+    kbTab.owned = false
+    let kbTabH = kbTab.h
+
+    # Build sorted list of all default bindings
+    var allBindings = defaultBindingList()
+    allBindings.sort(proc(a, b: BindingEntry): int = cmp(a.id, b.id))
+
+    var kbTable = QTableWidget.create(cint allBindings.len, cint 3)
+    kbTable.owned = false
+    let kbTableH = kbTable.h
+
+    # Table configuration: no editing, select rows, no grid
+    QAbstractItemView(h: kbTableH, owned: false).setEditTriggers(cint 0)
+    QAbstractItemView(h: kbTableH, owned: false).setSelectionBehavior(cint 1)
+    QTableView(h: kbTableH, owned: false).setShowGrid(false)
+    QTableWidget(h: kbTableH, owned: false).setHorizontalHeaderLabels(
+      @["Command", "Binding", ""])
+    let hdr = QTableView(h: kbTableH, owned: false).horizontalHeader()
+    hdr.setStretchLastSection(false)
+    hdr.setSectionResizeMode(cint 0, cint 1)  # ResizeToContents
+    hdr.setSectionResizeMode(cint 1, cint 1)
+    hdr.setSectionResizeMode(cint 2, cint 2)  # Fixed
+    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 2, cint 60)
+    let vhdr = QTableView(h: kbTableH, owned: false).verticalHeader()
+    QWidget(h: vhdr.h, owned: false).setVisible(false)
+
+    # Track user's custom binding changes (starts as a copy of saved customs)
+    var customChanges = new(Table[string, string])
+    customChanges[] = current.keybindings.toTable()
+
+    for i, entry in allBindings:
+      let row = cint i
+
+      # Col 0: command id — read-only
+      var idItem = QTableWidgetItem.create(entry.id)
+      idItem.owned = false
+      idItem.setFlags(cint 0x21)  # ItemIsSelectable | ItemIsEnabled
+      QTableWidget(h: kbTableH, owned: false).setItem(row, cint 0, idItem)
+
+      # Col 1: current binding string — read-only
+      let bindStr =
+        if customChanges[].hasKey(entry.id): customChanges[][entry.id]
+        else: keyComboToString(entry.combo)
+      var bindItem = QTableWidgetItem.create(bindStr)
+      bindItem.owned = false
+      bindItem.setFlags(cint 0x21)
+      QTableWidget(h: kbTableH, owned: false).setItem(row, cint 1, bindItem)
+
+      # Col 2: "Set" button (single bindings only; chord bindings are fixed)
+      if not entry.isChord:
+        var setBtn = QPushButton.create("Set")
+        setBtn.owned = false
+        let setBtnH = setBtn.h
+        let cmdId   = entry.id
+        let changesRef = customChanges
+        QAbstractButton(h: setBtnH, owned: false).onClicked do() {.raises: [].}:
+          # Open a small key-capture dialog
+          var capDlg = QDialog.create(QWidget(h: dialogH, owned: false))
+          capDlg.owned = false
+          let capDlgH = capDlg.h
+          QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
+          QWidget(h: capDlgH, owned: false).resize(cint 360, cint 130)
+
+          var capLabel = QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:")
+          capLabel.owned = false
+
+          var keyEdit = QKeySequenceEdit.create()
+          keyEdit.owned = false
+          let keyEditH = keyEdit.h
+
+          var capBtns = QDialogButtonBox.create2(cint(1024 or 4194304))
+          capBtns.owned = false
+          capBtns.onAccepted do():
+            QDialog(h: capDlgH, owned: false).accept()
+          capBtns.onRejected do():
+            QDialog(h: capDlgH, owned: false).reject()
+
+          var capLayout = QVBoxLayout.create()
+          capLayout.owned = false
+          capLayout.addWidget(QWidget(h: capLabel.h,  owned: false))
+          capLayout.addWidget(QWidget(h: keyEditH,    owned: false))
+          capLayout.addWidget(QWidget(h: capBtns.h,   owned: false))
+          QWidget(h: capDlgH, owned: false).setLayout(
+            QLayout(h: capLayout.h, owned: false))
+
+          if QDialog(h: capDlgH, owned: false).exec() == 1:
+            # Take only the first key combo in case user entered multiple
+            let rawStr = QKeySequenceEdit(h: keyEditH, owned: false).keySequence().toString()
+            let newStr = rawStr.split(", ")[0]
+            if newStr.len > 0:
+              changesRef[][cmdId] = newStr
+              let bi = QTableWidget(h: kbTableH, owned: false).item(row, cint 1)
+              if bi.h != nil:
+                bi.setText(newStr)
+
+        QTableWidget(h: kbTableH, owned: false).setCellWidget(
+          row, cint 2, QWidget(h: setBtnH, owned: false))
+
+    # Keybindings tab layout
+    var kbLayout = QVBoxLayout.create()
+    kbLayout.owned = false
+    kbLayout.addWidget(QWidget(h: kbTableH, owned: false), cint 1)
+    QWidget(h: kbTabH, owned: false).setLayout(
+      QLayout(h: kbLayout.h, owned: false))
+
+    discard QTabWidget(h: tabsH, owned: false).addTab(
+      QWidget(h: kbTabH, owned: false), "Keybindings")
 
     # ── Buttons ─────────────────────────────────────────────────────────────
     var buttons = QDialogButtonBox.create2(cint(1024 or 4194304))  # Ok | Cancel
@@ -178,13 +327,11 @@ proc showSettingsDialog*(
     buttons.onRejected do():
       QDialog(h: dialogH, owned: false).reject()
 
-    # ── Layout ──────────────────────────────────────────────────────────────
+    # ── Content layout: tabs + buttons ──────────────────────────────────────
     var mainLayout = QVBoxLayout.create()
     mainLayout.owned = false
-    mainLayout.addLayout(QLayout(h: form.h, owned: false))
-    mainLayout.addWidget(QWidget(h: syntaxLabel.h,        owned: false), cint 0)
-    mainLayout.addWidget(QWidget(h: picker.splitter.h,    owned: false), cint 1)
-    mainLayout.addWidget(QWidget(h: buttons.h,            owned: false), cint 0)
+    mainLayout.addWidget(QWidget(h: tabsH,    owned: false), cint 1)
+    mainLayout.addWidget(QWidget(h: buttons.h, owned: false), cint 0)
 
     QWidget(h: contentH, owned: false).setLayout(
       QLayout(h: mainLayout.h, owned: false))
@@ -212,6 +359,7 @@ proc showSettingsDialog*(
       let chosen = picker.currentThemeSelection()
       if chosen.len > 0:
         updated.appearance.syntaxTheme = chosen
+      updated.keybindings = customChanges[].toOverrides()
       onApply(updated)
   except:
     discard

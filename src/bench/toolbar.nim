@@ -9,7 +9,7 @@ const GearSvg     = staticRead("icons/gear.svg")
 const FileTreeSvg = staticRead("icons/filetree.svg")
 const GraphSvg    = staticRead("icons/graph.svg")
 const LoadingSvg  = staticRead("icons/loading.svg")
-const NimSvg      = staticRead("../res/Nim_logo.svg")
+const NimSvg      = staticRead("../../res/Nim_logo.svg")
 
 proc svgIcon(svg: string, size: cint): QIcon =
   var pm = QPixmap.create(size, size)

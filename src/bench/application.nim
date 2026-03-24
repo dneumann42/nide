@@ -277,6 +277,7 @@ proc build*(self: Application) =
   block:
     let disp = CommandDispatcher()
     registerDefaultBindings(disp)
+    disp.applyCustomBindings(self.settings.keybindings.toTable())
     self.paneManager.dispatcher = disp
 
     disp.register("editor.chordCx", proc() {.raises: [].} =
@@ -583,7 +584,12 @@ proc build*(self: Application) =
           pane.applyEditorTheme()
         self.opacityEffect.applyOpacity(
           updated.appearance.opacityEnabled,
-          updated.appearance.opacityLevel),
+          updated.appearance.opacityLevel)
+        let disp = self.paneManager.dispatcher
+        if disp != nil:
+          disp.resetBindings()
+          registerDefaultBindings(disp)
+          disp.applyCustomBindings(updated.keybindings.toTable()),
       proc(enabled: bool, level: int) {.raises: [].} =
         self.opacityEffect.applyOpacity(enabled, level)
     )

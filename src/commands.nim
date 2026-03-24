@@ -1,4 +1,5 @@
 import std/tables
+import std/strutils
 import bench/keybindings
 
 export KeyCombo, combo, ctrlMod, altMod, shiftMod, noMod
@@ -6,6 +7,8 @@ export KeyCombo, combo, ctrlMod, altMod, shiftMod, noMod
 type
   CommandId* = string
   Command*   = proc() {.raises: [].}
+
+  BindingEntry* = tuple[id: CommandId, combo: KeyCombo, isChord: bool]
 
   CommandDispatcher* = ref object
     commands: Table[CommandId, Command]
@@ -66,3 +69,72 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindChordKey(combo(0x42, noMod),   "editor.switchBuffer")
   d.bindChordKey(combo(0x53, ctrlMod), "editor.saveBuffer")
   d.bindChordKey(combo(0x46, ctrlMod), "editor.findFile")
+
+proc keyComboToString*(c: KeyCombo): string =
+  ## Convert a KeyCombo to a portable string like "Ctrl+F".
+  var parts: seq[string]
+  if (c.mods and ctrlMod) != 0:  parts.add("Ctrl")
+  if (c.mods and altMod) != 0:   parts.add("Alt")
+  if (c.mods and shiftMod) != 0: parts.add("Shift")
+  let keyName = case c.key
+    of 0x01000003: "Backspace"
+    of 0x01000007: "Delete"
+    of 0x01000004: "Return"
+    of 0x01000012: "Left"
+    of 0x01000014: "Right"
+    of 0x01000013: "Up"
+    of 0x01000015: "Down"
+    else:
+      if c.key >= 0x20 and c.key <= 0x7E: $char(c.key)
+      else: ""
+  if keyName.len > 0:
+    parts.add(keyName)
+    result = parts.join("+")
+
+proc stringToKeyCombo*(s: string): KeyCombo =
+  ## Parse a portable key string like "Ctrl+F" into a KeyCombo.
+  if s.len == 0: return combo(0, noMod)
+  let parts = s.split('+')
+  var mods: cint = noMod
+  var key: cint = 0
+  for part in parts:
+    case part
+    of "Ctrl":      mods = mods or ctrlMod
+    of "Alt":       mods = mods or altMod
+    of "Shift":     mods = mods or shiftMod
+    of "Backspace": key = 0x01000003
+    of "Delete":    key = 0x01000007
+    of "Return":    key = 0x01000004
+    of "Left":      key = 0x01000012
+    of "Right":     key = 0x01000014
+    of "Up":        key = 0x01000013
+    of "Down":      key = 0x01000015
+    else:
+      if part.len == 1: key = cint(part[0].ord)
+  result = combo(key, mods)
+
+proc resetBindings*(d: CommandDispatcher) =
+  ## Clear all key bindings so they can be re-registered from scratch.
+  d.single.clear()
+  d.chordCx.clear()
+
+proc applyCustomBindings*(d: CommandDispatcher, custom: Table[string, string]) =
+  ## Override default bindings with user-specified key strings.
+  ## Removes any existing single binding for each command before adding the new one.
+  for cmdId, keyStr in custom:
+    let newCombo = stringToKeyCombo(keyStr)
+    if newCombo.key == 0: continue
+    var toRemove: seq[KeyCombo]
+    for k, v in d.single:
+      if v == cmdId: toRemove.add(k)
+    for k in toRemove: d.single.del(k)
+    d.single[newCombo] = cmdId
+
+proc defaultBindingList*(): seq[BindingEntry] =
+  ## Returns all default keybindings as a list for display/editing purposes.
+  let d = CommandDispatcher()
+  registerDefaultBindings(d)
+  for k, v in d.single:
+    result.add((id: v, combo: k, isChord: false))
+  for k, v in d.chordCx:
+    result.add((id: v, combo: k, isChord: true))
