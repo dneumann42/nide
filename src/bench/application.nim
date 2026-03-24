@@ -393,6 +393,23 @@ proc build*(self: Application) =
       c.removeSelectedText()
       ed.setTextCursor(c))
 
+    disp.register("editor.openLine", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      if p.buffer == nil:
+        p.triggerOpenProject()
+        return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      c.insertText("\n")
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Left),
+                             cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+
+    disp.register("editor.recenter", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).centerCursor())
+
     disp.register("editor.killRegion", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).cut())
@@ -441,6 +458,63 @@ proc build*(self: Application) =
           if buf.name == key:
             p.setBuffer(buf)
             break)
+
+    # Search / navigation
+    disp.register("editor.findInBuffer", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: p.triggerFind())
+
+    disp.register("editor.closeSearch", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: p.closeSearch())
+
+    disp.register("editor.ripgrepFind", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
+        let buf = self.openFile(file)
+        p.setBuffer(buf)
+        p.scrollToLine(lineNum))
+
+    disp.register("editor.gotoDefinition", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil or self.nimSuggest == nil: return
+      try: p.triggerGotoDefinition(self.nimSuggest)
+      except: discard)
+
+    disp.register("editor.autocomplete", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil or self.nimSuggest == nil: return
+      try: p.triggerAutocomplete(self.nimSuggest)
+      except: discard)
+
+    disp.register("editor.showPrototype", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      try: p.triggerPrototype()
+      except: discard)
+
+    # Layout / view
+    disp.register("editor.addColumn", proc() {.raises: [].} =
+      self.paneManager.addColumn()
+      self.paneManager.equalizeSplits())
+
+    disp.register("editor.toggleFileTree", proc() {.raises: [].} =
+      if self.currentProject.len > 0: self.fileTree.toggle())
+
+    disp.register("editor.splitRow", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      try: self.paneManager.splitRow(p)
+      except: discard)
+
+    disp.register("editor.zoomIn", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: p.zoomIn())
+
+    disp.register("editor.zoomOut", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: p.zoomOut())
 
   # Wire file tree: clicking a file opens it in the active pane
   self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
@@ -608,63 +682,6 @@ proc build*(self: Application) =
     if self.nimSuggest != nil:
       self.nimSuggest.restart()
 
-  self.registerPaneShortcut("Ctrl+S") do(target: Pane) {.raises: [].}:
-    target.triggerFind()
-
-  self.registerPaneShortcut("Escape") do(target: Pane) {.raises: [].}:
-    target.closeSearch()
-
-  self.registerPaneShortcut("Ctrl+O") do(target: Pane) {.raises: [].}:
-    if target.buffer == nil:
-      target.triggerOpenProject()
-
-  self.registerPaneShortcut("Ctrl+Shift+F") do(target: Pane) {.raises: [].}:
-    showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
-      let buf = self.openFile(file)
-      target.setBuffer(buf)
-      target.scrollToLine(lineNum)
-
-  self.registerGlobalShortcut("Ctrl+\\") do() {.raises: [].}:
-    self.paneManager.addColumn()
-    self.paneManager.equalizeSplits()
-
-  self.registerGlobalShortcut("Ctrl+Shift+E") do() {.raises: [].}:
-    if self.currentProject.len > 0:
-      self.fileTree.toggle()
-
-  self.registerGlobalShortcut("Alt+K") do() {.raises: [].}:
-    let target = self.getTargetPane()
-    if target != nil:
-      target.scrollUp()
-
-  self.registerGlobalShortcut("Alt+J") do() {.raises: [].}:
-    let target = self.getTargetPane()
-    if target != nil:
-      target.scrollDown()
-
-  self.registerPaneShortcut("Ctrl+Shift+\\") do(target: Pane) {.raises: [].}:
-    try: self.paneManager.splitRow(target)
-    except: discard
-
-  self.registerPaneShortcut("F3") do(target: Pane) {.raises: [].}:
-    if self.nimSuggest == nil: return
-    try: target.triggerGotoDefinition(self.nimSuggest)
-    except: discard
-
-  self.registerPaneShortcut("Ctrl+Space") do(target: Pane) {.raises: [].}:
-    if self.nimSuggest == nil: return
-    try: target.triggerAutocomplete(self.nimSuggest)
-    except: discard
-
-  self.registerPaneShortcut("Ctrl+F3") do(target: Pane) {.raises: [].}:
-    try: target.triggerPrototype()
-    except: discard
-
-  self.registerPaneShortcut("Ctrl+=") do(target: Pane) {.raises: [].}:
-    target.zoomIn()
-
-  self.registerPaneShortcut("Ctrl+-") do(target: Pane) {.raises: [].}:
-    target.zoomOut()
 
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()

@@ -575,7 +575,34 @@ proc newPane*(
   headerBar.setLayout(QLayout(h: headerLayout.h, owned: false))
 
   # --- Search bar ---
-  var searchInput = QLineEdit.create()
+  var inputVtbl = new QLineEditVTable
+  inputVtbl.keyPressEvent = proc(self: QLineEdit, e: QKeyEvent) {.raises: [], gcsafe.} =
+    let key  = e.key()
+    let mods = e.modifiers()
+    if key == cint(0x01000000):  # Escape → close search
+      {.cast(gcsafe).}:
+        pane.searchBar.get().hide()
+        pane.matchPositions = @[]
+        applySelections(pane)
+        QWidget(h: pane.editor.h, owned: false).setFocus()
+      return
+    let relevantMods = mods and (ctrlMod or altMod or shiftMod)
+    let kc: KeyCombo = (key, relevantMods)
+    {.cast(gcsafe).}:
+      if pane.dispatcher != nil and
+         pane.dispatcher.lookupCommand(kc) == "editor.findInBuffer":
+        if pane.matchPositions.len > 0:
+          pane.matchIndex = (pane.matchIndex + 1) mod pane.matchPositions.len
+          let (s, ef) = pane.matchPositions[pane.matchIndex]
+          let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+          var cur = ed.textCursor()
+          cur.setPosition(s)
+          cur.setPosition(ef, cint(QTextCursorMoveModeEnum.KeepAnchor))
+          ed.setTextCursor(cur)
+          ed.ensureCursorVisible()
+        return
+    QLineEditkeyPressEvent(self, e)
+  var searchInput = QLineEdit.create(vtbl = inputVtbl)
   searchInput.owned = false
   searchInput.setPlaceholderText("Search…")
 
