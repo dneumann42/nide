@@ -992,9 +992,6 @@ proc setupSmoothScrolling*(pane: Pane) {.raises: [].} =
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     let vp = ed.viewport()
     let vpObj = QObject(h: vp.h, owned: false)
-    # grabGesture connects QScroller to the viewport so scrollTo uses pixel coords
-    discard QScroller.grabGesture(vpObj,
-      cint(QScrollerScrollerGestureTypeEnum.LeftMouseButtonGesture))
     let scroller = QScroller.scroller(vpObj)
     var props = scroller.scrollerProperties()
     # Disable overshoot bounce — unwanted in an editor

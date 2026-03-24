@@ -436,12 +436,12 @@ proc build*(self: Application) =
     if self.currentProject.len > 0:
       self.fileTree.toggle()
 
-  self.registerGlobalShortcut("Alt+J") do() {.raises: [].}:
+  self.registerGlobalShortcut("Alt+K") do() {.raises: [].}:
     let target = self.getTargetPane()
     if target != nil:
       target.scrollUp()
 
-  self.registerGlobalShortcut("Alt+K") do() {.raises: [].}:
+  self.registerGlobalShortcut("Alt+J") do() {.raises: [].}:
     let target = self.getTargetPane()
     if target != nil:
       target.scrollDown()
