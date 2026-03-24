@@ -7,7 +7,7 @@ import highlight, codepreview
 proc dbg(msg: string) {.raises: [].} =
   try: stderr.write(msg & "\n") except: discard
 
-proc toStr(oa: openArray[char]): string {.raises: [].} =
+proc toStr*(oa: openArray[char]): string {.raises: [].} =
   result = newString(oa.len)
   if oa.len > 0:
     copyMem(addr result[0], unsafeAddr oa[0], oa.len)

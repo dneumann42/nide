@@ -8,6 +8,7 @@ type
     content: string
     documentH: pointer
     highlighter*: NimHighlighter
+    externallyModified*: bool
 
   BufferManager* = object
     buffers: seq[Buffer]
@@ -63,11 +64,19 @@ proc len*(bm: BufferManager): int = bm.buffers.len
 proc openFile*(bm: var BufferManager, path: string): Buffer =
   for buf in bm.buffers:
     if buf.path == path:
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] BufferManager.openFile: found existing buffer for: ", path
       return buf
   result = Buffer.new(path)
+  when defined(debugFileWatcher):
+    echo "[FileWatcher] BufferManager.openFile: created new buffer for: ", path
   try:
     result.content = readFile(path)
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] BufferManager.openFile: read content, len: ", result.content.len
   except:
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] BufferManager.openFile: failed to read file: ", path
     discard
   discard result.document()
   bm.add(result)

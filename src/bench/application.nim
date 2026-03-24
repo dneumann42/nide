@@ -1,10 +1,10 @@
-import std/[os, json]
+import std/[os, json, strutils]
 import toml_serialization
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
               qplaintextedit, qtextdocument, qtextcursor, qtextedit,
-              qresizeevent]
+              qresizeevent, qfilesystemwatcher]
 
 import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
@@ -40,6 +40,7 @@ type
     opacityEffect: QGraphicsOpacityEffect
     nimSuggest: NimSuggestClient
     settings: Settings
+    fileWatcher: QFileSystemWatcher
 
 proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
@@ -48,6 +49,15 @@ proc getTargetPane*(self: Application): Pane =
 
 proc getOrCreateTargetPane*(self: Application): Pane =
   self.getTargetPane()
+
+proc openFile(self: Application, path: string): Buffer =
+  result = self.bufferManager.openFile(path)
+  when defined(debugFileWatcher):
+    echo "[FileWatcher] openFile: ", path
+  if result.path.len > 0:
+    let added = self.fileWatcher.addPath(result.path)
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] addPath result: ", added, ", files: ", self.fileWatcher.files()
 
 proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
@@ -62,7 +72,7 @@ proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} 
 
 proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col: int) {.raises: [].} =
   if path.len > 0:
-    let buf = self.bufferManager.openFile(path)
+    let buf = self.openFile(path)
     pane.setBuffer(buf)
   pane.scrollToLine(line, col)
 
@@ -81,7 +91,7 @@ proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(t
   sc.setContext(cint 2)
   sc.onActivated do() {.raises: [].}:
     let target = self.getTargetPane()
-    if target != nil:
+    if target != nil and not (target.dispatcher != nil and target.dispatcher.inChord):
       callback(target)
 
 proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc(): void {.raises: [].}) =
@@ -89,7 +99,10 @@ proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc
                             QObject(h: self.root.h, owned: false))
   sc.owned = false
   sc.setContext(cint 2)
-  sc.onActivated callback
+  sc.onActivated do() {.raises: [].}:
+    let target = self.getTargetPane()
+    if target != nil and target.dispatcher != nil and target.dispatcher.inChord: return
+    callback()
 
 proc buffers*(app: Application): lent BufferManager =
   result = app.bufferManager
@@ -101,6 +114,7 @@ proc new*(T: typedesc[Application]): T =
     projectManager: ProjectManager.init()
   )
   result.projectManager.load()
+  result.fileWatcher = QFileSystemWatcher.create()
 
 proc writeLastOpenedProject(path: string) {.raises: [].} =
   try:
@@ -199,22 +213,22 @@ proc build*(self: Application) =
 
   self.paneManager = PaneManager.init(splitter, PaneCallbacks(
     onFileSelected: proc(pane: Pane, path: string) {.raises: [].} =
-      let buf = self.bufferManager.openFile(path)
+      let buf = self.openFile(path)
       pane.setBuffer(buf),
     onNewModule: proc(pane: Pane) {.raises: [].} =
       let path = showNewModuleDialog(QWidget(h: self.root.h, owned: false))
       if path.len > 0:
-        let buf = self.bufferManager.openFile(path)
+        let buf = self.openFile(path)
         pane.setBuffer(buf),
     onOpenModule: proc(pane: Pane) {.raises: [].} =
       showFileFinder(QWidget(h: self.root.h, owned: false),
         proc(path: string) {.raises: [].} =
-          let buf = self.bufferManager.openFile(path)
+          let buf = self.openFile(path)
           pane.setBuffer(buf)),
     onOpenProject: proc(pane: Pane) {.raises: [].} =
       self.openProject(),
     onGotoDefinition: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
-      let buf = self.bufferManager.openFile(path)
+      let buf = self.openFile(path)
       pane.setBuffer(buf)
       pane.scrollToLine(line, col),
     onJumpBack: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
@@ -225,7 +239,7 @@ proc build*(self: Application) =
       self.navigateToLocation(pane, path, line, col),
     onFindFile: proc(pane: Pane) {.raises: [].} =
       showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
-        let buf = self.bufferManager.openFile(path)
+        let buf = self.openFile(path)
         pane.setBuffer(buf),
     onSwitchBuffer: proc(pane: Pane) {.raises: [].} =
       var entries: seq[(string, string)]
@@ -391,7 +405,7 @@ proc build*(self: Application) =
       let p = self.getTargetPane()
       if p == nil: return
       showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
-        let buf = self.bufferManager.openFile(path)
+        let buf = self.openFile(path)
         p.setBuffer(buf))
 
     disp.register("editor.switchBuffer", proc() {.raises: [].} =
@@ -416,7 +430,7 @@ proc build*(self: Application) =
   self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
     let target = self.getTargetPane()
     if target == nil: return
-    let buf = self.bufferManager.openFile(path)
+    let buf = self.openFile(path)
     target.setBuffer(buf)
 
   self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
@@ -448,7 +462,7 @@ proc build*(self: Application) =
       try:
         let target = self.getTargetPane()
         if target == nil: return
-        let buf = self.bufferManager.openFile(file)
+        let buf = self.openFile(file)
         target.setBuffer(buf)
         target.jumpToLine(line, col)
       except: discard
@@ -466,7 +480,7 @@ proc build*(self: Application) =
       try:
         let target = self.getTargetPane()
         if target == nil: return
-        let buf = self.bufferManager.openFile(file)
+        let buf = self.openFile(file)
         target.setBuffer(buf)
         target.jumpToLine(line, col)
       except: discard
@@ -511,7 +525,7 @@ proc build*(self: Application) =
     let file = QFileDialog.getOpenFileName(
         QWidget(h: self.root.h, owned: false), "", "", "All files (*.*)")
     if file.len == 0: return
-    let buf = self.bufferManager.openFile(file)
+    let buf = self.openFile(file)
     let target = self.getTargetPane()
     if target == nil: return
     target.setBuffer(buf)
@@ -585,7 +599,7 @@ proc build*(self: Application) =
 
   self.registerPaneShortcut("Ctrl+Shift+F") do(target: Pane) {.raises: [].}:
     showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
-      let buf = self.bufferManager.openFile(file)
+      let buf = self.openFile(file)
       target.setBuffer(buf)
       target.scrollToLine(lineNum)
 
@@ -633,6 +647,66 @@ proc build*(self: Application) =
 
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()
+
+  self.fileWatcher.onFileChanged do(path: openArray[char]):
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] fileChanged signal received!"
+    let p = filefinder.toStr(path)
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] path: ", p
+    var added = self.fileWatcher.addPath(p)
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] re-add result: ", added, ", files: ", self.fileWatcher.files()
+    if not added:
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] re-add failed, retrying..."
+      sleep(50)
+      added = self.fileWatcher.addPath(p)
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] re-add retry result: ", added, ", files: ", self.fileWatcher.files()
+    var buf: Buffer
+    for b in self.bufferManager:
+      if b.path == p:
+        buf = b
+        break
+    if buf == nil:
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] buffer not found for path: ", p
+      return
+    when defined(debugFileWatcher):
+      echo "[FileWatcher] buffer found: ", buf.name
+    var dirty = false
+    for panel in self.paneManager.panels:
+      if panel.buffer == buf:
+        if QPlainTextEdit(h: panel.editor.h, owned: false).document().isModified():
+          dirty = true
+          break
+    if dirty:
+      buf.externallyModified = true
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] buffer dirty, marking externallyModified"
+    else:
+      var content = ""
+      var readOk = false
+      for i in 0..<3:
+        try:
+          content = readFile(p)
+          readOk = true
+          break
+        except:
+          when defined(debugFileWatcher):
+            echo "[FileWatcher] retry readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
+          sleep(50)
+      if readOk:
+        buf.document().setPlainText(content)
+        buf.document().setModified(false)
+        buf.externallyModified = false
+        when defined(debugFileWatcher):
+          echo "[FileWatcher] reloaded content from: ", p
+      else:
+        buf.externallyModified = true
+        when defined(debugFileWatcher):
+          echo "[FileWatcher] failed to read after retries, marking externallyModified"
 
   let appInstance = QApplication(h: QCoreApplication.instance().h, owned: false)
   appInstance.onFocusChanged do(old, now: QWidget):

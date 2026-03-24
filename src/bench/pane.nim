@@ -8,7 +8,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
               qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar, qscroller,
               qscrollerproperties, qvariant,
-              qmouseevent, qkeyevent, qwheelevent]
+              qmouseevent, qkeyevent, qwheelevent, qmessagebox]
 import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings
 import ../commands
 
@@ -220,6 +220,25 @@ proc runCheck*(pane: Pane) {.raises: [].} =
 
 proc save*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
+    if pane.buffer.externallyModified:
+      let parent = QWidget(h: pane.container.h, owned: false)
+      # StandardButton values: Save=2048, Discard=8388608
+      let clicked = QMessageBox.warning(
+        parent,
+        "File Modified Externally",
+        "This file was changed outside the editor. Overwrite it with your changes, or discard them and reload from disk?",
+        cint(2048 or 8388608),
+        cint(2048))
+      if clicked == cint(8388608):
+        try:
+          let content = readFile(pane.buffer.path)
+          pane.buffer.document().setPlainText(content)
+          pane.buffer.document().setModified(false)
+          pane.buffer.externallyModified = false
+        except:
+          discard
+        return
+      pane.buffer.externallyModified = false
     try:
       writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
       runCheck(pane)
