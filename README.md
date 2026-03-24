@@ -1,15 +1,20 @@
 # Bench
 
-A productive, keyboard-driven development environment for Nim, built with Qt.
+A keyboard-driven IDE for Nim, built with Qt.
 
 ## Features
 
-- **Project management** — Open and manage Nim projects with a built-in file tree
-- **Nim integration** — Run and build projects directly from the toolbar using nimble
-- **Code intelligence** — Goto definition, find symbol references, and autocomplete via nimsuggest
-- **Syntax highlighting** — Nim syntax highlighting with multiple themes (Nord, Solarized Dark/Light, GitHub Light)
-- **Workbench** — A notebook-style workspace for planning and drafting commits
-- **Keyboard shortcuts** — Quick pane switching, file opening, and more
+- **Project management** — File tree, recent files/projects, and file system watching for auto-reload
+- **File finder** — Fuzzy file search (`Ctrl+X Ctrl+F`) and find-in-files with ripgrep (`Ctrl+Shift+F`)
+- **Code intelligence** — Autocomplete, goto definition, find references, and function prototypes via nimsuggest
+- **Import optimizer** — Detect and remove unused imports
+- **Dependency viewer** — Graphviz-based module dependency graph
+- **Build & run** — Build and run projects via nimble, with error navigation from output
+- **Syntax highlighting** — Multiple themes: Nord, Solarized Dark/Light, GitHub Light, Monokai
+- **Multi-pane editing** — Split horizontally or vertically, switch panes with `Ctrl+1-9`
+- **Emacs-style editing** — Kill/yank, chord keys, and the rest of the usual suspects
+- **Keybindings** — Fully configurable via settings UI
+- **Diagnostics** — Inline error popover with nimsuggest diagnostics
 
 ## Requirements
 
@@ -54,13 +59,48 @@ Run with:
 
 ## Keyboard Shortcuts
 
+### Navigation & Files
+
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+P` | Quick open file |
-| `Ctrl+Shift+P` | Command palette |
-| `Ctrl+B` | Build project |
-| `Ctrl+Shift+B` | Run project |
-| `Ctrl+1-9` | Switch to pane 1-9 |
+| `Ctrl+X Ctrl+F` | Open file finder |
+| `Ctrl+S` | Find in current buffer |
+| `Ctrl+Shift+F` | Find in files (ripgrep) |
+| `Ctrl+Shift+E` | Toggle file tree |
+| `Ctrl+O` | Open file |
+| `Ctrl+D` | Dashboard |
+| `F3` | Goto definition |
+
+### Editing
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Space` | Autocomplete |
+| `Ctrl+F3` | Show function prototype |
+| `Ctrl+K` | Kill line |
+| `Ctrl+W` | Kill region |
+| `Ctrl+Y` | Yank |
+| `Ctrl+X Ctrl+S` | Save buffer |
+| `Ctrl+X K` | Kill buffer |
+
+### Panes
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+\` | Add column |
+| `Ctrl+Shift+\` | Split row |
+| `Ctrl+X 2` | Split horizontal |
+| `Ctrl+X 3` | Split vertical |
+| `Ctrl+X 1` | Close other panes |
+
+### Misc
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+=` / `Ctrl+-` | Zoom in/out |
+| `Ctrl+Q` | Quit |
+
+Emacs-style cursor movement (`Ctrl+F/B/N/P/A/E`, `Alt+F/B`, etc.) works throughout. All bindings are configurable in Settings.
 
 ## License
 
