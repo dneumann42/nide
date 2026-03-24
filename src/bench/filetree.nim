@@ -1,5 +1,6 @@
 import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemview,
-               qabstractitemmodel, qheaderview, qlabel]
+               qabstractitemmodel, qheaderview, qlabel, qabstractfileiconprovider]
+import ./devicons
 
 const TreeWidth = 320
 const TreeHeight = 420
@@ -9,6 +10,7 @@ type
     container*:       QWidget
     treeView:         QTreeView
     model:            QFileSystemModel
+    iconProvider:     DevIconProvider  # keep alive to prevent GC collection
     splitterH*:       pointer   # raw handle of the parent splitter for positioning
     onFileSelected*:  proc(path: string) {.raises: [].}
 
@@ -49,6 +51,11 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   self.model = QFileSystemModel.create()
   self.model.owned = false
   self.model.setReadOnly(true)
+
+  # Custom devicon provider
+  self.iconProvider = newDevIconProvider()
+  self.model.setIconProvider(
+    QAbstractFileIconProvider(h: self.iconProvider.h, owned: false))
 
   # Tree view
   self.treeView = QTreeView.create()

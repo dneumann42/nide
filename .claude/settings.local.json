@@ -38,7 +38,12 @@
       "Read(//usr/lib/qt6/**)",
       "Read(//usr/**)",
       "Bash(readelf:*)",
-      "Bash(flatpak remote-ls:*)"
+      "Bash(flatpak remote-ls:*)",
+      "Bash(tar -xJ -C /home/dneumann/bench/src/bench/fonts/)",
+      "Bash(head -20 grep -n \"proc create\\\\|onValueChanged\\\\|setMinimum\\\\|setMaximum\\\\|setValue\" /home/dneumann/.nimble/pkgs2/seaqt-0.6.4.0-4b05762909502cd88ebb0930db13d1ea4ee49015/seaqt/QtWidgets/gen_qabstractslider.nim)",
+      "Bash(head -10 grep -n \"onToggled\\\\|onClicked\" /home/dneumann/.nimble/pkgs2/seaqt-0.6.4.0-4b05762909502cd88ebb0930db13d1ea4ee49015/seaqt/QtWidgets/gen_qabstractbutton.nim)",
+      "Bash(head -10 grep -n \"setEnabled\\\\|isEnabled\" /home/dneumann/.nimble/pkgs2/seaqt-0.6.4.0-4b05762909502cd88ebb0930db13d1ea4ee49015/seaqt/QtWidgets/gen_qwidget.nim)",
+      "Bash(head -3 grep -n \"QCheckBoxstateChangedSlot\\\\|slot.*cint\" /home/dneumann/.nimble/pkgs2/seaqt-0.6.4.0-4b05762909502cd88ebb0930db13d1ea4ee49015/seaqt/QtWidgets/gen_qcheckbox.nim)"
     ]
   }
 }
