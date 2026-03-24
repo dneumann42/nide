@@ -1,15 +1,7 @@
+import buffers, commands, filefinder, filetree, graphdialog, moduledialog, nimsuggest, opacity, pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
+import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qkeysequence, qmainwindow, qobject, qplaintextedit, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[os, strutils]
-import toml_serialization
-import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
-              qcoreapplication, qtoolbutton, qabstractbutton,
-              qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
-              qplaintextedit, qtextdocument, qtextcursor, qtextedit,
-              qresizeevent, qfilesystemwatcher, qtimer]
 
-import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
-              filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimsuggest, filetree, graphdialog, opacity
-import commands
 import "../../tools/nim_graph" as nim_graph
 
 type
@@ -676,6 +668,11 @@ proc build*(self: Application) =
   self.toolbar.onTriggered(RestartNimSuggest) do():
     if self.nimSuggest != nil:
       self.nimSuggest.restart()
+
+  self.toolbar.onTriggered(CleanImports) do():
+    let target = self.getTargetPane()
+    if target != nil:
+      target.triggerCleanImports()
 
 
   self.paneManager.addColumn()  # initialize at least one

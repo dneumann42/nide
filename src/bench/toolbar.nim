@@ -45,6 +45,7 @@ type
     RestartNimSuggest
     JumpBack
     JumpForward
+    CleanImports
 
   ToolMenu* = ref object
     label: string
@@ -121,6 +122,8 @@ proc buildNimMenu(self: Toolbar) =
   self.nimMenu.actions[JumpBack] = self.nimMenu.menu.addAction("Jump Back")
   self.nimMenu.actions[JumpForward] = self.nimMenu.menu.addAction("Jump Forward")
   self.nimMenu.actions[RestartNimSuggest] = self.nimMenu.menu.addAction("Restart nimsuggest")
+  discard self.nimMenu.menu.addSeparator()
+  self.nimMenu.actions[CleanImports] = self.nimMenu.menu.addAction("Clean Imports")
 
   discard self.toolbar.addWidget(self.nimMenu.button)
 

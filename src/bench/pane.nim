@@ -10,7 +10,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qscrollerproperties, qvariant, qtimer,
               qmouseevent, qkeyevent, qwheelevent, qmessagebox,
               qlistwidget, qlistwidgetitem]
-import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings
+import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings, nimimports
 import ../commands
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -88,6 +88,7 @@ type
     diagLabelH:     pointer  # QLabel inside diagPopup
     diagShownLine:  int      # line of the diagnostic currently in the popup
     diagShownCol:   int      # col of the diagnostic currently in the popup
+    diagReady:      bool     # true once nim check has returned at least once for this buffer
     diagHideTimerH: pointer  # single-shot QTimer that hides the popup after a delay
     autocompleteMenu: AutocompleteMenu
     prototypeWindow: PrototypeWindow
@@ -108,6 +109,7 @@ proc triggerJumpForward*(pane: Pane) {.raises: [].}
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 proc triggerPrototype*(pane: Pane) {.raises: [].}
+proc triggerCleanImports*(pane: Pane) {.raises: [].}
 proc showPrototypeAtCursor*(pane: Pane) {.raises: [].}
 proc updatePrototypeAtCursor*(pane: Pane) {.raises: [].}
 
@@ -263,6 +265,8 @@ proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
 proc applySelections*(pane: Pane) {.raises: [].} =
   try:
     let ed  = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let savedCursor = ed.textCursor()
+    let savedScroll = ed.verticalScrollBar().value()
     let doc = ed.document()
     var sels: seq[QTextEditExtraSelection]
 
@@ -304,6 +308,8 @@ proc applySelections*(pane: Pane) {.raises: [].} =
         sels.add(sel)
 
     ed.setExtraSelections(sels)
+    ed.setTextCursor(savedCursor)
+    ed.verticalScrollBar().setValue(savedScroll)
   except: discard
 
 proc runCheck*(pane: Pane) {.raises: [].} =
@@ -317,6 +323,7 @@ proc runCheck*(pane: Pane) {.raises: [].} =
   runNimCheck(pane.container.h, filePath, pane.checkProcessH,
     proc(lines: seq[LogLine]) {.raises: [].} =
       pane.diagLines[] = lines
+      pane.diagReady = true
       applySelections(pane))
 
 proc save*(pane: Pane) {.raises: [].} =
@@ -971,6 +978,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   pane.searchBar.get().hide()
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
+  pane.diagReady = false
   applySelections(pane)
   applyEditorTheme(pane)
   runCheck(pane)
@@ -986,6 +994,7 @@ proc clearBuffer*(pane: Pane) =
   pane.searchBar.get().hide()
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
+  pane.diagReady = false
 
 proc openModuleDialog*(pane: Pane) {.raises: [].} =
   let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))
@@ -1307,4 +1316,42 @@ proc updatePrototypeAtCursor*(pane: Pane) {.raises: [].} =
   if not pane.prototypeWindow.isPrototypeVisible():
     return
   pane.showPrototypeAtCursor()
+
+proc doCleanImports(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let source = ed.toPlainText()
+    let unused = collectUnusedModules(pane.diagLines[], pane.buffer.path)
+    let newSource = reorganizeImports(source, unused)
+    if newSource == source: return
+    let savedPos = ed.textCursor().position()
+    let savedScroll = ed.verticalScrollBar().value()
+    let cur = ed.textCursor()
+    discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Start),
+                             cint(QTextCursorMoveModeEnum.MoveAnchor))
+    discard cur.movePosition(cint(QTextCursorMoveOperationEnum.End),
+                             cint(QTextCursorMoveModeEnum.KeepAnchor))
+    cur.insertText(newSource)
+    cur.setPosition(min(savedPos, cint(newSource.len)))
+    ed.setTextCursor(cur)
+    ed.verticalScrollBar().setValue(savedScroll)
+  except: discard
+
+proc triggerCleanImports*(pane: Pane) {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.path.len == 0: return
+  if not pane.buffer.path.endsWith(".nim"): return
+  if pane.diagReady:
+    doCleanImports(pane)
+  else:
+    if pane.checkProcessH[] != nil:
+      try: QProcess(h: pane.checkProcessH[], owned: false).kill()
+      except: discard
+      pane.checkProcessH[] = nil
+    let filePath = pane.buffer.path
+    runNimCheck(pane.container.h, filePath, pane.checkProcessH,
+      proc(lines: seq[LogLine]) {.raises: [].} =
+        pane.diagLines[] = lines
+        pane.diagReady = true
+        applySelections(pane)
+        doCleanImports(pane))
 
