@@ -1,7 +1,7 @@
 import std/[os, algorithm, strutils]
 import seaqt/[qwidget, qvboxlayout, qlayout, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject,
-              qsplitter, qplaintextedit]
+              qsplitter, qplaintextedit, qlabel]
 import highlight, codepreview
 
 proc toStr*(oa: openArray[char]): string {.raises: [].} =
@@ -27,13 +27,15 @@ proc findNimFiles(root: string): seq[string] {.raises: [].} =
     discard
 
 proc showFileFinder*(parent: QWidget,
+                     recentFiles: seq[string],
                      onFileSelected: proc(path: string) {.raises: [].}) {.raises: [].} =
   try:
     var dialog = QDialog.create(parent)
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Open File")
-    QWidget(h: dialogH, owned: false).resize(cint 900, cint 500)
+    let dialogWidth = if recentFiles.len > 0: cint 1100 else: cint 900
+    QWidget(h: dialogH, owned: false).resize(dialogWidth, cint 500)
 
     var searchBox = QLineEdit.create()
     searchBox.owned = false
@@ -60,9 +62,41 @@ proc showFileFinder*(parent: QWidget,
     var splitter = QSplitter.create(cint 1)
     splitter.owned = false
     splitter.addWidget(QWidget(h: leftPanel.h, owned: false))
+
+    # Middle panel: recent files
+    var recentListH: pointer = nil
+    if recentFiles.len > 0:
+      var recentLayout = QVBoxLayout.create(); recentLayout.owned = false
+      var recentLabel = QLabel.create("Recent"); recentLabel.owned = false
+      var recentList = QListWidget.create(); recentList.owned = false
+      recentListH = recentList.h
+      let root = try: getCurrentDir() except OSError: "."
+      for f in recentFiles:
+        recentList.addItem(f.relativePath(root))
+      recentLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
+      recentLayout.addWidget(QWidget(h: recentList.h, owned: false))
+      var recentPanel = QWidget.create(); recentPanel.owned = false
+      recentPanel.setLayout(QLayout(h: recentLayout.h, owned: false))
+      splitter.addWidget(QWidget(h: recentPanel.h, owned: false))
+
+      recentList.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
+        try:
+          let lw = QListWidget(h: recentListH, owned: false)
+          let row = lw.row(item)
+          if row >= 0 and row < cint(recentFiles.len):
+            let path = recentFiles[row]
+            QDialog(h: dialogH, owned: false).accept()
+            onFileSelected(path)
+        except: discard
+
     splitter.addWidget(QWidget(h: preview.h, owned: false))
-    splitter.setStretchFactor(cint 0, cint 1)
-    splitter.setStretchFactor(cint 1, cint 2)
+    if recentFiles.len > 0:
+      splitter.setStretchFactor(cint 0, cint 2)
+      splitter.setStretchFactor(cint 1, cint 1)
+      splitter.setStretchFactor(cint 2, cint 3)
+    else:
+      splitter.setStretchFactor(cint 0, cint 1)
+      splitter.setStretchFactor(cint 1, cint 2)
 
     var outerLayout = QVBoxLayout.create()
     outerLayout.owned = false

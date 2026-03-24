@@ -1,4 +1,4 @@
-import std/[os, json, strutils]
+import std/[os, strutils]
 import toml_serialization
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qtoolbutton, qabstractbutton,
@@ -13,9 +13,6 @@ import commands
 import "../../tools/nim_graph" as nim_graph
 
 type
-  ApplicationState = object
-    lastOpenedProjectPath: string
-
   PaneKeyBinding* = object
     sequence: string
     callback*: proc(target: Pane) {.raises: [].}
@@ -59,6 +56,8 @@ proc openFile(self: Application, path: string): Buffer =
     let added = self.fileWatcher.addPath(result.path)
     when defined(debugFileWatcher):
       echo "[FileWatcher] addPath result: ", added, ", files: ", self.fileWatcher.files()
+    if self.currentProject.len > 0:
+      self.projectManager.recordOpenedFile(self.currentProject, result.path)
 
 proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
@@ -117,18 +116,9 @@ proc new*(T: typedesc[Application]): T =
   result.projectManager.load()
   result.fileWatcher = QFileSystemWatcher.create()
 
-proc writeLastOpenedProject(path: string) {.raises: [].} =
-  try:
-    let contents = 
-      if fileExists(path):
-        readFile(path)
-      else:
-        "{}"
-    var cfg = parseJson(contents).to(ApplicationState)
-    cfg.lastOpenedProjectPath = path
-    writeFile(path, (%* cfg).pretty)
-  except:
-    echo getCurrentExceptionMsg()
+proc updateRecentProjects(self: Application) {.raises: [].} =
+  for panel in self.paneManager.panels:
+    panel.setRecentProjects(self.projectManager.recentProjects)
 
 proc openProject(self: Application, path: string) {.raises: [].} =
   let dir = path.parentDir()
@@ -139,7 +129,7 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   self.bufferManager = BufferManager.init()
   try: setCurrentDir(dir) except OSError: discard
   self.toolbar.setProjectName(dir.lastPathPart)
-  writeLastOpenedProject(path)
+  self.projectManager.recordOpenedProject(path)
   self.fileTree.setRoot(dir)
   self.toolbar.setFileTreeEnabled(true)
   self.toolbar.setFileTreeIconColor("#ffffff")
@@ -237,11 +227,14 @@ proc build*(self: Application) =
         pane.setBuffer(buf),
     onOpenModule: proc(pane: Pane) {.raises: [].} =
       showFileFinder(QWidget(h: self.root.h, owned: false),
+        self.projectManager.recentFilesFor(self.currentProject),
         proc(path: string) {.raises: [].} =
           let buf = self.openFile(path)
           pane.setBuffer(buf)),
     onOpenProject: proc(pane: Pane) {.raises: [].} =
       self.openProject(),
+    onOpenRecentProject: proc(pane: Pane, path: string) {.raises: [].} =
+      self.openProject(path),
     onGotoDefinition: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
       let buf = self.openFile(path)
       pane.setBuffer(buf)
@@ -253,7 +246,8 @@ proc build*(self: Application) =
       pane.pushJumpLocation(pane.jumpHistory)
       self.navigateToLocation(pane, path, line, col),
     onFindFile: proc(pane: Pane) {.raises: [].} =
-      showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
+      showFileFinder(QWidget(h: self.root.h, owned: false),
+        self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
         let buf = self.openFile(path)
         pane.setBuffer(buf),
     onSwitchBuffer: proc(pane: Pane) {.raises: [].} =
@@ -437,7 +431,8 @@ proc build*(self: Application) =
     disp.register("editor.findFile", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
-      showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
+      showFileFinder(QWidget(h: self.root.h, owned: false),
+        self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
         let buf = self.openFile(path)
         p.setBuffer(buf))
 
@@ -685,6 +680,7 @@ proc build*(self: Application) =
 
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()
+  self.updateRecentProjects()
 
   self.fileWatcher.onFileChanged do(path: openArray[char]):
     when defined(debugFileWatcher):

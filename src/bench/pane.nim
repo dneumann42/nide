@@ -8,7 +8,8 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
               qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar, qscroller,
               qscrollerproperties, qvariant,
-              qmouseevent, qkeyevent, qwheelevent, qmessagebox]
+              qmouseevent, qkeyevent, qwheelevent, qmessagebox,
+              qlistwidget, qlistwidgetitem]
 import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings
 import ../commands
 
@@ -25,7 +26,7 @@ proc widgetToPaintDevice(w: QWidget): QPaintDevice =
 type
   PaneEventKind* = enum
     peFileSelected, peClose, peVSplit, peHSplit,
-    peNewModule, peOpenModule, peOpenProject,
+    peNewModule, peOpenModule, peOpenProject, peOpenRecentProject,
     peGotoDefinition, peJumpBack, peJumpForward,
     peSave, peFindFile, peSwitchBuffer, peDeleteOtherWindows
 
@@ -34,6 +35,8 @@ type
     case kind*: PaneEventKind
     of peFileSelected:
       path*: string
+    of peOpenRecentProject:
+      projectPath*: string
     of peGotoDefinition:
       defFile*: string
       defLine*: int
@@ -67,6 +70,9 @@ type
     eventCb: proc(ev: PaneEvent) {.raises: [].}
     moduleBtnsRow: WidgetRef[QWidget]
     openProjectRow: WidgetRef[QWidget]
+    recentProjectsList: WidgetRef[QListWidget]
+    recentProjectsLabel: WidgetRef[QLabel]
+    recentProjectPaths: seq[string]
     searchBar:     WidgetRef[QWidget]
     searchInput:   WidgetRef[QLineEdit]
     caseCheck:     WidgetRef[QCheckBox]
@@ -294,14 +300,40 @@ proc newPane*(
   var openProjectBtn = QPushButton.create("Open Project")
   openProjectBtn.owned = false
 
-  var openProjectLayout = QHBoxLayout.create(); openProjectLayout.owned = false
-  openProjectLayout.addStretch()
-  openProjectLayout.addWidget(QWidget(h: openProjectBtn.h, owned: false))
-  openProjectLayout.addStretch()
+  var recentLabel = QLabel.create("Recent")
+  recentLabel.owned = false
+  QWidget(h: recentLabel.h, owned: false).hide()
+
+  var recentList = QListWidget.create()
+  recentList.owned = false
+  QWidget(h: recentList.h, owned: false).hide()
+  QWidget(h: recentList.h, owned: false).setMaximumHeight(cint 180)
+
+  var openProjectLayout = QVBoxLayout.create(); openProjectLayout.owned = false
+  var btnRow = QHBoxLayout.create(); btnRow.owned = false
+  btnRow.addStretch()
+  btnRow.addWidget(QWidget(h: openProjectBtn.h, owned: false))
+  btnRow.addStretch()
+  openProjectLayout.addLayout(QLayout(h: btnRow.h, owned: false))
+  openProjectLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
+  openProjectLayout.addWidget(QWidget(h: recentList.h, owned: false))
+
+  let recentListH = recentList.h
+  recentList.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
+    try:
+      let lw = QListWidget(h: recentListH, owned: false)
+      let row = lw.row(item)
+      if row >= 0 and row < cint(pane.recentProjectPaths.len):
+        pane.eventCb(PaneEvent(pane: pane, kind: peOpenRecentProject,
+                               projectPath: pane.recentProjectPaths[row]))
+    except: discard
 
   var openProjectRow = QWidget.create()
   openProjectRow.owned = false
   openProjectRow.setLayout(QLayout(h: openProjectLayout.h, owned: false))
+
+  pane.recentProjectsList = capture(recentList)
+  pane.recentProjectsLabel = capture(recentLabel)
 
   # --- Module buttons row (shown when project is open) ---
   var newModuleBtn = QPushButton.create("New Module")
@@ -1065,6 +1097,18 @@ proc setupSmoothScrolling*(pane: Pane) {.raises: [].} =
 proc setProjectOpen*(pane: Pane, open: bool) =
   pane.moduleBtnsRow.get().setVisible(open)
   pane.openProjectRow.get().setVisible(not open)
+
+proc setRecentProjects*(pane: Pane, projects: seq[string]) {.raises: [].} =
+  try:
+    pane.recentProjectPaths = projects
+    let lw = pane.recentProjectsList.get()
+    lw.clear()
+    for p in projects:
+      lw.addItem(p.lastPathPart)
+    let hasItems = projects.len > 0
+    QWidget(h: lw.h, owned: false).setVisible(hasItems)
+    QWidget(h: pane.recentProjectsLabel.get().h, owned: false).setVisible(hasItems)
+  except: discard
 
 proc focus*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil:

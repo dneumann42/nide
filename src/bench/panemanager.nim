@@ -8,6 +8,7 @@ type
     onNewModule*: proc(pane: Pane) {.raises: [].}
     onOpenModule*: proc(pane: Pane) {.raises: [].}
     onOpenProject*: proc(pane: Pane) {.raises: [].}
+    onOpenRecentProject*: proc(pane: Pane, path: string) {.raises: [].}
     onGotoDefinition*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
     onJumpBack*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
     onJumpForward*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
@@ -42,6 +43,9 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
     of peNewModule:    self.callbacks.onNewModule(ev.pane)
     of peOpenModule:   self.callbacks.onOpenModule(ev.pane)
     of peOpenProject:  self.callbacks.onOpenProject(ev.pane)
+    of peOpenRecentProject:
+      if self.callbacks.onOpenRecentProject != nil:
+        self.callbacks.onOpenRecentProject(ev.pane, ev.projectPath)
     of peGotoDefinition: self.callbacks.onGotoDefinition(ev.pane, ev.defFile, ev.defLine, ev.defCol)
     of peJumpBack: self.callbacks.onJumpBack(ev.pane, ev.backFile, ev.backLine, ev.backCol)
     of peJumpForward: self.callbacks.onJumpForward(ev.pane, ev.fwdFile, ev.fwdLine, ev.fwdCol)
