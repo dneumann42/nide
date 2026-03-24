@@ -8,6 +8,6 @@ proc start() =
   application.build()
   application.show()
   quit QApplication.exec().int
- 
+
 when isMainModule:
   start()

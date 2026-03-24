@@ -6,8 +6,8 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
-              qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar, qscroller,
-              qscrollerproperties, qvariant,
+              qevent, qpoint, qrect, qscrollbar, qscroller,
+              qscrollerproperties, qvariant, qtimer,
               qmouseevent, qkeyevent, qwheelevent, qmessagebox,
               qlistwidget, qlistwidgetitem]
 import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings
@@ -84,6 +84,11 @@ type
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
+    diagPopupH:     pointer  # viewport-child QWidget popup, nil until first hover
+    diagLabelH:     pointer  # QLabel inside diagPopup
+    diagShownLine:  int      # line of the diagnostic currently in the popup
+    diagShownCol:   int      # col of the diagnostic currently in the popup
+    diagHideTimerH: pointer  # single-shot QTimer that hides the popup after a delay
     autocompleteMenu: AutocompleteMenu
     prototypeWindow: PrototypeWindow
     autocompleteJustOpened: bool  ## suppress the keyPressEvent that triggered open
@@ -136,15 +141,105 @@ proc svgIcon(svg: string, size: cint, color: string): QIcon =
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)
 
-proc formatDiagTooltip(diags: seq[LogLine]): string {.raises: [].} =
-  for d in diags:
-    let prefix = case d.level
-      of llError: "Error"
-      of llWarning: "Warning"
-      of llHint: "Hint"
-      else: "Note"
-    if result.len > 0: result.add "\n"
-    result.add prefix & ": " & d.raw
+proc hideDiagPopup(pane: Pane) {.raises: [].} =
+  if pane.diagHideTimerH != nil:
+    try: QTimer(h: pane.diagHideTimerH, owned: false).stop()
+    except: discard
+  if pane.diagPopupH != nil:
+    try: QWidget(h: pane.diagPopupH, owned: false).hide()
+    except: discard
+  pane.diagShownLine = 0
+  pane.diagShownCol  = 0
+
+proc scheduleDiagHide(pane: Pane) {.raises: [].} =
+  if pane.diagHideTimerH == nil: return
+  try:
+    let t = QTimer(h: pane.diagHideTimerH, owned: false)
+    t.stop()
+    t.start()
+  except: discard
+
+proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
+                   mousePos: QPoint) {.raises: [].} =
+  try:
+    # If the same diagnostic is already visible, leave it in place so the user
+    # can hover over the popup and select / copy text.
+    if pane.diagShownLine == diags[0].line and pane.diagShownCol == diags[0].col and
+       pane.diagPopupH != nil and
+       QWidget(h: pane.diagPopupH, owned: false).isVisible():
+      return
+
+    var html = ""
+    for d in diags:
+      let (label, color) = case d.level
+        of llError:   ("Error",   "#ff5555")
+        of llWarning: ("Warning", "#ffaa00")
+        of llHint:    ("Hint",    "#00cccc")
+        else: continue
+      if html.len > 0: html.add "<br>"
+      let escaped = d.raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+      html.add "<span style='color:" & color & ";'>&#9679; <b>" & label & ":</b></span> " & escaped
+    if html.len == 0: return
+
+    let viewport = ed.viewport()
+
+    # Create the popup widget lazily (parented to viewport — no mapToGlobal needed)
+    if pane.diagPopupH == nil:
+      var popup = QWidget.create(viewport)
+      popup.owned = false
+      pane.diagPopupH = popup.h
+
+      QWidget(h: pane.diagPopupH, owned: false).setObjectName("diagPopup")
+      QWidget(h: pane.diagPopupH, owned: false).setStyleSheet("""
+        QWidget#diagPopup {
+          background: #1e1e2e;
+          border: 1px solid #585b70;
+          border-radius: 3px;
+        }
+        QLabel {
+          color: #cdd6f4;
+          font-family: 'Fira Code', monospace;
+          font-size: 13px;
+          padding: 6px 10px;
+          background: transparent;
+        }
+      """)
+
+      var label = QLabel.create()
+      label.owned = false
+      QLabel(h: label.h, owned: false).setWordWrap(true)
+      QLabel(h: label.h, owned: false).setTextFormat(cint 1)  # Qt::RichText
+      QLabel(h: label.h, owned: false).setTextInteractionFlags(cint 3)  # TextSelectableByMouse | TextSelectableByKeyboard
+      pane.diagLabelH = label.h
+
+      var layout = QVBoxLayout.create()
+      layout.owned = false
+      layout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+      layout.setSpacing(cint 0)
+      layout.addWidget(QWidget(h: pane.diagLabelH, owned: false))
+      QWidget(h: pane.diagPopupH, owned: false).setLayout(
+        QLayout(h: layout.h, owned: false))
+
+    QLabel(h: pane.diagLabelH, owned: false).setText(html)
+
+    let pw = QWidget(h: pane.diagPopupH, owned: false)
+    pw.adjustSize()
+    let popupW = pw.width()
+    let popupH = pw.height()
+
+    let vpW = viewport.width()
+    let vpH = viewport.height()
+    var px = mousePos.x()
+    var py = mousePos.y() + cint 18
+    if px + popupW > vpW: px = max(cint 0, vpW - popupW)
+    if py + popupH > vpH: py = max(cint 0, mousePos.y() - popupH)
+
+    pw.setGeometry(px, py, popupW, popupH)
+    pw.raiseX()
+    pw.show()
+    pane.diagShownLine = diags[0].line
+    pane.diagShownCol  = diags[0].col
+  except: discard
 
 proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
   if pane.diagLines == nil or pane.buffer == nil: return
@@ -373,22 +468,30 @@ proc newPane*(
     QWidget(h: gutterH, owned: false).setGeometry(
       cr.left(), cr.top(), self.lineNumberAreaWidth(), cr.height())
   editorVtbl.event = proc(self: QPlainTextEdit, e: QEvent): bool {.raises: [], gcsafe.} =
-    let evType = e.typeX()
-    if evType == cint(QEventTypeEnum.ToolTip):
-      let he = QHelpEvent(h: e.h, owned: false)
-      let cur = self.cursorForPosition(he.pos())
-      let diags = diagAtPos(pane, cur.position())
-      if diags.len > 0:
-        QToolTip.showText(he.globalPos(), formatDiagTooltip(diags),
-          QWidget(h: self.h, owned: false))
-      else:
-        QToolTip.hideText()
-      return true
     QPlainTextEditevent(self, e)
+  editorVtbl.mouseMoveEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
+    let cur = self.cursorForPosition(e.pos())
+    let diags = diagAtPos(pane, cur.position())
+    if diags.len > 0:
+      # Cancel any pending hide and show/keep the popup.
+      if pane.diagHideTimerH != nil:
+        try: QTimer(h: pane.diagHideTimerH, owned: false).stop()
+        except: discard
+      {.cast(gcsafe).}: showDiagPopup(pane, self, diags, e.pos())
+    else:
+      # Schedule a delayed hide so the user has time to move the mouse into
+      # the popup. The timer callback will check underMouse() and restart
+      # itself if needed.
+      {.cast(gcsafe).}: scheduleDiagHide(pane)
+    QPlainTextEditmouseMoveEvent(self, e)
+  editorVtbl.leaveEvent = proc(self: QPlainTextEdit, e: QEvent) {.raises: [], gcsafe.} =
+    {.cast(gcsafe).}: scheduleDiagHide(pane)
+    QPlainTextEditleaveEvent(self, e)
   editorVtbl.keyPressEvent = proc(self: QPlainTextEdit, e: QKeyEvent) {.raises: [], gcsafe.} =
+    {.cast(gcsafe).}: hideDiagPopup(pane)
     let key = e.key()
     let mods = e.modifiers()
-    
+
     if pane.prototypeWindow.isPrototypeVisible():
       if key == cint(0x01000000):  # Escape
         {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
@@ -520,6 +623,7 @@ proc newPane*(
   var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
   editor.setFrameStyle(0)
+  editor.viewport().setMouseTracking(true)
 
   var editorFont = QFont.create("Fira Code")
   editorFont.setPointSize(14)
@@ -689,6 +793,20 @@ proc newPane*(
 
   result.container = container
   result.headerBar = headerBar
+  # Timer that hides the diagnostic popup after a short delay, giving the user
+  # time to move the mouse into the popup. Restarted if underMouse() is true.
+  var diagHideTimer = QTimer.create(QObject(h: result.container.h, owned: false))
+  diagHideTimer.owned = false
+  QTimer(h: diagHideTimer.h, owned: false).setSingleShot(true)
+  QTimer(h: diagHideTimer.h, owned: false).setInterval(cint 500)
+  result.diagHideTimerH = diagHideTimer.h
+  QTimer(h: diagHideTimer.h, owned: false).onTimeout do() {.raises: [].}:
+    if pane.diagPopupH != nil and
+       QWidget(h: pane.diagPopupH, owned: false).isVisible() and
+       QWidget(h: pane.diagPopupH, owned: false).underMouse():
+      QTimer(h: pane.diagHideTimerH, owned: false).start()
+    else:
+      hideDiagPopup(pane)
   result.label = label
   result.statusLabel = statusLabel
   result.stack = stack
@@ -820,10 +938,8 @@ proc newPane*(
     let diags = diagAtPos(pane, cur.position())
     if diags.len > 0:
       let rect = ed.cursorRect()
-      let globalPos = QWidget(h: ed.h, owned: false).mapToGlobal(
+      showDiagPopup(pane, ed, diags,
         QPoint.create(rect.left(), rect.top() + rect.height()))
-      QToolTip.showText(globalPos, formatDiagTooltip(diags),
-        QWidget(h: ed.h, owned: false))
 
 proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
   let hbw = QWidget(h: pane.headerBar.h, owned: false)
