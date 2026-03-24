@@ -1,5 +1,6 @@
 import seaqt/[qwidget, qsplitter]
 import pane, widgetref, nimsuggest
+import ../commands
 
 type
   PaneCallbacks* = object
@@ -10,6 +11,8 @@ type
     onGotoDefinition*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
     onJumpBack*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
     onJumpForward*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
+    onFindFile*: proc(pane: Pane) {.raises: [].}
+    onSwitchBuffer*: proc(pane: Pane) {.raises: [].}
 
   PaneManager* = ref object
     panels*: seq[Pane]
@@ -18,8 +21,10 @@ type
     callbacks: PaneCallbacks
     hasProject: bool
     nimSuggest*: NimSuggestClient
+    dispatcher*: CommandDispatcher
 
 proc closePane*(self: PaneManager, pane: Pane) {.raises: [].}
+proc closeOtherPanes*(self: PaneManager, keepPane: Pane) {.raises: [].}
 proc insertCol*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter])
 proc insertRow*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter])
 
@@ -39,10 +44,17 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
     of peOpenProject:  self.callbacks.onOpenProject(ev.pane)
     of peGotoDefinition: self.callbacks.onGotoDefinition(ev.pane, ev.defFile, ev.defLine, ev.defCol)
     of peJumpBack: self.callbacks.onJumpBack(ev.pane, ev.backFile, ev.backLine, ev.backCol)
-    of peJumpForward: self.callbacks.onJumpForward(ev.pane, ev.fwdFile, ev.fwdLine, ev.fwdCol))
+    of peJumpForward: self.callbacks.onJumpForward(ev.pane, ev.fwdFile, ev.fwdLine, ev.fwdCol)
+    of peSave: ev.pane.save()
+    of peFindFile:
+      if self.callbacks.onFindFile != nil: self.callbacks.onFindFile(ev.pane)
+    of peSwitchBuffer:
+      if self.callbacks.onSwitchBuffer != nil: self.callbacks.onSwitchBuffer(ev.pane)
+    of peDeleteOtherWindows: self.closeOtherPanes(ev.pane))
   if self.hasProject:
     result.setProjectOpen(true)
   result.nimSuggest = self.nimSuggest
+  result.dispatcher = self.dispatcher
   result.setupSmoothScrolling()
 
 proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T =
@@ -121,11 +133,26 @@ proc closePane*(self: PaneManager, pane: Pane) {.raises: [].} =
           break
     except: discard
 
+proc closeOtherPanes*(self: PaneManager, keepPane: Pane) {.raises: [].} =
+  try:
+    var toClose: seq[Pane]
+    for p in self.panels:
+      if p != keepPane: toClose.add(p)
+    for p in toClose:
+      self.closePane(p)
+  except: discard
+
 proc splitRow*(self: PaneManager, pane: Pane) =
   let parent = pane.widget().parentWidget()
   if parent.h == nil: return
   let col = capture(QSplitter(h: parent.h, owned: false))
   self.insertRow(pane, col)
+
+proc splitCol*(self: PaneManager, pane: Pane) =
+  let parent = pane.widget().parentWidget()
+  if parent.h == nil: return
+  let col = capture(QSplitter(h: parent.h, owned: false))
+  self.insertCol(pane, col)
 
 proc setProjectOpen*(self: PaneManager, open: bool) =
   self.hasProject = open

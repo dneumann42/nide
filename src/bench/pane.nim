@@ -9,7 +9,8 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qevent, qhelpevent, qtooltip, qpoint, qrect, qscrollbar, qscroller,
               qscrollerproperties, qvariant,
               qmouseevent, qkeyevent, qwheelevent]
-import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex
+import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings
+import ../commands
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -25,7 +26,8 @@ type
   PaneEventKind* = enum
     peFileSelected, peClose, peVSplit, peHSplit,
     peNewModule, peOpenModule, peOpenProject,
-    peGotoDefinition, peJumpBack, peJumpForward
+    peGotoDefinition, peJumpBack, peJumpForward,
+    peSave, peFindFile, peSwitchBuffer, peDeleteOtherWindows
 
   PaneEvent* = object
     pane*: Pane
@@ -79,6 +81,7 @@ type
     autocompleteMenu: AutocompleteMenu
     prototypeWindow: PrototypeWindow
     autocompleteJustOpened: bool  ## suppress the keyPressEvent that triggered open
+    dispatcher*: CommandDispatcher
     saveBtn:        WidgetRef[QPushButton]
     vSplitBtn:      WidgetRef[QPushButton]
     hSplitBtn:      WidgetRef[QPushButton]
@@ -86,6 +89,8 @@ type
 
   EditorWidget* = ref object of QPlainTextEdit
 
+proc scrollUp*(pane: Pane) {.raises: [].}
+proc scrollDown*(pane: Pane) {.raises: [].}
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
 proc triggerJumpBack*(pane: Pane) {.raises: [].}
 proc triggerJumpForward*(pane: Pane) {.raises: [].}
@@ -352,9 +357,6 @@ proc newPane*(
         return
     
     if pane.autocompleteMenu.isOpen():
-      let key = e.key()
-      let mods = e.modifiers()
-      let ctrlMod = cint(0x04000000)  # Qt::ControlModifier
       if (mods and ctrlMod) != 0 and key == cint(0x4e):  # Ctrl+N
         {.cast(gcsafe).}: pane.autocompleteMenu.nextItem()
         return  # consume — do not pass to QPlainTextEdit
@@ -399,6 +401,16 @@ proc newPane*(
         cur.insertText("  ")
         self.setTextCursor(cur)
       return
+
+    # Command dispatcher — ignore modifier-only keypresses
+    let isModifierOnly = key >= cint(0x01000020) and key <= cint(0x01000023)
+    if not isModifierOnly:
+      let relevantMods = mods and (ctrlMod or altMod or shiftMod)
+      let c: KeyCombo = (key, relevantMods)
+      {.cast(gcsafe).}:
+        if pane.dispatcher != nil and pane.dispatcher.dispatch(c):
+          return
+
     QPlainTextEditkeyPressEvent(self, e)
   editorVtbl.mousePressEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
     # Any mouse click dismisses the autocomplete menu

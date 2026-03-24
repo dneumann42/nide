@@ -9,6 +9,7 @@ import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitt
 import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
               nimsuggest, filetree, graphdialog, opacity
+import commands
 import "../../tools/nim_graph" as nim_graph
 
 type
@@ -221,8 +222,195 @@ proc build*(self: Application) =
       self.navigateToLocation(pane, path, line, col),
     onJumpForward: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
       pane.pushJumpLocation(pane.jumpHistory)
-      self.navigateToLocation(pane, path, line, col)
+      self.navigateToLocation(pane, path, line, col),
+    onFindFile: proc(pane: Pane) {.raises: [].} =
+      showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
+        let buf = self.bufferManager.openFile(path)
+        pane.setBuffer(buf),
+    onSwitchBuffer: proc(pane: Pane) {.raises: [].} =
+      var entries: seq[(string, string)]
+      let cwd = try: getCurrentDir() except OSError: ""
+      for buf in self.bufferManager:
+        var display = buf.name
+        if cwd.len > 0:
+          try: display = relativePath(buf.name, cwd)
+          except: discard
+        entries.add((display, buf.name))
+      if entries.len == 0: return
+      showBufferFinder(QWidget(h: self.root.h, owned: false), entries) do(key: string) {.raises: [].}:
+        for buf in self.bufferManager:
+          if buf.name == key:
+            pane.setBuffer(buf)
+            break
     ))
+
+  # Command dispatcher — register all editor commands and bind default keys
+  block:
+    let disp = CommandDispatcher()
+    registerDefaultBindings(disp)
+    self.paneManager.dispatcher = disp
+
+    disp.register("editor.chordCx", proc() {.raises: [].} =
+      disp.inChord = true)
+
+    # Cursor movement
+    disp.register("editor.forwardChar", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Right), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.backwardChar", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Left), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.nextLine", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Down), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.prevLine", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Up), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.beginningOfLine", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.StartOfLine), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.endOfLine", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.EndOfLine), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.forwardWord", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.NextWord), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.backwardWord", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.PreviousWord), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.beginningOfBuffer", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Start), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+    disp.register("editor.endOfBuffer", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.End), cint(QTextCursorMoveModeEnum.MoveAnchor))
+      ed.setTextCursor(c))
+
+    # Scroll
+    disp.register("editor.scrollDown", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: p.scrollDown())
+    disp.register("editor.scrollUp", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: p.scrollUp())
+
+    # Edit
+    disp.register("editor.deleteForwardChar", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      c.deleteChar()
+      ed.setTextCursor(c))
+
+    disp.register("editor.killLine", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.EndOfLine),
+                             cint(QTextCursorMoveModeEnum.KeepAnchor))
+      if c.hasSelection():
+        c.removeSelectedText()
+      else:
+        c.deleteChar()
+      ed.setTextCursor(c))
+
+    disp.register("editor.killWordForward", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.NextWord),
+                             cint(QTextCursorMoveModeEnum.KeepAnchor))
+      c.removeSelectedText()
+      ed.setTextCursor(c))
+
+    disp.register("editor.killWordBackward", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      discard c.movePosition(cint(QTextCursorMoveOperationEnum.PreviousWord),
+                             cint(QTextCursorMoveModeEnum.KeepAnchor))
+      c.removeSelectedText()
+      ed.setTextCursor(c))
+
+    disp.register("editor.killRegion", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).cut())
+
+    disp.register("editor.yank", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).paste())
+
+    # Buffer / window management
+    disp.register("editor.saveBuffer", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: p.save())
+
+    disp.register("editor.killBuffer", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: self.paneManager.closePane(p))
+
+    disp.register("editor.deleteOtherWindows", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: self.paneManager.closeOtherPanes(p))
+
+    disp.register("editor.splitHorizontal", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: self.paneManager.splitRow(p))
+
+    disp.register("editor.splitVertical", proc() {.raises: [].} =
+      let p = self.getTargetPane(); if p != nil: self.paneManager.splitCol(p))
+
+    disp.register("editor.findFile", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
+        let buf = self.bufferManager.openFile(path)
+        p.setBuffer(buf))
+
+    disp.register("editor.switchBuffer", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      var entries: seq[(string, string)]
+      let cwd = try: getCurrentDir() except OSError: ""
+      for buf in self.bufferManager:
+        var display = buf.name
+        if cwd.len > 0:
+          try: display = relativePath(buf.name, cwd)
+          except: discard
+        entries.add((display, buf.name))
+      if entries.len == 0: return
+      showBufferFinder(QWidget(h: self.root.h, owned: false), entries) do(key: string) {.raises: [].}:
+        for buf in self.bufferManager:
+          if buf.name == key:
+            p.setBuffer(buf)
+            break)
 
   # Wire file tree: clicking a file opens it in the active pane
   self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
@@ -385,12 +573,7 @@ proc build*(self: Application) =
     if self.nimSuggest != nil:
       self.nimSuggest.restart()
 
-  self.registerPaneShortcut("Ctrl+P") do(target: Pane) {.raises: []}:
-    showFileFinder(QWidget(h: self.root.h, owned: false)) do(path: string) {.raises: [].}:
-      let buf = self.bufferManager.openFile(path)
-      target.setBuffer(buf)
-
-  self.registerPaneShortcut("Ctrl+F") do(target: Pane) {.raises: [].}:
+  self.registerPaneShortcut("Ctrl+S") do(target: Pane) {.raises: [].}:
     target.triggerFind()
 
   self.registerPaneShortcut("Escape") do(target: Pane) {.raises: [].}:
@@ -400,33 +583,11 @@ proc build*(self: Application) =
     if target.buffer == nil:
       target.triggerOpenProject()
 
-  self.registerPaneShortcut("Ctrl+B") do(target: Pane) {.raises: [].}:
-    var entries: seq[(string, string)]
-    let cwd = try: getCurrentDir() except OSError: ""
-    for buf in self.bufferManager:
-      var display = buf.name
-      if cwd.len > 0:
-        try: display = relativePath(buf.name, cwd)
-        except: discard
-      entries.add((display, buf.name))
-    if entries.len == 0: return
-    showBufferFinder(QWidget(h: self.root.h, owned: false), entries) do(key: string) {.raises: [].}:
-      for buf in self.bufferManager:
-        if buf.name == key:
-          target.setBuffer(buf)
-          break
-
   self.registerPaneShortcut("Ctrl+Shift+F") do(target: Pane) {.raises: [].}:
     showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
       let buf = self.bufferManager.openFile(file)
       target.setBuffer(buf)
       target.scrollToLine(lineNum)
-
-  self.registerPaneShortcut("Ctrl+S") do(target: Pane) {.raises: [].}:
-    target.save()
-
-  self.registerPaneShortcut("Ctrl+W") do(target: Pane) {.raises: [].}:
-    self.paneManager.closePane(target)
 
   self.registerGlobalShortcut("Ctrl+\\") do() {.raises: [].}:
     self.paneManager.addColumn()
