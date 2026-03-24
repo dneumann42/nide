@@ -3,12 +3,12 @@ import toml_serialization
 import seaqt/[qapplication, qwidget, qfiledialog, qmainwindow, qtoolbar, qsplitter,
               qcoreapplication, qtoolbutton, qabstractbutton,
               qshortcut, qkeysequence, qobject, qgraphicsopacityeffect,
-              qgraphicseffect, qplaintextedit, qtextdocument, qtextcursor, qtextedit,
+              qplaintextedit, qtextdocument, qtextcursor, qtextedit,
               qresizeevent]
 
 import toolbar, buffers, projects, projectdialog, moduledialog, theme, pane, runner,
               filefinder, rgfinder, settings, widgetref, panemanager, syntaxtheme, themedialog,
-              nimsuggest, filetree, graphdialog
+              nimsuggest, filetree, graphdialog, opacity
 import "../../tools/nim_graph" as nim_graph
 
 type
@@ -36,7 +36,6 @@ type
     buildStatusBtn: WidgetRef[QToolButton]
     runReopen:  proc() {.raises: [].}
     buildReopen: proc() {.raises: [].}
-    opacityActive: bool
     opacityEffect: QGraphicsOpacityEffect
     nimSuggest: NimSuggestClient
     settings: Settings
@@ -153,7 +152,7 @@ proc closeBuffer*(self: Application, name: string) =
 
 proc build*(self: Application) =
   self.root = QMainWindow.create()
-  QWidget(h: self.root.h, owned: false).setAttribute(cint(120))  # WA_TranslucentBackground
+  # WA_TranslucentBackground is set by setupWindowOpacity below
   QWidget(h: self.root.h, owned: false).setMinimumSize(cint(800), cint(480))
   self.toolbar.build()
 
@@ -181,20 +180,19 @@ proc build*(self: Application) =
   self.fileTree.splitterH = self.root.h  # store main window for repositioning
   fileTreeCell[] = self.fileTree
 
-  var opEff = QGraphicsOpacityEffect.create()
-  opEff.setOpacity(1.0)
-  QWidget(h: splitter.h, owned: false).setGraphicsEffect(
-    QGraphicsEffect(h: opEff.h, owned: false))
-  opEff.owned = false
-  self.opacityEffect = opEff
-
   self.theme = Dark
   applyTheme(Dark)
 
   # Load the settings
   echo "Loading settings..."
   self.settings = Settings.load()
-  
+
+  self.opacityEffect = setupWindowOpacity(
+    QWidget(h: self.root.h, owned: false),
+    QWidget(h: splitter.h, owned: false),
+    self.settings.appearance.opacityEnabled,
+    self.settings.appearance.opacityLevel)
+
   initDefaultTheme()
   setCurrentTheme(self.settings.appearance.syntaxTheme)
 
@@ -306,17 +304,6 @@ proc build*(self: Application) =
     except:
       echo "=== graph error: ", getCurrentExceptionMsg()
 
-  self.toolbar.onThemeToggle do():
-    self.theme = if self.theme == Dark: Light else: Dark
-    applyTheme(self.theme)
-    self.toolbar.setThemeIcon(self.theme == Dark)
-    self.paneManager.updateFocus(QApplication.focusWidget(), self.theme == Dark)
-
-  self.toolbar.onOpacityToggle do():
-    self.opacityActive = not self.opacityActive
-    let level = if self.opacityActive: 0.85 else: 1.0
-    self.opacityEffect.setOpacity(level)
-
   self.toolbar.onFileTreeToggle do():
     if self.currentProject.len > 0:
       self.fileTree.toggle()
@@ -377,6 +364,11 @@ proc build*(self: Application) =
         self.bufferManager.rehighlightAll()
         for pane in self.paneManager.panels:
           pane.applyEditorTheme()
+        self.opacityEffect.applyOpacity(
+          updated.appearance.opacityEnabled,
+          updated.appearance.opacityLevel),
+      proc(enabled: bool, level: int) {.raises: [].} =
+        self.opacityEffect.applyOpacity(enabled, level)
     )
 
   self.toolbar.onTriggered(JumpBack) do():

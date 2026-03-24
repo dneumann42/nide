@@ -3,11 +3,8 @@ import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplicat
               qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
               qsvgrenderer, qlabel]
 
-const SunSvg      = staticRead("icons/sun.svg")
-const MoonSvg     = staticRead("icons/moon.svg")
 const RunSvg      = staticRead("icons/run.svg")
 const BuildSvg    = staticRead("icons/build.svg")
-const OpacitySvg  = staticRead("icons/opacity.svg")
 const GearSvg     = staticRead("icons/gear.svg")
 const FileTreeSvg = staticRead("icons/filetree.svg")
 const GraphSvg    = staticRead("icons/graph.svg")
@@ -62,8 +59,6 @@ type
     newPaneBtn: QToolButton
     fileTreeBtn: QToolButton
     graphBtn: QToolButton
-    themeBtn: QToolButton
-    opacityBtn: QToolButton
     runBtn: QToolButton
     buildBtn: QToolButton
     settingsBtn: QToolButton
@@ -180,26 +175,6 @@ proc build*(self: Toolbar) =
   QAbstractButton(h: self.buildBtn.h, owned: false).setIcon(svgIcon(BuildSvg, cint IconSize))
   QAbstractButton(h: self.buildBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
   discard self.toolbar.addWidget(self.buildBtn)
-  
-  block:
-    var spacer = QWidget.create()
-    spacer.owned = false
-    spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
-    discard self.toolbar.addWidget(spacer)
-
-  self.themeBtn = QToolButton.create()
-  self.themeBtn.setAutoRaise(true)
-  QWidget(h: self.themeBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.themeBtn.h, owned: false).setIcon(svgIcon(SunSvg, cint IconSize))
-  QAbstractButton(h: self.themeBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
-  discard self.toolbar.addWidget(self.themeBtn)
-
-  self.opacityBtn = QToolButton.create()
-  self.opacityBtn.setAutoRaise(true)
-  QWidget(h: self.opacityBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.opacityBtn.h, owned: false).setIcon(svgIcon(OpacitySvg, cint IconSize))
-  QAbstractButton(h: self.opacityBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
-  discard self.toolbar.addWidget(self.opacityBtn)
 
   self.settingsBtn = QToolButton.create()
   self.settingsBtn.setAutoRaise(true)
@@ -225,20 +200,6 @@ proc onSettings*(self: Toolbar, triggered: proc() {.raises: [].}) =
 
 proc onNewPane*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.newPaneBtn.onClicked(triggered)
-
-proc onThemeToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
-  self.themeBtn.onClicked(triggered)
-
-proc onOpacityToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
-  self.opacityBtn.onClicked(triggered)
-
-proc setThemeIcon*(self: Toolbar, isDark: bool) =
-  const IconSize = 12
-  let svg = if isDark: SunSvg else: MoonSvg
-  QAbstractButton(h: self.themeBtn.h, owned: false).setIcon(svgIcon(svg, cint IconSize))
-  let (bg, fg) = if isDark: ("#1e3a5c", "#cce0ff") else: ("#b8d4f0", "#1a2a3a")
-  QWidget(h: self.projectLabel.h, owned: false).setStyleSheet(
-    "QLabel { background: " & bg & "; color: " & fg & "; border-radius: 4px; padding: 1px 7px; }")
 
 proc setFileTreeEnabled*(self: Toolbar, enabled: bool) =
   QWidget(h: self.fileTreeBtn.h, owned: false).setEnabled(enabled)
