@@ -1,7 +1,5 @@
-import seaqt/[qwidget, qplaintextedit, qfont, qfontmetrics,
-              qpaintdevice, qpainter, qcolor, qpaintevent, qrect, qtextobject,
-              qresizeevent, qtextdocument, qpoint]
 import syntaxtheme
+import seaqt/[qcolor, qfont, qfontmetrics, qpaintdevice, qpainter, qpaintevent, qplaintextedit, qpoint, qrect, qresizeevent, qtextdocument, qtextobject, qwidget]
 
 proc QWidget_virtbase(src: pointer, outQObject: ptr pointer, outPaintDevice: ptr pointer) {.importc: "QWidget_virtbase".}
 

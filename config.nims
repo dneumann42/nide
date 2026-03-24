@@ -6,6 +6,12 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
 
 switch("path", thisDir() & "/src")
 
+# Add Nim root to path so compiler/* modules are importable
+import std/os
+let nimExe = findExe("nim")
+if nimExe.len > 0:
+  switch("path", parentDir(parentDir(nimExe)))
+
 --mm:orc
 --debugger:native
 --app:gui

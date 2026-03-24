@@ -20,10 +20,14 @@ type
     keyword*: string
     keywordBold* = true
     keywordItalic* = false
+    controlFlow*: string
+    controlFlowBold* = false
+    controlFlowItalic* = false
     `type`*: string
     typeBold* = false
     typeItalic* = false
     builtinType*: string
+    specialVar*: string
     string*: string
     charLit*: string
     number*: string
@@ -42,9 +46,9 @@ type
     syntax*: SyntaxThemeSyntax
 
   HighlightFormats* = object
-    keyword*, `type`*, builtinType*, str*, charLit*, number*: QTextCharFormat
+    keyword*, controlFlow*, `type`*, builtinType*, str*, charLit*, number*: QTextCharFormat
     comment*, docComment*, blockComment*: QTextCharFormat
-    pragma*, operator*, funcName*: QTextCharFormat
+    pragma*, operator*, funcName*, specialVar*: QTextCharFormat
 
 # Embedded theme TOML sources
 const ThemeSources* = [
@@ -69,8 +73,14 @@ proc makeFormat(color: string, bold = false, italic = false): QTextCharFormat =
 proc buildFormats*(theme: SyntaxTheme): HighlightFormats =
   let s = theme.syntax
   result.keyword = makeFormat(s.keyword, s.keywordBold, s.keywordItalic)
+  result.controlFlow =
+    if s.controlFlow.len > 0: makeFormat(s.controlFlow, s.controlFlowBold, s.controlFlowItalic)
+    else: makeFormat(s.keyword, s.keywordBold, s.keywordItalic)
   result.`type` = makeFormat(s.`type`, s.typeBold, s.typeItalic)
   result.builtinType = makeFormat(s.builtinType, s.typeBold, s.typeItalic)
+  result.specialVar =
+    if s.specialVar.len > 0: makeFormat(s.specialVar)
+    else: makeFormat(s.`type`, s.typeBold, s.typeItalic)
   result.str = makeFormat(s.string)
   result.charLit = makeFormat(s.charLit)
   result.number = makeFormat(s.number)
@@ -84,8 +94,10 @@ proc buildFormats*(theme: SyntaxTheme): HighlightFormats =
 proc buildDefaultFormats*(): HighlightFormats =
   # Fallback hardcoded colors (VS Code Dark+ style)
   result.keyword = makeFormat("#569cd6", bold = true)
+  result.controlFlow = makeFormat("#c586c0")
   result.`type` = makeFormat("#4ec9b0")
   result.builtinType = makeFormat("#4ec9b0")
+  result.specialVar = makeFormat("#9cdcfe")
   result.str = makeFormat("#ce9178")
   result.charLit = makeFormat("#ce9178")
   result.number = makeFormat("#b5cea8")
