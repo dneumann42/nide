@@ -61,22 +61,30 @@ jobs:
           DEST=nide-${{ github.ref_name }}-linux-x64
           mkdir -p $DEST/lib $DEST/plugins
 
-          cp nide $DEST/nide.bin
+          cp nide $DEST/.nide-wrapped
           cp rg   $DEST/rg
 
-          # Qt6 shared libraries
-          cp -P ${QT_ROOT_DIR}/lib/libQt6*.so* $DEST/lib/
+          # Only the Qt6 shared libraries the binary actually needs (direct deps
+          # plus transitive deps required by platform plugins).
+          for lib in \
+            Core Gui Widgets Svg SvgWidgets Network DBus OpenGL \
+            WaylandClient WaylandEglClientHwIntegration WlShellIntegration \
+            XcbQpa EglFSDeviceIntegration; do
+            cp -P ${QT_ROOT_DIR}/lib/libQt6${lib}.so* $DEST/lib/ 2>/dev/null || true
+          done
           cp -P ${QT_ROOT_DIR}/lib/libicu*.so* $DEST/lib/ 2>/dev/null || true
 
           # Qt plugins needed at runtime
-          for dir in platforms imageformats xcbglintegrations platformthemes tls; do
+          for dir in platforms imageformats xcbglintegrations platformthemes tls \
+                     wayland-shell-integration wayland-decoration-client \
+                     wayland-graphics-integration-client; do
             if [ -d "${QT_ROOT_DIR}/plugins/$dir" ]; then
               cp -r ${QT_ROOT_DIR}/plugins/$dir $DEST/plugins/
             fi
           done
 
-          # Wrapper script
-          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexport LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexport QT_PLUGIN_PATH="$HERE/plugins"\nexec "$HERE/nide.bin" "$@"\n' > $DEST/nide
+          # Wrapper script — the only user-facing executable
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexport LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexport QT_PLUGIN_PATH="$HERE/plugins"\nexec "$HERE/.nide-wrapped" "$@"\n' > $DEST/nide
           chmod +x $DEST/nide
 
           tar -czf $DEST.tar.gz $DEST/
@@ -135,7 +143,8 @@ jobs:
           # Force MSYS2 pkgconf to use binary I/O (LF only, no CRLF conversion).
           # Without this, Nim's gorge() captures "\r" in pkg-config output, which
           # corrupts QtCoreBuildVersion and breaks the private header include paths.
-          Add-Content $env:GITHUB_ENV "CYGWIN=binmode"
+          # Note: MSYS2 binaries honour the MSYS variable, not CYGWIN.
+          Add-Content $env:GITHUB_ENV "MSYS=binmode"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
