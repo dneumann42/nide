@@ -2,7 +2,7 @@ import std/[httpclient, os, times]
 
 const
   IndexUrl* = "https://nim-lang.org/docs/theindex.html"
-  CacheDir* = ".config/bench"
+  CacheDir* = ".config/nide"
   CacheFileName* = "nimindex.html"
   CacheMaxAge* = 7 * 24 * 60 * 60  # 7 days in seconds
 

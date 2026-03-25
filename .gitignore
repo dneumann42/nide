@@ -8,3 +8,4 @@ nimbledeps
 .flatpak-builder
 .flatpak-repo
 *.out
+*.flatpak

@@ -1,4 +1,4 @@
-# Bench
+# Nide
 
 A keyboard-driven IDE for Nim, built with Qt.
 
@@ -39,7 +39,7 @@ sudo pacman -S qt6-base qt6-svg qt6-multimedia
 ### Flatpak
 
 ```bash
-flatpak install io.github.dneumann42.Bench
+flatpak install io.github.dneumann42.Nide
 ```
 
 ### From source
@@ -50,12 +50,12 @@ nimble build
 
 Run with:
 ```bash
-./bench
+./nide
 ```
 
 ## Screenshots
 
-![Bench screenshot](screenshot.png)
+![Nide screenshot](screenshot.png)
 
 ## Keyboard Shortcuts
 

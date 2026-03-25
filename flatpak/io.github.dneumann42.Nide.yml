@@ -1,8 +1,8 @@
-app-id: io.github.dneumann42.Bench
+app-id: io.github.dneumann42.Nide
 runtime: org.kde.Platform
 runtime-version: '6.10'
 sdk: org.kde.Sdk
-command: bench
+command: nide
 
 finish-args:
   - --share=ipc
@@ -22,18 +22,18 @@ modules:
         sha256: 4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e
         strip-components: 1
 
-  - name: bench
+  - name: nide
     # The host binary is pre-built via `nimble build` before running flatpak-builder.
     # It links against Qt6 from the KDE runtime; the runtime version must match your
-    # host Qt6. For a fully self-contained Flathub build, compile bench inside
+    # host Qt6. For a fully self-contained Flathub build, compile nide inside
     # flatpak-builder instead (requires vendoring all nimble deps).
     buildsystem: simple
     build-commands:
-      - install -Dm755 bench /app/bin/bench
-      - install -Dm644 data/icons/io.github.dneumann42.Bench.png
-          /app/share/icons/hicolor/128x128/apps/io.github.dneumann42.Bench.png
-      - install -Dm644 data/io.github.dneumann42.Bench.desktop
-          /app/share/applications/io.github.dneumann42.Bench.desktop
+      - install -Dm755 nide /app/bin/nide
+      - install -Dm644 data/icons/io.github.dneumann42.Nide.png
+          /app/share/icons/hicolor/128x128/apps/io.github.dneumann42.Nide.png
+      - install -Dm644 data/io.github.dneumann42.Nide.desktop
+          /app/share/applications/io.github.dneumann42.Nide.desktop
     sources:
       - type: dir
         path: ..

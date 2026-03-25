@@ -46,9 +46,9 @@ proc toOverrides*(t: Table[string, string]): seq[KeybindingOverride] =
 proc load*(T: typedesc[Settings]): T {.raises: [].} =
   result = T()
   try:
-    if not dirExists(getConfigDir() / "bench"):
-      createDir(getConfigDir() / "bench")
-    let path = getConfigDir() / "bench" / SettingsFile
+    if not dirExists(getConfigDir() / "nide"):
+      createDir(getConfigDir() / "nide")
+    let path = getConfigDir() / "nide" / SettingsFile
     if fileExists(path):
       result = Toml.decode(readFile(path), T)
   except:
@@ -56,9 +56,9 @@ proc load*(T: typedesc[Settings]): T {.raises: [].} =
 
 proc write*(settings: Settings) {.raises: [].} =
   try:
-    if not dirExists(getConfigDir() / "bench"):
-      createDir(getConfigDir() / "bench")
-    let path = getConfigDir() / "bench" / SettingsFile
+    if not dirExists(getConfigDir() / "nide"):
+      createDir(getConfigDir() / "nide")
+    let path = getConfigDir() / "nide" / SettingsFile
     writeFile(path, Toml.encode(settings))
   except:
     echo getCurrentExceptionMsg()

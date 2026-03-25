@@ -1,5 +1,5 @@
 {
-  description = "bench - A productive development tool for Nim";
+  description = "nide - A productive development tool for Nim";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -14,20 +14,20 @@
         text = ''
           set -euo pipefail
 
-          MANIFEST="flatpak/io.github.dneumann42.Bench.yml"
+          MANIFEST="flatpak/io.github.dneumann42.Nide.yml"
           BUILD_DIR=".flatpak-build"
           REPO_DIR=".flatpak-repo"
 
-          echo "Building bench binary..."
+          echo "Building nide binary..."
           _pkgbin=$(mktemp -d)
           printf '#!/bin/sh\nPKG_CONFIG_PATH=/usr/lib/pkgconfig exec /usr/bin/pkg-config "$@"\n' \
             > "$_pkgbin/pkg-config"
           chmod +x "$_pkgbin/pkg-config"
           export PATH="$_pkgbin:$PATH"
-          rm -rf ~/.cache/nim/bench_r
-          nim cpp -d:release --passL:"-L/usr/lib -Wl,-rpath-link,/usr/lib" --out:bench src/bench.nim
-          patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 bench
-          patchelf --set-rpath "" bench
+          rm -rf ~/.cache/nim/nide_r
+          nim cpp -d:release --passL:"-L/usr/lib -Wl,-rpath-link,/usr/lib" --out:nide src/nide.nim
+          patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
+          patchelf --set-rpath "" nide
 
           echo "Adding Flathub remote (if missing)..."
           flatpak remote-add --user --if-not-exists flathub \
@@ -38,8 +38,8 @@
             org.kde.Platform//6.10 org.kde.Sdk//6.10 || true
 
           echo "Converting icon to PNG..."
-          rsvg-convert -w 128 -h 128 data/icons/io.github.dneumann42.Bench.svg \
-            -o data/icons/io.github.dneumann42.Bench.png
+          rsvg-convert -w 128 -h 128 data/icons/io.github.dneumann42.Nide.svg \
+            -o data/icons/io.github.dneumann42.Nide.png
 
           echo "Building flatpak..."
           flatpak-builder \
@@ -51,14 +51,14 @@
             "$BUILD_DIR" \
             "$MANIFEST"
 
-          echo "Bundling bench.flatpak..."
+          echo "Bundling nide.flatpak..."
           flatpak build-bundle \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
             "$REPO_DIR" \
-            bench.flatpak \
-            io.github.dneumann42.Bench
+            nide.flatpak \
+            io.github.dneumann42.Nide
 
-          echo "Done: bench.flatpak"
+          echo "Done: nide.flatpak"
         '';
       };
     in {

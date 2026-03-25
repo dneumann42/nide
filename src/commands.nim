@@ -1,6 +1,6 @@
 import std/tables
 import std/strutils
-import bench/keybindings
+import nide/keybindings
 
 export KeyCombo, combo, ctrlMod, altMod, shiftMod, noMod
 

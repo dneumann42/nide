@@ -19,8 +19,8 @@ type
     recentProjects*: seq[string]
     projectFiles*: seq[ProjectRecentFiles]
 
-proc benchDirPath*(): string =
-  getHomeDir() / ".local" / "bench"
+proc nideDirPath*(): string =
+  getHomeDir() / ".local" / "nide"
 
 proc hasNoProjects*(pm: ProjectManager): bool =
   pm.projects.len() == 0
@@ -32,7 +32,7 @@ proc addProject*(self: var ProjectManager, path: string) =
   self.projects.add(path)
 
 proc projectsFileExists(): bool =
-  result = fileExists(benchDirPath() / "projects.toml")
+  result = fileExists(nideDirPath() / "projects.toml")
 
 proc write*(self: ProjectManager)
 
@@ -41,13 +41,13 @@ proc load*(self: var ProjectManager) =
     let pm = ProjectManager()
     pm.write()
   try:
-    self = Toml.loadFile(benchDirPath() / "projects.toml", ProjectManager)
+    self = Toml.loadFile(nideDirPath() / "projects.toml", ProjectManager)
   except CatchableError as e:
     echo "Failed to load projects: ", e.msg
 
 proc write*(self: ProjectManager) =
   try:
-    Toml.saveFile(benchDirPath() / "projects.toml", self)
+    Toml.saveFile(nideDirPath() / "projects.toml", self)
   except CatchableError as e:
     echo "Failed to save projects: ", e.msg
 
@@ -110,10 +110,10 @@ proc recentFilesFor*(self: ProjectManager, projectPath: string): seq[string] =
       return prf.files
 
 proc init*(T: typedesc[ProjectManager]): T {.raises: [].} =
-  let benchPath = benchDirPath()
+  let nidePath = nideDirPath()
   try:
-    if not dirExists(benchPath):
-      createDir(benchPath)
+    if not dirExists(nidePath):
+      createDir(nidePath)
   except OSError, IOError:
     echo getCurrentExceptionMsg() 
   result = T()
