@@ -1,6 +1,10 @@
 # Nide
 
+[![Release](https://github.com/dneumann42/nide/actions/workflows/release.yml/badge.svg)](https://github.com/dneumann42/nide/actions/workflows/release.yml)
+
 A keyboard-driven IDE for Nim, built with Qt.
+
+![Nide screenshot](screenshot.png)
 
 ## Features
 
@@ -52,10 +56,6 @@ Run with:
 ```bash
 ./nide
 ```
-
-## Screenshots
-
-![Nide screenshot](screenshot.png)
 
 ## Keyboard Shortcuts
 
