@@ -9,3 +9,4 @@ nimbledeps
 .flatpak-repo
 *.out
 *.flatpak
+.claude/
