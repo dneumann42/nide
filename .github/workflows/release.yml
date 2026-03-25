@@ -65,13 +65,13 @@ jobs:
           cp rg   $DEST/rg
 
           # Qt6 shared libraries
-          cp -P ${QT_ROOT_DIR}/gcc_64/lib/libQt6*.so* $DEST/lib/
-          cp -P ${QT_ROOT_DIR}/gcc_64/lib/libicu*.so* $DEST/lib/ 2>/dev/null || true
+          cp -P ${QT_ROOT_DIR}/lib/libQt6*.so* $DEST/lib/
+          cp -P ${QT_ROOT_DIR}/lib/libicu*.so* $DEST/lib/ 2>/dev/null || true
 
           # Qt plugins needed at runtime
           for dir in platforms imageformats xcbglintegrations platformthemes tls; do
-            if [ -d "${QT_ROOT_DIR}/gcc_64/plugins/$dir" ]; then
-              cp -r ${QT_ROOT_DIR}/gcc_64/plugins/$dir $DEST/plugins/
+            if [ -d "${QT_ROOT_DIR}/plugins/$dir" ]; then
+              cp -r ${QT_ROOT_DIR}/plugins/$dir $DEST/plugins/
             fi
           done
 
@@ -115,8 +115,23 @@ jobs:
       - name: Set Qt pkg-config path
         shell: pwsh
         run: |
-          choco install pkgconfiglite --no-progress -y
-          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$env:QT_ROOT_DIR\lib\pkgconfig"
+          $qtRoot = $env:QT_ROOT_DIR
+          $gitBin = "C:\Program Files\Git\usr\bin"
+
+          # Patch .pc file prefixes (aqtinstall doesn't fix them)
+          Get-ChildItem "$qtRoot\lib\pkgconfig\*.pc" -ErrorAction SilentlyContinue | ForEach-Object {
+            (Get-Content $_.FullName -Raw) -replace '(?m)^prefix=.*', "prefix=$qtRoot" |
+              Set-Content $_.FullName -NoNewline
+          }
+          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$qtRoot\lib\pkgconfig"
+
+          # Wrap Git's pkg-config with tr to strip \r from output.
+          # Nim's staticExec captures raw bytes; CRLF in pkg-config output
+          # causes \r to appear in compiler flags (e.g. -D_UNICODE\r) breaking g++.
+          New-Item -ItemType Directory -Force "C:\pkg-wrap"
+          $bat = "@`"$gitBin\pkg-config.exe`" %* | `"$gitBin\tr.exe`" -d `"\015`""
+          Set-Content "C:\pkg-wrap\pkg-config.bat" $bat -Encoding ASCII
+          Add-Content $env:GITHUB_PATH "C:\pkg-wrap"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
