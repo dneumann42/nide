@@ -95,101 +95,101 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Windows zip ─────────────────────────────────────────────────────────────
-  build-windows:
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nimble
-          key: nimble-windows-${{ hashFiles('nimble.lock') }}
-          restore-keys: nimble-windows-
-
-      - uses: jiro4989/setup-nim-action@v2
-        with:
-          nim-version: '2.2.6'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: msys2/setup-msys2@v2
-        id: msys2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openssl
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-qt6-base
-            mingw-w64-x86_64-qt6-svg
-            mingw-w64-x86_64-qt6-tools
-
-      - name: Set MSYS2 Qt and MinGW environment
-        shell: pwsh
-        run: |
-          $msysRoot = "${{ steps.msys2.outputs.msys2-location }}"
-          Add-Content $env:GITHUB_PATH "$msysRoot\mingw64\bin"
-          Add-Content $env:GITHUB_PATH "$msysRoot\usr\bin"
-          Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=$msysRoot\mingw64"
-          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig"
-
-          # Force MSYS2 pkgconf to use binary I/O (LF only, no CRLF conversion).
-          # Without this, Nim's gorge() captures "\r" in pkg-config output, which
-          # corrupts QtCoreBuildVersion and breaks the private header include paths.
-          # Note: MSYS2 binaries honour the MSYS variable, not CYGWIN.
-          Add-Content $env:GITHUB_ENV "MSYS=binmode"
-
-      - name: Install nimble deps
-        run: nimble install -d -y
-
-      - name: Bundle ripgrep
-        run: nimble fetchrg
-
-      - name: Build nide.exe
-        run: nimble build -d:release
-
-      - name: Bundle Qt DLLs and runtime DLLs
-        shell: pwsh
-        run: |
-          windeployqt --release --no-translations nide.exe
-
-          New-Item -ItemType Directory -Path release-win
-
-          Copy-Item nide.exe release-win\
-          Copy-Item rg.exe  release-win\
-
-          # Qt DLLs placed by windeployqt
-          Get-ChildItem -Path . -Filter *.dll | Copy-Item -Destination release-win\
-          foreach ($dir in @("platforms","imageformats","styles","tls","iconengines")) {
-            if (Test-Path $dir) { Copy-Item $dir release-win\ -Recurse }
-          }
-
-          # MinGW runtime DLLs — found dynamically from whichever gcc is in PATH
-          $gccExe = (Get-Command gcc -ErrorAction SilentlyContinue)?.Source
-          if ($gccExe) {
-            $mingwBin = Split-Path $gccExe
-            foreach ($dll in @("libgcc_s_seh-1.dll","libstdc++-6.dll","libwinpthread-1.dll")) {
-              $dllPath = Join-Path $mingwBin $dll
-              if (Test-Path $dllPath) { Copy-Item $dllPath release-win\ }
-            }
-          }
-
-          # OpenSSL DLLs
-          $mingwBin = "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin"
-          if (Test-Path $mingwBin) {
-            Get-ChildItem "$mingwBin\libssl-*.dll","$mingwBin\libcrypto-*.dll" `
-              -ErrorAction SilentlyContinue | Copy-Item -Destination release-win\
-          }
-
-          Compress-Archive -Path release-win\* `
-            -DestinationPath "nide-${{ github.ref_name }}-windows-x64.zip"
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: nide-${{ github.ref_name }}-windows-x64.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # # ── Windows zip ───────────────────────────────────────────────────────────
+  # build-windows:
+  #   runs-on: windows-2022
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - uses: actions/cache@v4
+  #       with:
+  #         path: ~/.nimble
+  #         key: nimble-windows-${{ hashFiles('nimble.lock') }}
+  #         restore-keys: nimble-windows-
+  #
+  #     - uses: jiro4989/setup-nim-action@v2
+  #       with:
+  #         nim-version: '2.2.6'
+  #         repo-token: ${{ secrets.GITHUB_TOKEN }}
+  #
+  #     - uses: msys2/setup-msys2@v2
+  #       id: msys2
+  #       with:
+  #         msystem: MINGW64
+  #         update: true
+  #         install: >-
+  #           mingw-w64-x86_64-gcc
+  #           mingw-w64-x86_64-openssl
+  #           mingw-w64-x86_64-pkgconf
+  #           mingw-w64-x86_64-qt6-base
+  #           mingw-w64-x86_64-qt6-svg
+  #           mingw-w64-x86_64-qt6-tools
+  #
+  #     - name: Set MSYS2 Qt and MinGW environment
+  #       shell: pwsh
+  #       run: |
+  #         $msysRoot = "${{ steps.msys2.outputs.msys2-location }}"
+  #         Add-Content $env:GITHUB_PATH "$msysRoot\mingw64\bin"
+  #         Add-Content $env:GITHUB_PATH "$msysRoot\usr\bin"
+  #         Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=$msysRoot\mingw64"
+  #         Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig"
+  #
+  #         # Force MSYS2 pkgconf to use binary I/O (LF only, no CRLF conversion).
+  #         # Without this, Nim's gorge() captures "\r" in pkg-config output, which
+  #         # corrupts QtCoreBuildVersion and breaks the private header include paths.
+  #         # Note: MSYS2 binaries honour the MSYS variable, not CYGWIN.
+  #         Add-Content $env:GITHUB_ENV "MSYS=binmode"
+  #
+  #     - name: Install nimble deps
+  #       run: nimble install -d -y
+  #
+  #     - name: Bundle ripgrep
+  #       run: nimble fetchrg
+  #
+  #     - name: Build nide.exe
+  #       run: nimble build -d:release
+  #
+  #     - name: Bundle Qt DLLs and runtime DLLs
+  #       shell: pwsh
+  #       run: |
+  #         windeployqt --release --no-translations nide.exe
+  #
+  #         New-Item -ItemType Directory -Path release-win
+  #
+  #         Copy-Item nide.exe release-win\
+  #         Copy-Item rg.exe  release-win\
+  #
+  #         # Qt DLLs placed by windeployqt
+  #         Get-ChildItem -Path . -Filter *.dll | Copy-Item -Destination release-win\
+  #         foreach ($dir in @("platforms","imageformats","styles","tls","iconengines")) {
+  #           if (Test-Path $dir) { Copy-Item $dir release-win\ -Recurse }
+  #         }
+  #
+  #         # MinGW runtime DLLs — found dynamically from whichever gcc is in PATH
+  #         $gccExe = (Get-Command gcc -ErrorAction SilentlyContinue)?.Source
+  #         if ($gccExe) {
+  #           $mingwBin = Split-Path $gccExe
+  #           foreach ($dll in @("libgcc_s_seh-1.dll","libstdc++-6.dll","libwinpthread-1.dll")) {
+  #             $dllPath = Join-Path $mingwBin $dll
+  #             if (Test-Path $dllPath) { Copy-Item $dllPath release-win\ }
+  #           }
+  #         }
+  #
+  #         # OpenSSL DLLs
+  #         $mingwBin = "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin"
+  #         if (Test-Path $mingwBin) {
+  #           Get-ChildItem "$mingwBin\libssl-*.dll","$mingwBin\libcrypto-*.dll" `
+  #             -ErrorAction SilentlyContinue | Copy-Item -Destination release-win\
+  #         }
+  #
+  #         Compress-Archive -Path release-win\* `
+  #           -DestinationPath "nide-${{ github.ref_name }}-windows-x64.zip"
+  #
+  #     - uses: softprops/action-gh-release@v2
+  #       with:
+  #         files: nide-${{ github.ref_name }}-windows-x64.zip
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── Flatpak ──────────────────────────────────────────────────────────────────
   build-flatpak:
