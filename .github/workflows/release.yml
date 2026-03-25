@@ -46,7 +46,9 @@ jobs:
             libgl1-mesa-dev libglib2.0-dev libdbus-1-dev patchelf
 
       - name: Install nimble deps
-        run: nimble install -d -y
+        run: |
+          rm -f nimble.paths
+          nimble install -d -y
 
       - name: Build nide
         run: |
@@ -118,23 +120,25 @@ jobs:
           host: windows
           target: desktop
           arch: win64_mingw
-
-          tools: 'tools_mingw900'
           cache: true
 
       - name: Configure MinGW on PATH
         shell: pwsh
         run: |
-          $mingwBin = "$env:QT_ROOT_DIR\Tools\mingw900_64\bin"
+          $mingwDir = Get-Item "$env:QT_ROOT_DIR\Tools\mingw*_64" | Select-Object -First 1
+          $mingwBin = "$($mingwDir.FullName)\bin"
           Add-Content $env:GITHUB_PATH $mingwBin
           Add-Content $env:GITHUB_ENV "CC=$mingwBin\gcc.exe"
           Add-Content $env:GITHUB_ENV "CXX=$mingwBin\g++.exe"
+          Add-Content $env:GITHUB_ENV "MINGW_BIN=$mingwBin"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
 
       - name: Install nimble deps
-        run: nimble install -d -y
+        run: |
+          rm -f nimble.paths
+          nimble install -d -y
 
       - name: Bundle ripgrep
         run: nimble fetchrg
@@ -166,9 +170,8 @@ jobs:
           }
 
           # MinGW runtime DLLs (required by Nim-compiled binary)
-          $mingwBin = "$env:QT_ROOT_DIR\Tools\mingw900_64\bin"
           foreach ($dll in @("libgcc_s_seh-1.dll","libstdc++-6.dll","libwinpthread-1.dll")) {
-            Copy-Item "$mingwBin\$dll" release-win\
+            Copy-Item "$env:MINGW_BIN\$dll" release-win\
           }
 
           # OpenSSL DLLs (for --d:ssl)
@@ -227,7 +230,9 @@ jobs:
             libgl1-mesa-dev libglib2.0-dev
 
       - name: Install nimble deps
-        run: nimble install -d -y
+        run: |
+          rm -f nimble.paths
+          nimble install -d -y
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
