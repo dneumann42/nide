@@ -126,10 +126,14 @@ jobs:
             }
           Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDir"
 
-          # Git's usr/bin has pkg-config.exe (MSYS2-based, outputs LF not CRLF).
-          # Nim's staticExec uses CreateProcess which only finds .exe, not .bat,
-          # so we prepend the directory containing the real pkg-config.exe to PATH.
-          Add-Content $env:GITHUB_PATH "C:\Program Files\Git\usr\bin"
+          # Install MSYS2 pkgconf: a real .exe that outputs LF (not CRLF).
+          # Nim's staticExec uses CreateProcess so only .exe files work.
+          # Copy to an isolated dir so MSYS2 tools don't shadow other binaries.
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed pkgconf
+          New-Item -ItemType Directory -Force "C:\pkg-tools"
+          Copy-Item "C:\msys64\usr\bin\pkgconf.exe" "C:\pkg-tools\pkg-config.exe"
+          Copy-Item "C:\msys64\usr\bin\msys-2.0.dll" "C:\pkg-tools\"
+          Add-Content $env:GITHUB_PATH "C:\pkg-tools"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
