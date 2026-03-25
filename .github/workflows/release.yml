@@ -43,7 +43,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             pkg-config libgl1-mesa-dev libglib2.0-dev libdbus-1-dev patchelf
-          echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/gcc_64/lib/pkgconfig" >> $GITHUB_ENV
+          find ${QT_ROOT_DIR}/lib/pkgconfig -name "*.pc" \
+            -exec sed -i "s|^prefix=.*|prefix=${QT_ROOT_DIR}|" {} \;
+          echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install nimble deps
         run: nimble install -d -y
@@ -206,7 +208,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             pkg-config flatpak flatpak-builder patchelf librsvg2-bin \
             libgl1-mesa-dev libglib2.0-dev
-          echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/gcc_64/lib/pkgconfig" >> $GITHUB_ENV
+          find ${QT_ROOT_DIR}/lib/pkgconfig -name "*.pc" \
+            -exec sed -i "s|^prefix=.*|prefix=${QT_ROOT_DIR}|" {} \;
+          echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install nimble deps
         run: nimble install -d -y
