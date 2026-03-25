@@ -115,23 +115,21 @@ jobs:
       - name: Set Qt pkg-config path
         shell: pwsh
         run: |
-          $qtRoot = $env:QT_ROOT_DIR
-          $gitBin = "C:\Program Files\Git\usr\bin"
+          $qtRoot = $env:QT_ROOT_DIR -replace '\\', '/'
+          $pcDir  = "$qtRoot/lib/pkgconfig"
 
           # Patch .pc file prefixes (aqtinstall doesn't fix them)
-          Get-ChildItem "$qtRoot\lib\pkgconfig\*.pc" -ErrorAction SilentlyContinue | ForEach-Object {
-            (Get-Content $_.FullName -Raw) -replace '(?m)^prefix=.*', "prefix=$qtRoot" |
-              Set-Content $_.FullName -NoNewline
-          }
-          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$qtRoot\lib\pkgconfig"
+          Get-ChildItem ($pcDir -replace '/', '\') -Filter "*.pc" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+              (Get-Content $_.FullName -Raw) -replace '(?m)^prefix=.*', "prefix=$qtRoot" |
+                Set-Content $_.FullName -NoNewline
+            }
+          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDir"
 
-          # Wrap Git's pkg-config with tr to strip \r from output.
-          # Nim's staticExec captures raw bytes; CRLF in pkg-config output
-          # causes \r to appear in compiler flags (e.g. -D_UNICODE\r) breaking g++.
-          New-Item -ItemType Directory -Force "C:\pkg-wrap"
-          $bat = "@`"$gitBin\pkg-config.exe`" %* | `"$gitBin\tr.exe`" -d `"\015`""
-          Set-Content "C:\pkg-wrap\pkg-config.bat" $bat -Encoding ASCII
-          Add-Content $env:GITHUB_PATH "C:\pkg-wrap"
+          # Git's usr/bin has pkg-config.exe (MSYS2-based, outputs LF not CRLF).
+          # Nim's staticExec uses CreateProcess which only finds .exe, not .bat,
+          # so we prepend the directory containing the real pkg-config.exe to PATH.
+          Add-Content $env:GITHUB_PATH "C:\Program Files\Git\usr\bin"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
