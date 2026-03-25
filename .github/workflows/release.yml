@@ -132,6 +132,11 @@ jobs:
           # MSYS2 base does not include gcc/g++ so adding usr/bin won't shadow Nim.
           Add-Content $env:GITHUB_PATH "C:\msys64\usr\bin"
 
+          # Force MSYS2 pkgconf to use binary I/O (LF only, no CRLF conversion).
+          # Without this, Nim's gorge() captures "\r" in pkg-config output, which
+          # corrupts QtCoreBuildVersion and breaks the private header include paths.
+          Add-Content $env:GITHUB_ENV "CYGWIN=binmode"
+
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
 
