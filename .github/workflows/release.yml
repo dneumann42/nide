@@ -8,10 +8,13 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
 
-  # ── Linux AppImage ──────────────────────────────────────────────────────────
-  build-linux-appimage:
+  # ── Linux binary tarball ─────────────────────────────────────────────────────
+  build-linux:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -33,18 +36,14 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-          modules: 'qtsvg qtmultimedia'
+
           cache: true
 
       - name: Install system deps
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            libgl1-mesa-dev libglib2.0-dev libdbus-1-dev \
-            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
-            libxkbcommon-x11-0 libfontconfig1 patchelf
+            libgl1-mesa-dev libglib2.0-dev libdbus-1-dev patchelf
 
       - name: Install nimble deps
         run: nimble install -d -y
@@ -58,43 +57,41 @@ jobs:
       - name: Bundle ripgrep
         run: nimble fetchrg
 
-      - name: Download and extract linuxdeploy + Qt plugin
+      - name: Package tarball
         run: |
-          curl -fsSL -o linuxdeploy.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
-          ./linuxdeploy.AppImage --appimage-extract
-          mv squashfs-root linuxdeploy-squashfs
-          ./linuxdeploy-plugin-qt.AppImage --appimage-extract
-          mv squashfs-root linuxdeploy-plugin-qt-squashfs
+          DEST=nide-${{ github.ref_name }}-linux-x64
+          mkdir -p $DEST/lib $DEST/plugins
 
-      - name: Build AppImage
-        env:
-          QMAKE: ${{ env.QT_ROOT_DIR }}/gcc_64/bin/qmake
-          LINUXDEPLOY_PLUGIN_QT: ${{ github.workspace }}/linuxdeploy-plugin-qt-squashfs/AppRun
-          OUTPUT: nide-${{ github.ref_name }}-x86_64.AppImage
-        run: |
-          mkdir -p AppDir/usr/bin \
-                   AppDir/usr/share/icons/hicolor/128x128/apps \
-                   AppDir/usr/share/applications
-          cp nide AppDir/usr/bin/
-          cp rg   AppDir/usr/bin/
-          cp data/icons/io.github.dneumann42.Nide.png \
-             AppDir/usr/share/icons/hicolor/128x128/apps/io.github.dneumann42.Nide.png
-          cp data/io.github.dneumann42.Nide.desktop \
-             AppDir/usr/share/applications/io.github.dneumann42.Nide.desktop
-          ./linuxdeploy-squashfs/AppRun \
-            --appdir AppDir \
-            --plugin qt \
-            --output appimage \
-            -d AppDir/usr/share/applications/io.github.dneumann42.Nide.desktop \
-            -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.dneumann42.Nide.png
+          # Actual binary (launched via wrapper script)
+          cp nide $DEST/nide.bin
+          cp rg   $DEST/rg
+
+          # Qt6 shared libraries
+          cp -P ${QT_ROOT_DIR}/gcc_64/lib/libQt6*.so* $DEST/lib/
+          cp -P ${QT_ROOT_DIR}/gcc_64/lib/libicu*.so* $DEST/lib/ 2>/dev/null || true
+
+          # Qt plugins needed at runtime
+          for dir in platforms imageformats xcbglintegrations platformthemes tls; do
+            if [ -d "${QT_ROOT_DIR}/gcc_64/plugins/$dir" ]; then
+              cp -r ${QT_ROOT_DIR}/gcc_64/plugins/$dir $DEST/plugins/
+            fi
+          done
+
+          # Wrapper script: sets LD_LIBRARY_PATH and QT_PLUGIN_PATH then launches the binary
+          cat > $DEST/nide << 'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          export LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export QT_PLUGIN_PATH="$HERE/plugins"
+          exec "$HERE/nide.bin" "$@"
+          EOF
+          chmod +x $DEST/nide
+
+          tar -czf $DEST.tar.gz $DEST/
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: nide-${{ github.ref_name }}-x86_64.AppImage
+          files: nide-${{ github.ref_name }}-linux-x64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -121,7 +118,7 @@ jobs:
           host: windows
           target: desktop
           arch: win64_mingw
-          modules: 'qtsvg qtmultimedia'
+
           tools: 'tools_mingw900'
           cache: true
 
@@ -219,7 +216,7 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-          modules: 'qtsvg qtmultimedia'
+
           cache: true
 
       - name: Install system deps
