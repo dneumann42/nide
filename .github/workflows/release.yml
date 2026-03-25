@@ -74,13 +74,7 @@ jobs:
           done
 
           # Wrapper script
-          cat > $DEST/nide << 'EOF'
-#!/bin/sh
-HERE="$(dirname "$(readlink -f "$0")")"
-export LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export QT_PLUGIN_PATH="$HERE/plugins"
-exec "$HERE/nide.bin" "$@"
-EOF
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexport LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexport QT_PLUGIN_PATH="$HERE/plugins"\nexec "$HERE/nide.bin" "$@"\n' > $DEST/nide
           chmod +x $DEST/nide
 
           tar -czf $DEST.tar.gz $DEST/
