@@ -126,14 +126,11 @@ jobs:
             }
           Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDir"
 
-          # Install MSYS2 pkgconf: a real .exe that outputs LF (not CRLF).
-          # Nim's staticExec uses CreateProcess so only .exe files work.
-          # Copy to an isolated dir so MSYS2 tools don't shadow other binaries.
+          # MSYS2 pkgconf is a real .exe that outputs LF (not CRLF).
+          # Must run from its actual MSYS2 location so msys-2.0.dll resolves.
+          # MSYS2 base does not include gcc/g++ so adding usr/bin won't shadow Nim.
           C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed pkgconf
-          New-Item -ItemType Directory -Force "C:\pkg-tools"
-          Copy-Item "C:\msys64\usr\bin\pkgconf.exe" "C:\pkg-tools\pkg-config.exe"
-          Copy-Item "C:\msys64\usr\bin\msys-2.0.dll" "C:\pkg-tools\"
-          Add-Content $env:GITHUB_PATH "C:\pkg-tools"
+          Add-Content $env:GITHUB_PATH "C:\msys64\usr\bin"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
@@ -234,7 +231,7 @@ jobs:
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
-          nimble build -d:release -d:usePcreHeader --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
+          nimble build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
           patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
           patchelf --set-rpath "" nide
 
