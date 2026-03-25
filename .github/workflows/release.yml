@@ -124,12 +124,12 @@ jobs:
               (Get-Content $_.FullName -Raw) -replace '(?m)^prefix=.*', "prefix=$qtRoot" |
                 Set-Content $_.FullName -NoNewline
             }
-          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDir"
-
-          # MSYS2 pkgconf is a real .exe that outputs LF (not CRLF).
-          # Must run from its actual MSYS2 location so msys-2.0.dll resolves.
-          # MSYS2 base does not include gcc/g++ so adding usr/bin won't shadow Nim.
+          # Convert to MSYS2 path format so pkgconf (a POSIX binary) can read it
           C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed pkgconf
+          $pcDirMsys = (& C:\msys64\usr\bin\cygpath.exe -u $pcDir).Trim()
+          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDirMsys"
+
+          # MSYS2 base does not include gcc/g++ so adding usr/bin won't shadow Nim.
           Add-Content $env:GITHUB_PATH "C:\msys64\usr\bin"
 
       - name: Install OpenSSL
