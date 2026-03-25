@@ -1,0 +1,280 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+
+  # ── Linux AppImage ──────────────────────────────────────────────────────────
+  build-linux-appimage:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nimble
+          key: nimble-linux-${{ hashFiles('nimble.lock') }}
+          restore-keys: nimble-linux-
+
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: '2.2.6'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.4.3'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: 'qtsvg qtmultimedia'
+          cache: true
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libglib2.0-dev libdbus-1-dev \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0 libfontconfig1 patchelf
+
+      - name: Install nimble deps
+        run: nimble install -d -y
+
+      - name: Build nide
+        run: |
+          nim cpp -d:release \
+            --passL:"-L${QT_ROOT_DIR}/gcc_64/lib -Wl,-rpath-link,${QT_ROOT_DIR}/gcc_64/lib" \
+            --out:nide src/nide.nim
+
+      - name: Bundle ripgrep
+        run: nimble fetchrg
+
+      - name: Download and extract linuxdeploy + Qt plugin
+        run: |
+          curl -fsSL -o linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+          ./linuxdeploy.AppImage --appimage-extract
+          mv squashfs-root linuxdeploy-squashfs
+          ./linuxdeploy-plugin-qt.AppImage --appimage-extract
+          mv squashfs-root linuxdeploy-plugin-qt-squashfs
+
+      - name: Build AppImage
+        env:
+          QMAKE: ${{ env.QT_ROOT_DIR }}/gcc_64/bin/qmake
+          LINUXDEPLOY_PLUGIN_QT: ${{ github.workspace }}/linuxdeploy-plugin-qt-squashfs/AppRun
+          OUTPUT: nide-${{ github.ref_name }}-x86_64.AppImage
+        run: |
+          mkdir -p AppDir/usr/bin \
+                   AppDir/usr/share/icons/hicolor/128x128/apps \
+                   AppDir/usr/share/applications
+          cp nide AppDir/usr/bin/
+          cp rg   AppDir/usr/bin/
+          cp data/icons/io.github.dneumann42.Nide.png \
+             AppDir/usr/share/icons/hicolor/128x128/apps/io.github.dneumann42.Nide.png
+          cp data/io.github.dneumann42.Nide.desktop \
+             AppDir/usr/share/applications/io.github.dneumann42.Nide.desktop
+          ./linuxdeploy-squashfs/AppRun \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage \
+            -d AppDir/usr/share/applications/io.github.dneumann42.Nide.desktop \
+            -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.dneumann42.Nide.png
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: nide-${{ github.ref_name }}-x86_64.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Windows zip ─────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nimble
+          key: nimble-windows-${{ hashFiles('nimble.lock') }}
+          restore-keys: nimble-windows-
+
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: '2.2.6'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.4.3'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: 'qtsvg qtmultimedia'
+          tools: 'tools_mingw900'
+          cache: true
+
+      - name: Configure MinGW on PATH
+        shell: pwsh
+        run: |
+          $mingwBin = "$env:QT_ROOT_DIR\Tools\mingw900_64\bin"
+          Add-Content $env:GITHUB_PATH $mingwBin
+          Add-Content $env:GITHUB_ENV "CC=$mingwBin\gcc.exe"
+          Add-Content $env:GITHUB_ENV "CXX=$mingwBin\g++.exe"
+
+      - name: Install OpenSSL
+        run: choco install openssl --no-progress -y
+
+      - name: Install nimble deps
+        run: nimble install -d -y
+
+      - name: Bundle ripgrep
+        run: nimble fetchrg
+
+      - name: Build nide.exe
+        run: nim cpp -d:release --out:nide.exe src/nide.nim
+
+      - name: Bundle Qt DLLs and runtime DLLs
+        shell: pwsh
+        run: |
+          # Deploy Qt DLLs next to nide.exe
+          windeployqt --release --no-translations nide.exe
+
+          # Assemble release directory
+          New-Item -ItemType Directory -Path release-win
+
+          # Core binaries (rg.exe placed by nimble fetchrg)
+          Copy-Item nide.exe release-win\
+          Copy-Item rg.exe  release-win\
+
+          # Qt DLLs placed by windeployqt in CWD
+          Get-ChildItem -Path . -Filter *.dll | Copy-Item -Destination release-win\
+
+          # Qt plugin subdirectories
+          foreach ($dir in @("platforms","imageformats","styles","tls","iconengines")) {
+            if (Test-Path $dir) {
+              Copy-Item $dir release-win\ -Recurse
+            }
+          }
+
+          # MinGW runtime DLLs (required by Nim-compiled binary)
+          $mingwBin = "$env:QT_ROOT_DIR\Tools\mingw900_64\bin"
+          foreach ($dll in @("libgcc_s_seh-1.dll","libstdc++-6.dll","libwinpthread-1.dll")) {
+            Copy-Item "$mingwBin\$dll" release-win\
+          }
+
+          # OpenSSL DLLs (for --d:ssl)
+          $opensslDir = "C:\Program Files\OpenSSL-Win64\bin"
+          if (Test-Path $opensslDir) {
+            Get-ChildItem "$opensslDir\libssl*.dll","$opensslDir\libcrypto*.dll" `
+              -ErrorAction SilentlyContinue | Copy-Item -Destination release-win\
+          }
+
+          # Create zip
+          Compress-Archive -Path release-win\* `
+            -DestinationPath "nide-${{ github.ref_name }}-windows-x64.zip"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: nide-${{ github.ref_name }}-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Flatpak ──────────────────────────────────────────────────────────────────
+  build-flatpak:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nimble
+          key: nimble-linux-${{ hashFiles('nimble.lock') }}
+          restore-keys: nimble-linux-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-kde-6.10
+
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: '2.2.6'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.4.3'
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: 'qtsvg qtmultimedia'
+          cache: true
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            flatpak flatpak-builder patchelf librsvg2-bin \
+            libgl1-mesa-dev libglib2.0-dev
+
+      - name: Install nimble deps
+        run: nimble install -d -y
+
+      - name: Build nide binary (patchelf'd for flatpak runtime)
+        run: |
+          nim cpp -d:release \
+            --passL:"-L${QT_ROOT_DIR}/gcc_64/lib -Wl,-rpath-link,${QT_ROOT_DIR}/gcc_64/lib" \
+            --out:nide src/nide.nim
+          # Strip embedded rpath so KDE runtime provides Qt6 at runtime
+          patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
+          patchelf --set-rpath "" nide
+
+      - name: Convert icon SVG to PNG
+        run: |
+          rsvg-convert -w 128 -h 128 \
+            data/icons/io.github.dneumann42.Nide.svg \
+            -o data/icons/io.github.dneumann42.Nide.png
+
+      - name: Add Flathub and install KDE runtime
+        run: |
+          flatpak remote-add --user --if-not-exists flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.kde.Platform//6.10 org.kde.Sdk//6.10
+
+      - name: Build flatpak
+        run: |
+          flatpak-builder \
+            --force-clean \
+            --disable-rofiles-fuse \
+            --user \
+            --install-deps-from=flathub \
+            --repo=.flatpak-repo \
+            .flatpak-build \
+            flatpak/io.github.dneumann42.Nide.yml
+
+      - name: Bundle nide.flatpak
+        run: |
+          flatpak build-bundle \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            .flatpak-repo \
+            nide-${{ github.ref_name }}.flatpak \
+            io.github.dneumann42.Nide
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: nide-${{ github.ref_name }}.flatpak
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

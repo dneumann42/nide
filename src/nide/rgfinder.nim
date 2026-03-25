@@ -79,7 +79,8 @@ proc showRipgrepFinder*(parent: QWidget,
         # Find real ripgrep: try common locations before relying on PATH
         # (/usr/sbin/rg may be a non-ripgrep system utility)
         var rgExe = ""
-        for candidate in ["/usr/bin/rg",
+        for candidate in [getAppDir() / "rg",
+                          "/usr/bin/rg",
                           getEnv("HOME") & "/.cargo/bin/rg",
                           getEnv("HOME") & "/.local/bin/rg",
                           "/usr/local/bin/rg"]:
