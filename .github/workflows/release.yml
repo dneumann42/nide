@@ -36,25 +36,20 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-
           cache: true
 
-      - name: Install system deps
+      - name: Install system deps and set pkg-config path
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            libgl1-mesa-dev libglib2.0-dev libdbus-1-dev patchelf
+            pkg-config libgl1-mesa-dev libglib2.0-dev libdbus-1-dev patchelf
+          echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/gcc_64/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install nimble deps
-        run: |
-          rm -f nimble.paths
-          nimble install -d -y
+        run: nimble install -d -y
 
       - name: Build nide
-        run: |
-          nim cpp -d:release \
-            --passL:"-L${QT_ROOT_DIR}/gcc_64/lib -Wl,-rpath-link,${QT_ROOT_DIR}/gcc_64/lib" \
-            --out:nide src/nide.nim
+        run: nimble build -d:release
 
       - name: Bundle ripgrep
         run: nimble fetchrg
@@ -64,7 +59,6 @@ jobs:
           DEST=nide-${{ github.ref_name }}-linux-x64
           mkdir -p $DEST/lib $DEST/plugins
 
-          # Actual binary (launched via wrapper script)
           cp nide $DEST/nide.bin
           cp rg   $DEST/rg
 
@@ -79,14 +73,14 @@ jobs:
             fi
           done
 
-          # Wrapper script: sets LD_LIBRARY_PATH and QT_PLUGIN_PATH then launches the binary
+          # Wrapper script
           cat > $DEST/nide << 'EOF'
-          #!/bin/sh
-          HERE="$(dirname "$(readlink -f "$0")")"
-          export LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          export QT_PLUGIN_PATH="$HERE/plugins"
-          exec "$HERE/nide.bin" "$@"
-          EOF
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$HERE/plugins"
+exec "$HERE/nide.bin" "$@"
+EOF
           chmod +x $DEST/nide
 
           tar -czf $DEST.tar.gz $DEST/
@@ -122,66 +116,57 @@ jobs:
           arch: win64_mingw
           cache: true
 
-      - name: Configure MinGW on PATH
+      - name: Set Qt pkg-config path
         shell: pwsh
         run: |
-          $mingwDir = Get-Item "$env:QT_ROOT_DIR\Tools\mingw*_64" | Select-Object -First 1
-          $mingwBin = "$($mingwDir.FullName)\bin"
-          Add-Content $env:GITHUB_PATH $mingwBin
-          Add-Content $env:GITHUB_ENV "CC=$mingwBin\gcc.exe"
-          Add-Content $env:GITHUB_ENV "CXX=$mingwBin\g++.exe"
-          Add-Content $env:GITHUB_ENV "MINGW_BIN=$mingwBin"
+          choco install pkgconfiglite --no-progress -y
+          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$env:QT_ROOT_DIR\lib\pkgconfig"
 
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
 
       - name: Install nimble deps
-        run: |
-          rm -f nimble.paths
-          nimble install -d -y
+        run: nimble install -d -y
 
       - name: Bundle ripgrep
         run: nimble fetchrg
 
       - name: Build nide.exe
-        run: nim cpp -d:release --out:nide.exe src/nide.nim
+        run: nimble build -d:release
 
       - name: Bundle Qt DLLs and runtime DLLs
         shell: pwsh
         run: |
-          # Deploy Qt DLLs next to nide.exe
           windeployqt --release --no-translations nide.exe
 
-          # Assemble release directory
           New-Item -ItemType Directory -Path release-win
 
-          # Core binaries (rg.exe placed by nimble fetchrg)
           Copy-Item nide.exe release-win\
           Copy-Item rg.exe  release-win\
 
-          # Qt DLLs placed by windeployqt in CWD
+          # Qt DLLs placed by windeployqt
           Get-ChildItem -Path . -Filter *.dll | Copy-Item -Destination release-win\
-
-          # Qt plugin subdirectories
           foreach ($dir in @("platforms","imageformats","styles","tls","iconengines")) {
-            if (Test-Path $dir) {
-              Copy-Item $dir release-win\ -Recurse
+            if (Test-Path $dir) { Copy-Item $dir release-win\ -Recurse }
+          }
+
+          # MinGW runtime DLLs — found dynamically from whichever gcc is in PATH
+          $gccExe = (Get-Command gcc -ErrorAction SilentlyContinue)?.Source
+          if ($gccExe) {
+            $mingwBin = Split-Path $gccExe
+            foreach ($dll in @("libgcc_s_seh-1.dll","libstdc++-6.dll","libwinpthread-1.dll")) {
+              $dllPath = Join-Path $mingwBin $dll
+              if (Test-Path $dllPath) { Copy-Item $dllPath release-win\ }
             }
           }
 
-          # MinGW runtime DLLs (required by Nim-compiled binary)
-          foreach ($dll in @("libgcc_s_seh-1.dll","libstdc++-6.dll","libwinpthread-1.dll")) {
-            Copy-Item "$env:MINGW_BIN\$dll" release-win\
-          }
-
-          # OpenSSL DLLs (for --d:ssl)
+          # OpenSSL DLLs
           $opensslDir = "C:\Program Files\OpenSSL-Win64\bin"
           if (Test-Path $opensslDir) {
             Get-ChildItem "$opensslDir\libssl*.dll","$opensslDir\libcrypto*.dll" `
               -ErrorAction SilentlyContinue | Copy-Item -Destination release-win\
           }
 
-          # Create zip
           Compress-Archive -Path release-win\* `
             -DestinationPath "nide-${{ github.ref_name }}-windows-x64.zip"
 
@@ -219,27 +204,22 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-
           cache: true
 
-      - name: Install system deps
+      - name: Install system deps and set pkg-config path
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            flatpak flatpak-builder patchelf librsvg2-bin \
+            pkg-config flatpak flatpak-builder patchelf librsvg2-bin \
             libgl1-mesa-dev libglib2.0-dev
+          echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/gcc_64/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install nimble deps
-        run: |
-          rm -f nimble.paths
-          nimble install -d -y
+        run: nimble install -d -y
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
-          nim cpp -d:release \
-            --passL:"-L${QT_ROOT_DIR}/gcc_64/lib -Wl,-rpath-link,${QT_ROOT_DIR}/gcc_64/lib" \
-            --out:nide src/nide.nim
-          # Strip embedded rpath so KDE runtime provides Qt6 at runtime
+          nimble build -d:release
           patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
           patchelf --set-rpath "" nide
 
