@@ -112,42 +112,33 @@ jobs:
           nim-version: '2.2.6'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: jurplel/install-qt-action@v4
+      - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
-          version: '6.4.3'
-          host: windows
-          target: desktop
-          arch: win64_mingw
-          cache: true
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-svg
+            mingw-w64-x86_64-qt6-tools
 
-      - name: Set Qt pkg-config path
+      - name: Set MSYS2 Qt and MinGW environment
         shell: pwsh
         run: |
-          $qtRoot = $env:QT_ROOT_DIR -replace '\\', '/'
-          $pcDir  = "$qtRoot/lib/pkgconfig"
-
-          # Patch .pc file prefixes (aqtinstall doesn't fix them)
-          Get-ChildItem ($pcDir -replace '/', '\') -Filter "*.pc" -ErrorAction SilentlyContinue |
-            ForEach-Object {
-              (Get-Content $_.FullName -Raw) -replace '(?m)^prefix=.*', "prefix=$qtRoot" |
-                Set-Content $_.FullName -NoNewline
-            }
-          # Convert to MSYS2 path format so pkgconf (a POSIX binary) can read it
-          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed pkgconf
-          $pcDirMsys = (& C:\msys64\usr\bin\cygpath.exe -u $pcDir).Trim()
-          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDirMsys"
-
-          # MSYS2 base does not include gcc/g++ so adding usr/bin won't shadow Nim.
-          Add-Content $env:GITHUB_PATH "C:\msys64\usr\bin"
+          $msysRoot = "${{ steps.msys2.outputs.msys2-location }}"
+          Add-Content $env:GITHUB_PATH "$msysRoot\mingw64\bin"
+          Add-Content $env:GITHUB_PATH "$msysRoot\usr\bin"
+          Add-Content $env:GITHUB_ENV "QT_ROOT_DIR=$msysRoot\mingw64"
+          Add-Content $env:GITHUB_ENV "PKG_CONFIG_PATH=/mingw64/lib/pkgconfig"
 
           # Force MSYS2 pkgconf to use binary I/O (LF only, no CRLF conversion).
           # Without this, Nim's gorge() captures "\r" in pkg-config output, which
           # corrupts QtCoreBuildVersion and breaks the private header include paths.
           # Note: MSYS2 binaries honour the MSYS variable, not CYGWIN.
           Add-Content $env:GITHUB_ENV "MSYS=binmode"
-
-      - name: Install OpenSSL
-        run: choco install openssl --no-progress -y
 
       - name: Install nimble deps
         run: nimble install -d -y
@@ -185,9 +176,9 @@ jobs:
           }
 
           # OpenSSL DLLs
-          $opensslDir = "C:\Program Files\OpenSSL-Win64\bin"
-          if (Test-Path $opensslDir) {
-            Get-ChildItem "$opensslDir\libssl*.dll","$opensslDir\libcrypto*.dll" `
+          $mingwBin = "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin"
+          if (Test-Path $mingwBin) {
+            Get-ChildItem "$mingwBin\libssl-*.dll","$mingwBin\libcrypto-*.dll" `
               -ErrorAction SilentlyContinue | Copy-Item -Destination release-win\
           }
 
