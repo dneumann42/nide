@@ -79,6 +79,7 @@ type
     caseCheck:     WidgetRef[QCheckBox]
     regexCheck:    WidgetRef[QCheckBox]
     matchPositions: seq[(cint, cint)]
+    bracketMatchPositions: seq[(cint, cint)]
     jumpHistory*:  seq[JumpLocation]
     jumpFuture*:   seq[JumpLocation]
     nimSuggest*:   NimSuggestClient
@@ -225,6 +226,33 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
     pane.diagShownCol  = diags[0].col
   except: discard
 
+proc findMatchingBracket(text: string, pos: int): int =
+  if pos < 0 or pos >= text.len: return -1
+  let ch = text[pos]
+  let forward = ch in {'(', '[', '{'}
+  let openBr = case ch
+    of '(', ')': '('
+    of '[', ']': '['
+    else:        '{'
+  let closeBr = case ch
+    of '(', ')': ')'
+    of '[', ']': ']'
+    else:        '}'
+  var depth = 0
+  if forward:
+    for i in pos ..< text.len:
+      if text[i] == openBr: inc depth
+      elif text[i] == closeBr:
+        dec depth
+        if depth == 0: return i
+  else:
+    for i in countdown(pos, 0):
+      if text[i] == closeBr: inc depth
+      elif text[i] == openBr:
+        dec depth
+        if depth == 0: return i
+  return -1
+
 proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
   if pane.diagLines == nil or pane.buffer == nil: return
   try:
@@ -266,6 +294,20 @@ proc applySelections*(pane: Pane) {.raises: [].} =
         sel.setFormat(fmt)
         sels.add(sel)
 
+    # Bracket matching
+    if pane.bracketMatchPositions.len == 2:
+      var fmt = QTextCharFormat.create()
+      QTextFormat(h: fmt.h, owned: false).setBackground(
+        QBrush.create(QColor.create("#264f78")))
+      for (s, e) in pane.bracketMatchPositions:
+        var cur = ed.textCursor()
+        cur.setPosition(s)
+        cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
+        var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
+        sel.setCursor(cur)
+        sel.setFormat(fmt)
+        sels.add(sel)
+
     # Diagnostics
     if pane.diagLines != nil and pane.buffer != nil:
       for ll in pane.diagLines[]:
@@ -292,6 +334,27 @@ proc applySelections*(pane: Pane) {.raises: [].} =
     ed.setExtraSelections(sels)
     ed.setTextCursor(savedCursor)
     ed.verticalScrollBar().setValue(savedScroll)
+  except: discard
+
+proc updateBracketMatch(pane: Pane) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let cur = ed.textCursor()
+    let pos = int(cur.position())
+    let text = ed.document().toPlainText()
+    pane.bracketMatchPositions = @[]
+    const brackets = {'(', ')', '[', ']', '{', '}'}
+    var p1 = -1
+    if pos < text.len and text[pos] in brackets:
+      p1 = pos
+    elif pos > 0 and text[pos - 1] in brackets:
+      p1 = pos - 1
+    if p1 >= 0:
+      let p2 = findMatchingBracket(text, p1)
+      if p2 >= 0:
+        pane.bracketMatchPositions = @[(cint(p1), cint(p1 + 1)),
+                                        (cint(p2), cint(p2 + 1))]
+    applySelections(pane)
   except: discard
 
 proc runCheck*(pane: Pane) {.raises: [].} =
@@ -636,6 +699,9 @@ proc newPane*(
 
   editor.onBlockCountChanged do(count: cint) {.raises: [].}:
     QPlainTextEdit(h: editorH, owned: false).updateLineNumberAreaWidth()
+
+  editor.onCursorPositionChanged do() {.raises: [].}:
+    updateBracketMatch(pane)
 
   editor.onUpdateRequest do(rect: QRect, dy: cint) {.raises: [].}:
     let g = QWidget(h: gutterH, owned: false)
