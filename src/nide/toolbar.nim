@@ -1,15 +1,17 @@
-import std/tables
+import std/[tables, strutils]
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
-              qabstractbutton, qsize, qicon, qlabel, qhboxlayout]
+              qabstractbutton, qsize, qicon, qlabel, qhboxlayout, qpushbutton, qpoint,
+              qscrollarea, qvboxlayout, qscroller]
 import widgets
+import logparser
 
-const RunSvg      = staticRead("icons/run.svg")
-const BuildSvg    = staticRead("icons/build.svg")
-const GearSvg     = staticRead("icons/gear.svg")
-const FileTreeSvg = staticRead("icons/filetree.svg")
-const GraphSvg    = staticRead("icons/graph.svg")
-const LoadingSvg  = staticRead("icons/loading.svg")
-const NimSvg      = staticRead("../../res/Nim_logo.svg")
+const RunSvg       = staticRead("icons/run.svg")
+const BuildSvg     = staticRead("icons/build.svg")
+const GearSvg      = staticRead("icons/gear.svg")
+const FileTreeSvg  = staticRead("icons/filetree.svg")
+const GraphSvg     = staticRead("icons/graph.svg")
+const LoadingSvg   = staticRead("icons/loading.svg")
+const NimSvg       = staticRead("../../res/Nim_logo.svg")
 
 
 type
@@ -27,6 +29,7 @@ type
     JumpBack
     JumpForward
     CleanImports
+    RefreshDiags
 
   ToolMenu* = ref object
     label: string
@@ -47,6 +50,12 @@ type
     buildBtn: QToolButton
     settingsBtn: QToolButton
     loaderLabel: QLabel
+    diagWidget: QWidget
+    diagAction: QAction
+    diagHintBtn: QToolButton
+    diagWarnBtn: QToolButton
+    diagErrBtn: QToolButton
+    diagNavigateCb: proc(path: string, line, col: int) {.raises: [].}
 
 proc build(self: ToolMenu) =
   self.button = QToolButton.create()
@@ -112,6 +121,7 @@ proc buildNimMenu(self: Toolbar) =
   self.nimMenu.actions[RestartNimSuggest] = self.nimMenu.menu.addAction("Restart nimsuggest")
   discard self.nimMenu.menu.addSeparator()
   self.nimMenu.actions[CleanImports] = self.nimMenu.menu.addAction("Clean Imports")
+  self.nimMenu.actions[RefreshDiags] = self.nimMenu.menu.addAction("Refresh Diagnostics")
 
   discard self.toolbar.addWidget(self.nimMenu.button)
 
@@ -165,6 +175,30 @@ proc build*(self: Toolbar) =
     spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
     discard self.toolbar.addWidget(spacer)
 
+  self.diagWidget = QWidget.create()
+  self.diagWidget.owned = false
+  var diagLayout = QHBoxLayout.create()
+  diagLayout.owned = false
+  diagLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+  diagLayout.setSpacing(cint 2)
+  QWidget(h: self.diagWidget.h, owned: false).setLayout(QLayout(h: diagLayout.h, owned: false))
+
+  self.diagHintBtn = QToolButton.create()
+  self.diagHintBtn.owned = false
+  diagLayout.addWidget(QWidget(h: self.diagHintBtn.h, owned: false))
+
+  self.diagWarnBtn = QToolButton.create()
+  self.diagWarnBtn.owned = false
+  diagLayout.addWidget(QWidget(h: self.diagWarnBtn.h, owned: false))
+
+  self.diagErrBtn = QToolButton.create()
+  self.diagErrBtn.owned = false
+  diagLayout.addWidget(QWidget(h: self.diagErrBtn.h, owned: false))
+
+  self.diagAction = self.toolbar.addWidget(self.diagWidget)
+  self.diagAction.owned = false
+  self.diagAction.setVisible(false)
+
   self.runBtn = makeIconButton(RunSvg, cint IconSize)
   discard self.toolbar.addWidget(self.runBtn)
 
@@ -207,3 +241,158 @@ proc setLoading*(self: Toolbar, loading: bool) =
     self.loaderLabel.setPixmap(svgIcon(LoadingSvg, cint 12).pixmap(cint 12, cint 12))
   else:
     self.loaderLabel.setPixmap(svgIcon(NimSvg, cint 12).pixmap(cint 12, cint 12))
+
+proc updateDiagCounts*(self: Toolbar, lines: seq[LogLine]) {.raises: [].} =
+  var hintCount = 0
+  var warnCount = 0
+  var errCount = 0
+  for ll in lines:
+    case ll.level
+    of llHint: inc hintCount
+    of llWarning: inc warnCount
+    of llError: inc errCount
+    else: discard
+
+  var anyDiag = hintCount > 0 or warnCount > 0 or errCount > 0
+
+  try:
+    self.diagAction.setVisible(anyDiag)
+
+    if hintCount > 0:
+      QToolButton(h: self.diagHintBtn.h, owned: false).setText("◆" & $hintCount)
+      QToolButton(h: self.diagHintBtn.h, owned: false).setStyleSheet("QToolButton { color: #00cccc; background: transparent; border: none; font-size: 11px; }")
+      QWidget(h: self.diagHintBtn.h, owned: false).show()
+    else:
+      QWidget(h: self.diagHintBtn.h, owned: false).hide()
+    if warnCount > 0:
+      QToolButton(h: self.diagWarnBtn.h, owned: false).setText("⚠" & $warnCount)
+      QToolButton(h: self.diagWarnBtn.h, owned: false).setStyleSheet("QToolButton { color: #ffaa00; background: transparent; border: none; font-size: 11px; }")
+      QWidget(h: self.diagWarnBtn.h, owned: false).show()
+    else:
+      QWidget(h: self.diagWarnBtn.h, owned: false).hide()
+    if errCount > 0:
+      QToolButton(h: self.diagErrBtn.h, owned: false).setText("✗" & $errCount)
+      QToolButton(h: self.diagErrBtn.h, owned: false).setStyleSheet("QToolButton { color: #ff5555; background: transparent; border: none; font-size: 11px; }")
+      QWidget(h: self.diagErrBtn.h, owned: false).show()
+    else:
+      QWidget(h: self.diagErrBtn.h, owned: false).hide()
+  except: discard
+
+proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filterLevel: LogLevel) {.raises: [].} =
+  if lines.len == 0: return
+  try:
+    var popover = QWidget.create()
+    popover.owned = false
+    popover.setWindowFlags(cint(0x00000008 or 0x00000001))
+    popover.setObjectName("diagPopover")
+    popover.setStyleSheet("""
+      QWidget#diagPopover {
+        background: #1e1e2e;
+        border: 1px solid #585b70;
+        border-radius: 4px;
+      }
+      QScrollArea {
+        background: transparent;
+        border: none;
+      }
+      QScrollBar:vertical {
+        background: #313244;
+        width: 8px;
+        border-radius: 4px;
+      }
+      QScrollBar::handle:vertical {
+        background: #585b70;
+        border-radius: 4px;
+        min-height: 20px;
+      }
+      QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        height: 0px;
+      }
+      QLabel {
+        color: #cdd6f4;
+        font-family: 'Fira Code', monospace;
+        font-size: 12px;
+        background: transparent;
+      }
+    """)
+
+    var scroll = QScrollArea.create(popover)
+    scroll.owned = false
+    scroll.setWidgetResizable(true)
+    scroll.setHorizontalScrollBarPolicy(cint(0))
+
+    var listW = QWidget.create(scroll)
+    listW.owned = false
+    var listLayout = QVBoxLayout.create()
+    listLayout.owned = false
+    listLayout.setContentsMargins(cint 4, cint 4, cint 4, cint 4)
+    listLayout.setSpacing(cint 2)
+    listW.setLayout(QLayout(h: listLayout.h, owned: false))
+
+    QScrollArea(h: scroll.h, owned: false).setWidget(QWidget(h: listW.h, owned: false))
+    var popoverLayout = QVBoxLayout.create()
+    popoverLayout.owned = false
+    popoverLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+    popoverLayout.setSpacing(cint 0)
+    popoverLayout.addWidget(QWidget(h: scroll.h, owned: false))
+    popover.setLayout(QLayout(h: popoverLayout.h, owned: false))
+
+    for ll in lines:
+      if ll.level != filterLevel: continue
+      let (label, color) = case ll.level
+        of llError:   ("Error",   "#ff5555")
+        of llWarning: ("Warning", "#ffaa00")
+        of llHint:    ("Hint",    "#00cccc")
+        else: continue
+      let escaped = ll.raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+      let text = label & ": " & escaped & " (" & ll.file & " line " & $ll.line & ")"
+      let filePath    = ll.file
+      let lineNum     = ll.line
+      let lineCol     = ll.col
+      let navigateCb  = self.diagNavigateCb
+
+      var itemBtn = QPushButton.create(text)
+      itemBtn.owned = false
+      itemBtn.setFlat(true)
+      itemBtn.setStyleSheet(
+        "QPushButton { color: #cdd6f4; background: transparent; border: none; text-align: left; padding: 6px 8px; font-family: 'Fira Code', monospace; font-size: 12px; }" &
+        "QPushButton:hover { background: #313244; }")
+      itemBtn.onClicked do() {.raises: [].}:
+        QWidget(h: popover.h, owned: false).hide()
+        if navigateCb != nil:
+          navigateCb(filePath, lineNum, lineCol)
+      listLayout.addWidget(QWidget(h: itemBtn.h, owned: false))
+
+    if listLayout.count() == 0:
+      return
+
+    let popW = QWidget(h: popover.h, owned: false)
+    popW.adjustSize()
+    let pw = popW.width()
+    let ph = popW.height()
+
+    var btnPos: QPoint
+    case filterLevel
+    of llHint: btnPos = QToolButton(h: self.diagHintBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llWarning: btnPos = QToolButton(h: self.diagWarnBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llError: btnPos = QToolButton(h: self.diagErrBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    else: btnPos = QPoint.create(cint 0, cint 0)
+
+
+    var yPos = btnPos.y() + 24
+    popW.setGeometry(btnPos.x(), yPos, pw, min(ph, cint 400))
+    popW.raiseX()
+    popW.show()
+  except: discard
+
+proc onDiagHint*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.diagHintBtn.onClicked(triggered)
+
+proc onDiagWarn*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.diagWarnBtn.onClicked(triggered)
+
+proc onDiagErr*(self: Toolbar, triggered: proc() {.raises: [].}) =
+  self.diagErrBtn.onClicked(triggered)
+
+proc onDiagNavigate*(self: Toolbar, cb: proc(path: string, line, col: int) {.raises: [].}) =
+  self.diagNavigateCb = cb

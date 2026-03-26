@@ -1,5 +1,5 @@
-import buffers, commands, filefinder, filetree, graphdialog, moduledialog, nimsuggest, opacity, pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
-import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qkeysequence, qmainwindow, qobject, qplaintextedit, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
+import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
+import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qkeysequence, qmainwindow, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[os, strutils]
 
 import "../../tools/nim_graph" as nim_graph
@@ -22,6 +22,7 @@ type
     fileTree: FileTree
     theme: Theme
     currentProject: string
+    projectNimbleFile: string
     runStatusBtn:  WidgetRef[QToolButton]
     buildStatusBtn: WidgetRef[QToolButton]
     runReopen:  proc() {.raises: [].}
@@ -31,6 +32,8 @@ type
     settings: Settings
     fileWatcher: QFileSystemWatcher
     loaderTimer: QTimer
+    projectDiagLines: ref seq[LogLine]
+    projectCheckProcessH: ref pointer
 
 proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
@@ -62,10 +65,21 @@ proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} 
         col:  cur.columnNumber()))
     except: discard
 
-proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col: int) {.raises: [].} =
-  if path.len > 0:
+proc openInPane(self: Application, pane: Pane, path: string) {.raises: [].} =
+  try:
     let buf = self.openFile(path)
     pane.setBuffer(buf)
+    if path.len > 0 and self.projectDiagLines != nil:
+      var prefill: seq[LogLine]
+      for ll in self.projectDiagLines[]:
+        if ll.file == path: prefill.add(ll)
+      if prefill.len > 0:
+        pane.prefillDiags(prefill)
+  except: discard
+
+proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col: int) {.raises: [].} =
+  if path.len > 0:
+    self.openInPane(pane, path)
   pane.scrollToLine(line, col)
 
 proc createStatusButton*(self: Application, text: string, parentH: pointer): WidgetRef[QToolButton] =
@@ -107,14 +121,32 @@ proc new*(T: typedesc[Application]): T =
   )
   result.projectManager.load()
   result.fileWatcher = QFileSystemWatcher.create()
+  new(result.projectDiagLines)
+  result.projectDiagLines[] = @[]
+  new(result.projectCheckProcessH)
+  result.projectCheckProcessH[] = nil
 
 proc updateRecentProjects(self: Application) {.raises: [].} =
   for panel in self.paneManager.panels:
     panel.setRecentProjects(self.projectManager.recentProjects)
 
+proc runProjectCheck*(self: Application) {.raises: [].} =
+  if self.projectNimbleFile.len == 0: return
+  let mainFile = findProjectMain(self.projectNimbleFile)
+  if mainFile.len == 0: return
+  if self.projectCheckProcessH[] != nil:
+    try: QProcess(h: self.projectCheckProcessH[], owned: false).kill()
+    except: discard
+    self.projectCheckProcessH[] = nil
+  runNimCheck(self.root.h, mainFile, self.projectCheckProcessH,
+    proc(lines: seq[LogLine]) {.raises: [].} =
+      self.projectDiagLines[] = lines
+      self.toolbar.updateDiagCounts(lines))
+
 proc openProject(self: Application, path: string) {.raises: [].} =
   let dir = path.parentDir()
   self.currentProject = dir
+  self.projectNimbleFile = path
   for panel in self.paneManager.panels:
     panel.clearBuffer()
   self.paneManager.setProjectOpen(true)
@@ -136,6 +168,7 @@ proc openProject(self: Application, path: string) {.raises: [].} =
     panel.nimSuggest = self.nimSuggest
   self.paneManager.panels[0].triggerOpenModule()
   self.toolbar.setCloseProjectVisible(true)
+  self.runProjectCheck()
 
 proc openProject(self: Application) {.raises: [].} =
   let file = QFileDialog.getOpenFileName(
@@ -145,6 +178,7 @@ proc openProject(self: Application) {.raises: [].} =
 
 proc closeProject*(self: Application) {.raises: [].} =
   self.currentProject = ""
+  self.projectNimbleFile = ""
   for panel in self.paneManager.panels:
     panel.clearBuffer()
   self.paneManager.setProjectOpen(false)
@@ -157,6 +191,8 @@ proc closeProject*(self: Application) {.raises: [].} =
     self.nimSuggest.kill()
     self.nimSuggest = nil
   self.toolbar.setCloseProjectVisible(false)
+  self.projectDiagLines[] = @[]
+  self.toolbar.updateDiagCounts(@[])
 
 proc closeBuffer*(self: Application, name: string) =
   for panel in self.paneManager.panels:
@@ -179,12 +215,11 @@ proc build*(self: Application) =
   self.loaderTimer.setInterval(cint 200)
   let appRef = self
   self.loaderTimer.onTimeout do() {.raises: [].}:
-    if appRef.nimSuggest != nil:
+    var isLoading = appRef.projectCheckProcessH[] != nil
+    if not isLoading and appRef.nimSuggest != nil:
       let ns = appRef.nimSuggest
-      let isLoading = ns.state == csStarting or ns.pending.len > 0
-      appRef.toolbar.setLoading(isLoading)
-    else:
-      appRef.toolbar.setLoading(false)
+      isLoading = ns.state == csStarting or ns.pending.len > 0
+    appRef.toolbar.setLoading(isLoading)
   self.loaderTimer.start()
 
   # Pane columns splitter — override resizeEvent to reposition the floating file tree.
@@ -227,19 +262,16 @@ proc build*(self: Application) =
 
   self.paneManager = PaneManager.init(splitter, PaneCallbacks(
     onFileSelected: proc(pane: Pane, path: string) {.raises: [].} =
-      let buf = self.openFile(path)
-      pane.setBuffer(buf),
+      self.openInPane(pane, path),
     onNewModule: proc(pane: Pane) {.raises: [].} =
       let path = showNewModuleDialog(QWidget(h: self.root.h, owned: false))
       if path.len > 0:
-        let buf = self.openFile(path)
-        pane.setBuffer(buf),
+        self.openInPane(pane, path),
     onOpenModule: proc(pane: Pane) {.raises: [].} =
       showFileFinder(QWidget(h: self.root.h, owned: false),
         self.projectManager.recentFilesFor(self.currentProject),
         proc(path: string) {.raises: [].} =
-          let buf = self.openFile(path)
-          pane.setBuffer(buf)),
+          self.openInPane(pane, path)),
     onNewProject: proc(pane: Pane) {.raises: [].} =
       showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager),
     onOpenProject: proc(pane: Pane) {.raises: [].} =
@@ -247,9 +279,7 @@ proc build*(self: Application) =
     onOpenRecentProject: proc(pane: Pane, path: string) {.raises: [].} =
       self.openProject(path),
     onGotoDefinition: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
-      let buf = self.openFile(path)
-      pane.setBuffer(buf)
-      pane.scrollToLine(line, col),
+      self.navigateToLocation(pane, path, line, col),
     onJumpBack: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].} =
       pane.pushJumpLocation(pane.jumpFuture)
       self.navigateToLocation(pane, path, line, col),
@@ -259,8 +289,7 @@ proc build*(self: Application) =
     onFindFile: proc(pane: Pane) {.raises: [].} =
       showFileFinder(QWidget(h: self.root.h, owned: false),
         self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
-        let buf = self.openFile(path)
-        pane.setBuffer(buf),
+        self.openInPane(pane, path),
     onSwitchBuffer: proc(pane: Pane) {.raises: [].} =
       var entries: seq[(string, string)]
       let cwd = try: getCurrentDir() except OSError: ""
@@ -447,8 +476,7 @@ proc build*(self: Application) =
       if p == nil: return
       showFileFinder(QWidget(h: self.root.h, owned: false),
         self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
-        let buf = self.openFile(path)
-        p.setBuffer(buf))
+        self.openInPane(p, path))
 
     disp.register("editor.switchBuffer", proc() {.raises: [].} =
       let p = self.getTargetPane()
@@ -481,8 +509,7 @@ proc build*(self: Application) =
       let p = self.getTargetPane()
       if p == nil: return
       showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
-        let buf = self.openFile(file)
-        p.setBuffer(buf)
+        self.openInPane(p, file)
         p.scrollToLine(lineNum))
 
     disp.register("editor.gotoDefinition", proc() {.raises: [].} =
@@ -529,8 +556,7 @@ proc build*(self: Application) =
   self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
     let target = self.getTargetPane()
     if target == nil: return
-    let buf = self.openFile(path)
-    target.setBuffer(buf)
+    self.openInPane(target, path)
 
   self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
   self.buildStatusBtn = self.createStatusButton("nimble build", self.root.h)
@@ -561,8 +587,7 @@ proc build*(self: Application) =
       try:
         let target = self.getTargetPane()
         if target == nil: return
-        let buf = self.openFile(file)
-        target.setBuffer(buf)
+        self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
     runCommand(QWidget(h: self.root.h, owned: false), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; nim cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
@@ -579,8 +604,7 @@ proc build*(self: Application) =
       try:
         let target = self.getTargetPane()
         if target == nil: return
-        let buf = self.openFile(file)
-        target.setBuffer(buf)
+        self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
     runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; nim cpp --out:./$b src/$b.nim", onBg, gotoBuild)
@@ -624,10 +648,9 @@ proc build*(self: Application) =
     let file = QFileDialog.getOpenFileName(
         QWidget(h: self.root.h, owned: false), "", "", "All files (*.*)")
     if file.len == 0: return
-    let buf = self.openFile(file)
     let target = self.getTargetPane()
     if target == nil: return
-    target.setBuffer(buf)
+    self.openInPane(target, file)
 
   self.toolbar.onTriggered(OpenProject) do():
     self.openProject()
@@ -699,6 +722,22 @@ proc build*(self: Application) =
     if target != nil:
       target.triggerCleanImports()
 
+  self.toolbar.onTriggered(RefreshDiags) do():
+    self.runProjectCheck()
+
+  self.toolbar.onDiagHint do():
+    self.toolbar.showDiagPopover(self.toolbar.widget().h, self.projectDiagLines[], llHint)
+
+  self.toolbar.onDiagWarn do():
+    self.toolbar.showDiagPopover(self.toolbar.widget().h, self.projectDiagLines[], llWarning)
+
+  self.toolbar.onDiagErr do():
+    self.toolbar.showDiagPopover(self.toolbar.widget().h, self.projectDiagLines[], llError)
+
+  self.toolbar.onDiagNavigate do(path: string, line, col: int) {.raises: [].}:
+    let pane = self.getTargetPane()
+    if pane == nil: return
+    self.navigateToLocation(pane, path, line, col)
 
   self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()

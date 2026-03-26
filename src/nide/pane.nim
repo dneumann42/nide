@@ -403,6 +403,15 @@ proc runCheck*(pane: Pane) {.raises: [].} =
       applySelections(pane)
       updateDiagIcons(pane))
 
+proc prefillDiags*(pane: Pane, lines: seq[LogLine]) {.raises: [].} =
+  ## Pre-populate diagnostics from an already-completed check (e.g. the
+  ## project-wide check). The per-pane async check will overwrite these when
+  ## it finishes; this just avoids a blank state while waiting.
+  pane.diagLines[] = lines
+  pane.diagReady = true
+  applySelections(pane)
+  updateDiagIcons(pane)
+
 proc save*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
     if pane.buffer.externallyModified:
