@@ -51,6 +51,8 @@ proc ensureSets() =
 proc tokenizeSource(src: string): seq[Token] =
   let cache = newIdentCache()
   let config = newConfigRef()
+  config.errorMax = high(int)  # prevent quit() on any lexer error
+  config.writelnHook = proc(s: string) {.closure, gcsafe.} = discard  # suppress stderr output
   let stream = llStreamOpen(src)
   var lex: Lexer
   openLexer(lex, AbsoluteFile"<buffer>", stream, cache, config)

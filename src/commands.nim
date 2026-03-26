@@ -86,6 +86,7 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindChordKey(combo(0x4B, noMod),   "editor.killBuffer")
   d.bindChordKey(combo(0x42, noMod),   "editor.switchBuffer")
   d.bindChordKey(combo(0x53, ctrlMod), "editor.saveBuffer")
+  d.bindChordKey(combo(0x43, ctrlMod), "editor.quitApplication")
   d.bindChordKey(combo(0x46, ctrlMod), "editor.findFile")
 
 proc keyComboToString*(c: KeyCombo): string =

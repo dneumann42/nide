@@ -6,7 +6,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qpalette, qlineargradient,
               qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
               qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
-              qevent, qpoint, qrect, qscrollbar, qscroller,
+              qevent, qpoint, qrect, qscrollbar, qscroller, qplaintextdocumentlayout,
               qscrollerproperties, qvariant, qtimer,
               qmouseevent, qkeyevent, qwheelevent, qmessagebox,
               qlistwidget, qlistwidgetitem]
@@ -348,9 +348,12 @@ proc save*(pane: Pane) {.raises: [].} =
         return
       pane.buffer.externallyModified = false
     try:
-      writeFile(pane.buffer.path, QPlainTextEdit(h: pane.editor.h, owned: false).toPlainText())
+      let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+      let savedScroll = ed.verticalScrollBar().value()
+      writeFile(pane.buffer.path, ed.toPlainText())
       runCheck(pane)
-      QPlainTextEdit(h: pane.editor.h, owned: false).document().setModified(false)
+      ed.document().setModified(false)
+      ed.verticalScrollBar().setValue(savedScroll)
     except:
       discard
 
@@ -821,6 +824,9 @@ proc newPane*(
   result.editor = editor
   var emptyDoc = QTextDocument.create()
   emptyDoc.owned = false
+  var emptyLayout = QPlainTextDocumentLayout.create(emptyDoc)
+  emptyLayout.owned = false
+  emptyDoc.setDocumentLayout(QAbstractTextDocumentLayout(h: emptyLayout.h, owned: false))
   emptyDoc.setDefaultFont(editorFont)
   result.emptyDoc        = capture(emptyDoc)
   result.eventCb         = onEvent
@@ -935,7 +941,7 @@ proc newPane*(
     closeSearch(pane)
 
   # --- Ctrl+D shortcut: show diagnostics at cursor ---
-  var diagSc = QShortcut.create(QKeySequence.create("Ctrl+D"),
+  var diagSc = QShortcut.create(QKeySequence.create("Ctrl+Shift+D"),
                                 QObject(h: pane.container.h, owned: false))
   diagSc.owned = false
   diagSc.setContext(cint 1)  # WidgetWithChildrenShortcut

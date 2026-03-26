@@ -408,6 +408,9 @@ proc build*(self: Application) =
     disp.register("editor.saveBuffer", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: p.save())
 
+    disp.register("editor.quitApplication", proc() {.raises: [].} =
+      QApplication.quit())
+
     disp.register("editor.killBuffer", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: self.paneManager.closePane(p))
 
@@ -729,7 +732,8 @@ proc build*(self: Application) =
             echo "[FileWatcher] retry readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
           sleep(50)
       if readOk:
-        buf.document().setPlainText(content)
+        if content != buf.document().toPlainText():
+          buf.document().setPlainText(content)
         buf.document().setModified(false)
         buf.externallyModified = false
         when defined(debugFileWatcher):
