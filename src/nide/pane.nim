@@ -10,6 +10,7 @@ import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout
               qscrollerproperties, qvariant, qtimer,
               qmouseevent, qkeyevent, qwheelevent, qmessagebox,
               qlistwidget, qlistwidgetitem]
+import widgets
 import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings, nimimports
 import ../commands
 
@@ -120,25 +121,6 @@ const VsplitSvg = staticRead("icons/vsplit.svg")
 const HsplitSvg = staticRead("icons/hsplit.svg")
 const SaveSvg = staticRead("icons/save.svg")
 
-proc svgIcon(svg: string, size: cint): QIcon =
-  var pm = QPixmap.create(size, size)
-  pm.fill(QColor.create("transparent"))
-  var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
-  var renderer = QSvgRenderer.create(svg.toOpenArrayByte(0, svg.high))
-  renderer.render(painter)
-  discard painter.endX()
-  QIcon.create(pm)
-
-proc svgIcon(svg: string, size: cint, color: string): QIcon =
-  var coloredSvg = svg.replace("fill=\"white\"", "fill=\"" & color & "\"")
-  coloredSvg = coloredSvg.replace("stroke=\"white\"", "stroke=\"" & color & "\"")
-  var pm = QPixmap.create(size, size)
-  pm.fill(QColor.create("transparent"))
-  var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
-  var renderer = QSvgRenderer.create(coloredSvg.toOpenArrayByte(0, coloredSvg.high))
-  renderer.render(painter)
-  discard painter.endX()
-  QIcon.create(pm)
 
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)

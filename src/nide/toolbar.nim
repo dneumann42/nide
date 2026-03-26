@@ -1,7 +1,7 @@
-import std/[tables, strutils]
+import std/tables
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
-              qabstractbutton, qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
-              qsvgrenderer, qlabel, qhboxlayout]
+              qabstractbutton, qsize, qicon, qlabel, qhboxlayout]
+import widgets
 
 const RunSvg      = staticRead("icons/run.svg")
 const BuildSvg    = staticRead("icons/build.svg")
@@ -11,26 +11,6 @@ const GraphSvg    = staticRead("icons/graph.svg")
 const LoadingSvg  = staticRead("icons/loading.svg")
 const NimSvg      = staticRead("../../res/Nim_logo.svg")
 
-proc svgIcon(svg: string, size: cint): QIcon =
-  var pm = QPixmap.create(size, size)
-  pm.fill(QColor.create("transparent"))
-  var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
-  var renderer = QSvgRenderer.create(svg.toOpenArrayByte(0, svg.high))
-  renderer.render(painter)
-  discard painter.endX()
-  QIcon.create(pm)
-
-proc svgIcon(svg: string, size: cint, color: string): QIcon =
-  var coloredSvg = svg.replace("fill=\"white\"", "fill=\"" & color & "\"")
-  coloredSvg = coloredSvg.replace("stroke=\"white\"", "stroke=\"" & color & "\"")
-  coloredSvg = coloredSvg.replace("currentColor", color)
-  var pm = QPixmap.create(size, size)
-  pm.fill(QColor.create("transparent"))
-  var painter = QPainter.create(QPaintDevice(h: pm.h, owned: false))
-  var renderer = QSvgRenderer.create(coloredSvg.toOpenArrayByte(0, coloredSvg.high))
-  renderer.render(painter)
-  discard painter.endX()
-  QIcon.create(pm)
 
 type
   ToolMenuId* = enum
@@ -160,19 +140,11 @@ proc build*(self: Toolbar) =
   discard self.toolbar.addWidget(chipWidget)
 
   const IconSize = 12
-  self.fileTreeBtn = QToolButton.create()
-  self.fileTreeBtn.setAutoRaise(true)
-  QWidget(h: self.fileTreeBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.fileTreeBtn.h, owned: false).setIcon(svgIcon(FileTreeSvg, cint IconSize))
-  QAbstractButton(h: self.fileTreeBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
-  QWidget(h: self.fileTreeBtn.h, owned: false).setEnabled(false)
+  self.fileTreeBtn = makeIconButton(FileTreeSvg, cint IconSize)
+  self.fileTreeBtn.asWidget.setEnabled(false)
   discard self.toolbar.addWidget(self.fileTreeBtn)
 
-  self.graphBtn = QToolButton.create()
-  self.graphBtn.setAutoRaise(true)
-  QWidget(h: self.graphBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.graphBtn.h, owned: false).setIcon(svgIcon(GraphSvg, cint IconSize))
-  QAbstractButton(h: self.graphBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  self.graphBtn = makeIconButton(GraphSvg, cint IconSize)
   discard self.toolbar.addWidget(self.graphBtn)
 
   self.buildFileMenu()
@@ -185,25 +157,13 @@ proc build*(self: Toolbar) =
     spacer.setSizePolicy(cint(7), cint(5))  # Expanding x Preferred
     discard self.toolbar.addWidget(spacer)
 
-  self.runBtn = QToolButton.create()
-  self.runBtn.setAutoRaise(true)
-  QWidget(h: self.runBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.runBtn.h, owned: false).setIcon(svgIcon(RunSvg, cint IconSize))
-  QAbstractButton(h: self.runBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  self.runBtn = makeIconButton(RunSvg, cint IconSize)
   discard self.toolbar.addWidget(self.runBtn)
 
-  self.buildBtn = QToolButton.create()
-  self.buildBtn.setAutoRaise(true)
-  QWidget(h: self.buildBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.buildBtn.h, owned: false).setIcon(svgIcon(BuildSvg, cint IconSize))
-  QAbstractButton(h: self.buildBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  self.buildBtn = makeIconButton(BuildSvg, cint IconSize)
   discard self.toolbar.addWidget(self.buildBtn)
 
-  self.settingsBtn = QToolButton.create()
-  self.settingsBtn.setAutoRaise(true)
-  QWidget(h: self.settingsBtn.h, owned: false).setFixedSize(cint 18, cint 18)
-  QAbstractButton(h: self.settingsBtn.h, owned: false).setIcon(svgIcon(GearSvg, cint IconSize))
-  QAbstractButton(h: self.settingsBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  self.settingsBtn = makeIconButton(GearSvg, cint IconSize)
   discard self.toolbar.addWidget(self.settingsBtn)
 
 proc setProjectName*(self: Toolbar, name: string) =

@@ -1,8 +1,8 @@
 import std/[os, algorithm, strutils]
-import seaqt/[qwidget, qvboxlayout, qlayout, qdialog, qlineedit, qlistwidget,
+import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject,
               qsplitter, qplaintextedit, qlabel]
-import highlight, codepreview
+import highlight, codepreview, widgets
 
 proc toStr*(oa: openArray[char]): string {.raises: [].} =
   result = newString(oa.len)
@@ -44,10 +44,9 @@ proc showFileFinder*(parent: QWidget,
     listWidget.owned = false
     let listH = listWidget.h
 
-    var leftLayout = QVBoxLayout.create()
-    leftLayout.owned = false
-    leftLayout.addWidget(QWidget(h: searchBox.h, owned: false))
-    leftLayout.addWidget(QWidget(h: listWidget.h, owned: false))
+    let leftLayout = vbox()
+    leftLayout.add(searchBox)
+    leftLayout.add(listWidget)
 
     # Recent files section below the file list
     var recentListH: pointer = nil
@@ -58,8 +57,8 @@ proc showFileFinder*(parent: QWidget,
       let root = try: getCurrentDir() except OSError: "."
       for f in recentFiles:
         recentList.addItem(f.relativePath(root))
-      leftLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
-      leftLayout.addWidget(QWidget(h: recentList.h, owned: false))
+      leftLayout.add(recentLabel)
+      leftLayout.add(recentList)
 
       recentList.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
         try:
@@ -73,7 +72,7 @@ proc showFileFinder*(parent: QWidget,
 
     var leftPanel = QWidget.create()
     leftPanel.owned = false
-    leftPanel.setLayout(QLayout(h: leftLayout.h, owned: false))
+    leftLayout.applyTo(leftPanel)
 
     let (preview, previewGutterH) = setupCodePreview(QWidget(h: leftPanel.h, owned: false))
     let previewHl = NimHighlighter()
@@ -87,10 +86,9 @@ proc showFileFinder*(parent: QWidget,
     splitter.setStretchFactor(cint 0, cint 1)
     splitter.setStretchFactor(cint 1, cint 2)
 
-    var outerLayout = QVBoxLayout.create()
-    outerLayout.owned = false
-    outerLayout.addWidget(QWidget(h: splitter.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: outerLayout.h, owned: false))
+    let outerLayout = vbox()
+    outerLayout.add(splitter)
+    outerLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     let root = try: getCurrentDir() except OSError: "."
     let allFiles = findNimFiles(root)
@@ -185,11 +183,10 @@ proc showBufferFinder*(parent: QWidget,
     listWidget.owned = false
     let listH = listWidget.h
 
-    var layout = QVBoxLayout.create()
-    layout.owned = false
-    layout.addWidget(QWidget(h: searchBox.h, owned: false))
-    layout.addWidget(QWidget(h: listWidget.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: layout.h, owned: false))
+    let layout = vbox()
+    layout.add(searchBox)
+    layout.add(listWidget)
+    layout.applyTo(QWidget(h: dialogH, owned: false))
 
     var filteredKeys: seq[string]
 

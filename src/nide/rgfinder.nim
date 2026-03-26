@@ -1,8 +1,8 @@
 import std/[strutils, os, osproc]
-import seaqt/[qwidget, qvboxlayout, qlayout, qdialog, qlineedit, qlistwidget,
+import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer,
               qsplitter, qplaintextedit, qtextdocument, qtextcursor, qtextobject]
-import highlight, codepreview
+import highlight, codepreview, widgets
 
 proc dbg(msg: string) {.raises: [].} =
   try: stderr.write(msg & "\n") except: discard
@@ -35,14 +35,13 @@ proc showRipgrepFinder*(parent: QWidget,
     listWidget.owned = false
     let listH = listWidget.h
 
-    var leftLayout = QVBoxLayout.create()
-    leftLayout.owned = false
-    leftLayout.addWidget(QWidget(h: searchBox.h, owned: false))
-    leftLayout.addWidget(QWidget(h: listWidget.h, owned: false))
+    let leftLayout = vbox()
+    leftLayout.add(searchBox)
+    leftLayout.add(listWidget)
 
     var leftPanel = QWidget.create()
     leftPanel.owned = false
-    leftPanel.setLayout(QLayout(h: leftLayout.h, owned: false))
+    leftLayout.applyTo(leftPanel)
 
     let (preview, previewGutterH) = setupCodePreview(QWidget(h: leftPanel.h, owned: false))
     let previewHl = NimHighlighter()
@@ -56,10 +55,9 @@ proc showRipgrepFinder*(parent: QWidget,
     splitter.setStretchFactor(cint 0, cint 1)
     splitter.setStretchFactor(cint 1, cint 2)
 
-    var outerLayout = QVBoxLayout.create()
-    outerLayout.owned = false
-    outerLayout.addWidget(QWidget(h: splitter.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: outerLayout.h, owned: false))
+    let outerLayout = vbox()
+    outerLayout.add(splitter)
+    outerLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     var currentMatches: seq[RgMatch]
     var pendingQuery = ""

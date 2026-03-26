@@ -4,9 +4,9 @@
 ## Qt widget tree — no top-level window, no compositor involvement, works
 ## correctly on Wayland.  Positioning uses viewport-local cursorRect() coords.
 
-import seaqt/[qwidget, qvboxlayout, qlistwidget, qlistwidgetitem,
+import seaqt/[qwidget, qlistwidget, qlistwidgetitem,
               qrect, qplaintextedit, qobject]
-import nimsuggest
+import nimsuggest, widgets
 
 type
   AutocompleteMenu* = ref object
@@ -135,12 +135,9 @@ proc showCompletions*(editor: QPlainTextEdit,
 
     QListWidget(h: listH, owned: false).setCurrentRow(cint 0)
 
-    var layout = QVBoxLayout.create()
-    layout.owned = false
-    layout.setContentsMargins(cint 1, cint 1, cint 1, cint 1)
-    layout.setSpacing(cint 0)
-    layout.addWidget(QWidget(h: listH, owned: false))
-    pw.setLayout(QLayout(h: layout.h, owned: false))
+    let layout = vbox(margins = (cint 1, cint 1, cint 1, cint 1))
+    layout.add(QWidget(h: listH, owned: false))
+    layout.applyTo(pw)
 
     # Size: cap height to show at most ~10 items, max 280px
     let itemH = cint 22

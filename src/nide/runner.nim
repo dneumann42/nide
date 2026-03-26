@@ -1,10 +1,10 @@
 import std/os
 import std/posix
-import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qfont,
+import seaqt/[qwidget, qfont, qboxlayout,
               qdialog, qpushbutton, qlabel, qprocess, qobject,
               qlistwidget, qlistwidgetitem, qbrush, qcolor,
               qguiapplication, qclipboard]
-import logparser
+import logparser, widgets
 
 proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,
@@ -37,20 +37,18 @@ proc runCommand*(parent: QWidget, title, command: string,
     var statusLabel = QLabel.create("Running...")
     statusLabel.owned = false
 
-    var btnRow = QHBoxLayout.create()
-    btnRow.owned = false
-    btnRow.addWidget(QWidget(h: statusLabel.h, owned: false))
+    let btnRow = hbox()
+    btnRow.add(statusLabel)
     btnRow.addStretch()
-    btnRow.addWidget(QWidget(h: killBtn.h, owned: false))
-    btnRow.addWidget(QWidget(h: copyBtn.h, owned: false))
-    btnRow.addWidget(QWidget(h: copyErrBtn.h, owned: false))
-    btnRow.addWidget(QWidget(h: closeBtn.h, owned: false))
+    btnRow.add(killBtn)
+    btnRow.add(copyBtn)
+    btnRow.add(copyErrBtn)
+    btnRow.add(closeBtn)
 
-    var mainLayout = QVBoxLayout.create()
-    mainLayout.owned = false
-    mainLayout.addWidget(QWidget(h: listWidget.h, owned: false))
-    mainLayout.addLayout(QLayout(h: btnRow.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: mainLayout.h, owned: false))
+    let mainLayout = vbox()
+    mainLayout.add(listWidget)
+    mainLayout.addSub(btnRow)
+    mainLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     # Process parented to dialog — Qt auto-cleans on dialog destroy
     var process = QProcess.create(QObject(h: dialogH, owned: false))
