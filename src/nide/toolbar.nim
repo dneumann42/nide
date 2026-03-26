@@ -20,6 +20,7 @@ type
     NewProject
     SaveProject
     OpenProject
+    CloseProject
     Quit
     SyntaxTheme
     RestartNimSuggest
@@ -71,6 +72,12 @@ proc onTriggered*(
   elif event in self.nimMenu.actions:
     self.nimMenu.actions[event].onTriggered(triggered)
 
+proc setCloseProjectVisible*(self: Toolbar, visible: bool) {.raises: [].} =
+  try:
+    self.fileMenu.actions[CloseProject].setVisible(visible)
+  except KeyError:
+    discard
+
 proc buildFileMenu(self: Toolbar) =
   self.fileMenu = ToolMenu(label: "File")
   self.fileMenu.build()
@@ -81,6 +88,7 @@ proc buildFileMenu(self: Toolbar) =
 
   self.fileMenu.actions[NewProject] = self.fileMenu.menu.addAction("New Project")
   self.fileMenu.actions[OpenProject] = self.fileMenu.menu.addAction("Open Project")
+  self.fileMenu.actions[CloseProject] = self.fileMenu.menu.addAction("Close Project")
 
   discard self.fileMenu.menu.addSeparator()
   self.fileMenu.actions[Quit] = self.fileMenu.menu.addAction("Quit")

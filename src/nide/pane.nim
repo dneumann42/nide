@@ -1,18 +1,6 @@
-import std/[os, strutils, options]
-import seaqt/[qwidget, qshortcut, qpushbutton, qvboxlayout, qhboxlayout, qlayout, qlabel, qpaintevent,
-              qstackedwidget, qfiledialog, qplaintextedit, qfont, qfontmetrics,
-              qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsize,
-              qsvgrenderer, qabstractbutton, qkeysequence,
-              qpalette, qlineargradient,
-              qlineedit, qcheckbox, qtextdocument, qtextcursor, qtextedit,
-              qregularexpression, qbrush, qtextformat, qtextobject, qprocess,
-              qevent, qpoint, qrect, qscrollbar, qscroller, qplaintextdocumentlayout,
-              qscrollerproperties, qvariant, qtimer,
-              qmouseevent, qkeyevent, qwheelevent, qmessagebox,
-              qlistwidget, qlistwidgetitem]
-import widgets
-import buffers, logparser, nimcheck, widgetref, syntaxtheme, nimsuggest, nimfinddef, autocomplete, funcprototype, nimindex, keybindings, nimimports
-import ../commands
+import autocomplete, buffers, commands, funcprototype, keybindings, logparser, nimcheck, nimfinddef, nimimports, nimindex, nimsuggest, syntaxtheme, widgetref, widgets
+import seaqt/[qabstractbutton, qabstractitemview, qbrush, qcheckbox, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
+import std/[options, os, strutils]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -27,7 +15,7 @@ proc widgetToPaintDevice(w: QWidget): QPaintDevice =
 type
   PaneEventKind* = enum
     peFileSelected, peClose, peVSplit, peHSplit,
-    peNewModule, peOpenModule, peOpenProject, peOpenRecentProject,
+    peNewModule, peOpenModule, peOpenProject, peNewProject, peOpenRecentProject,
     peGotoDefinition, peJumpBack, peJumpForward,
     peSave, peFindFile, peSwitchBuffer, peDeleteOtherWindows
 
@@ -71,7 +59,7 @@ type
     eventCb: proc(ev: PaneEvent) {.raises: [].}
     moduleBtnsRow: WidgetRef[QWidget]
     openProjectRow: WidgetRef[QWidget]
-    recentProjectsList: WidgetRef[QListWidget]
+    recentProjectsList: WidgetRef[QTableWidget]
     recentProjectsLabel: WidgetRef[QLabel]
     recentProjectPaths: seq[string]
     searchBar:     WidgetRef[QWidget]
@@ -100,6 +88,12 @@ type
     vSplitBtn:      WidgetRef[QPushButton]
     hSplitBtn:      WidgetRef[QPushButton]
     closeBtn:       WidgetRef[QPushButton]
+    hintBtn:        WidgetRef[QPushButton]
+    warnBtn:        WidgetRef[QPushButton]
+    errBtn:         WidgetRef[QPushButton]
+    diagPopoverH:   pointer
+    diagPopoverListH: pointer
+    diagPopoverLayoutH: pointer
 
   EditorWidget* = ref object of QPlainTextEdit
 
@@ -142,6 +136,43 @@ proc scheduleDiagHide(pane: Pane) {.raises: [].} =
     let t = QTimer(h: pane.diagHideTimerH, owned: false)
     t.stop()
     t.start()
+  except: discard
+
+proc updateDiagIcons*(pane: Pane) {.raises: [].} =
+  if pane.diagLines == nil or pane.buffer == nil: return
+  let currentFile = pane.buffer.path
+  var hintCount = 0
+  var warnCount = 0
+  var errCount = 0
+  for ll in pane.diagLines[]:
+    if ll.file != currentFile: continue
+    case ll.level
+    of llHint: inc hintCount
+    of llWarning: inc warnCount
+    of llError: inc errCount
+    else: discard
+  try:
+    let hintW = QWidget(h: pane.hintBtn.h, owned: false)
+    let warnW = QWidget(h: pane.warnBtn.h, owned: false)
+    let errW = QWidget(h: pane.errBtn.h, owned: false)
+    if hintCount > 0:
+      QPushButton(h: pane.hintBtn.h, owned: false).setText("◆" & $hintCount)
+      QPushButton(h: pane.hintBtn.h, owned: false).setStyleSheet("QPushButton { color: #00cccc; background: transparent; border: none; font-size: 11px; } QPushButton:hover { color: #00eeee; }")
+      hintW.show()
+    else:
+      hintW.hide()
+    if warnCount > 0:
+      QPushButton(h: pane.warnBtn.h, owned: false).setText("⚠" & $warnCount)
+      QPushButton(h: pane.warnBtn.h, owned: false).setStyleSheet("QPushButton { color: #ffaa00; background: transparent; border: none; font-size: 11px; } QPushButton:hover { color: #ffcc00; }")
+      warnW.show()
+    else:
+      warnW.hide()
+    if errCount > 0:
+      QPushButton(h: pane.errBtn.h, owned: false).setText("✗" & $errCount)
+      QPushButton(h: pane.errBtn.h, owned: false).setStyleSheet("QPushButton { color: #ff5555; background: transparent; border: none; font-size: 11px; } QPushButton:hover { color: #ff7777; }")
+      errW.show()
+    else:
+      errW.hide()
   except: discard
 
 proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
@@ -369,7 +400,8 @@ proc runCheck*(pane: Pane) {.raises: [].} =
     proc(lines: seq[LogLine]) {.raises: [].} =
       pane.diagLines[] = lines
       pane.diagReady = true
-      applySelections(pane))
+      applySelections(pane)
+      updateDiagIcons(pane))
 
 proc save*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
@@ -447,42 +479,70 @@ proc newPane*(
   let pane = result
 
   # --- Open Project row (shown when no project is open) ---
+  var newProjectBtn = QPushButton.create("New Project")
+  newProjectBtn.owned = false
   var openProjectBtn = QPushButton.create("Open Project")
   openProjectBtn.owned = false
 
-  var recentLabel = QLabel.create("Recent")
+  var recentLabel = QLabel.create("Recent Projects")
   recentLabel.owned = false
   QWidget(h: recentLabel.h, owned: false).hide()
 
-  var recentList = QListWidget.create()
-  recentList.owned = false
-  QWidget(h: recentList.h, owned: false).hide()
-  QWidget(h: recentList.h, owned: false).setMaximumHeight(cint 180)
+  var recentTable = QTableWidget.create(cint 0, cint 2)
+  recentTable.owned = false
+  let recentTableH = recentTable.h
+  QWidget(h: recentTableH, owned: false).hide()
+  QAbstractItemView(h: recentTableH, owned: false).setEditTriggers(cint 0)
+  QAbstractItemView(h: recentTableH, owned: false).setSelectionBehavior(cint 1)
+  QTableView(h: recentTableH, owned: false).setShowGrid(false)
+  QTableWidget(h: recentTableH, owned: false).setHorizontalHeaderLabels(@["Project", "Path"])
+  let thdr = QTableView(h: recentTableH, owned: false).horizontalHeader()
+  thdr.setSectionResizeMode(cint 0, cint 1)  # ResizeToContents
+  thdr.setStretchLastSection(true)
+  let vhdr = QTableView(h: recentTableH, owned: false).verticalHeader()
+  QWidget(h: vhdr.h, owned: false).setVisible(false)
 
-  var openProjectLayout = QVBoxLayout.create(); openProjectLayout.owned = false
-  var btnRow = QHBoxLayout.create(); btnRow.owned = false
-  btnRow.addStretch()
-  btnRow.addWidget(QWidget(h: openProjectBtn.h, owned: false))
-  btnRow.addStretch()
-  openProjectLayout.addLayout(QLayout(h: btnRow.h, owned: false))
-  openProjectLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
-  openProjectLayout.addWidget(QWidget(h: recentList.h, owned: false))
-
-  let recentListH = recentList.h
-  recentList.onItemDoubleClicked do(item: QListWidgetItem) {.raises: [].}:
+  recentTable.onCellDoubleClicked do(row: cint, column: cint) {.raises: [].}:
     try:
-      let lw = QListWidget(h: recentListH, owned: false)
-      let row = lw.row(item)
       if row >= 0 and row < cint(pane.recentProjectPaths.len):
         pane.eventCb(PaneEvent(pane: pane, kind: peOpenRecentProject,
                                projectPath: pane.recentProjectPaths[row]))
     except: discard
 
+  # Card: outline border only, palette-inherited background
+  var cardWidget = QWidget.create()
+  cardWidget.owned = false
+  cardWidget.setObjectName("welcomeCard")
+  cardWidget.setStyleSheet(
+    "QWidget#welcomeCard { border: 1px solid #333333; border-radius: 4px; }")
+  QWidget(h: cardWidget.h, owned: false).setMinimumWidth(cint 480)
+
+  var cardLayout = QVBoxLayout.create(); cardLayout.owned = false
+  QLayout(h: cardLayout.h, owned: false).setContentsMargins(cint 20, cint 20, cint 20, cint 20)
+  QLayout(h: cardLayout.h, owned: false).setSpacing(cint 10)
+
+  var btnRow = QHBoxLayout.create(); btnRow.owned = false
+  btnRow.addWidget(QWidget(h: newProjectBtn.h, owned: false))
+  btnRow.addWidget(QWidget(h: openProjectBtn.h, owned: false))
+  btnRow.addStretch()
+
+  cardLayout.addLayout(QLayout(h: btnRow.h, owned: false))
+  cardLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
+  cardLayout.addWidget(QWidget(h: recentTableH, owned: false))
+  cardWidget.setLayout(QLayout(h: cardLayout.h, owned: false))
+
+  # Outer centering layout
+  var openProjectLayout = QVBoxLayout.create(); openProjectLayout.owned = false
+  QLayout(h: openProjectLayout.h, owned: false).setContentsMargins(cint 40, cint 40, cint 40, cint 40)
+  openProjectLayout.addStretch()
+  openProjectLayout.addWidget(QWidget(h: cardWidget.h, owned: false))
+  openProjectLayout.addStretch()
+
   var openProjectRow = QWidget.create()
   openProjectRow.owned = false
   openProjectRow.setLayout(QLayout(h: openProjectLayout.h, owned: false))
 
-  pane.recentProjectsList = capture(recentList)
+  pane.recentProjectsList = capture(recentTable)
   pane.recentProjectsLabel = capture(recentLabel)
 
   # --- Module buttons row (shown when project is open) ---
@@ -724,6 +784,27 @@ proc newPane*(
   var statusLabel = QLabel.create(StatusDark)
   statusLabel.owned = false
 
+  var hintBtn = QPushButton.create("")
+  hintBtn.owned = false
+  hintBtn.setFlat(true)
+  QWidget(h: hintBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
+  QWidget(h: hintBtn.h, owned: false).setMinimumWidth(cint 24)
+  QWidget(h: hintBtn.h, owned: false).setFixedHeight(cint 18)
+
+  var warnBtn = QPushButton.create("")
+  warnBtn.owned = false
+  warnBtn.setFlat(true)
+  QWidget(h: warnBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
+  QWidget(h: warnBtn.h, owned: false).setMinimumWidth(cint 24)
+  QWidget(h: warnBtn.h, owned: false).setFixedHeight(cint 18)
+
+  var errBtn = QPushButton.create("")
+  errBtn.owned = false
+  errBtn.setFlat(true)
+  QWidget(h: errBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
+  QWidget(h: errBtn.h, owned: false).setMinimumWidth(cint 24)
+  QWidget(h: errBtn.h, owned: false).setFixedHeight(cint 18)
+
   const IconSize = 10
 
   var vSplitBtn = QPushButton.create("")
@@ -757,6 +838,9 @@ proc newPane*(
   QLayout(h: headerLayout.h, owned: false).setContentsMargins(cint 4, cint 2, cint 4, cint 2)
   headerLayout.addWidget(QWidget(h: label.h, owned: false), cint(0), cint(0))
   headerLayout.addWidget(QWidget(h: statusLabel.h, owned: false), cint(0), cint(0))
+  headerLayout.addWidget(QWidget(h: hintBtn.h, owned: false), cint(0), cint(0))
+  headerLayout.addWidget(QWidget(h: warnBtn.h, owned: false), cint(0), cint(0))
+  headerLayout.addWidget(QWidget(h: errBtn.h, owned: false), cint(0), cint(0))
   headerLayout.addStretch()
   headerLayout.addWidget(QWidget(h: saveBtn.h, owned: false), cint(0), cint(0))
   headerLayout.addWidget(QWidget(h: vSplitBtn.h, owned: false), cint(0), cint(0))
@@ -888,7 +972,12 @@ proc newPane*(
   result.vSplitBtn       = capture(vSplitBtn)
   result.hSplitBtn       = capture(hSplitBtn)
   result.closeBtn        = capture(closeBtn)
+  result.hintBtn         = capture(hintBtn)
+  result.warnBtn         = capture(warnBtn)
+  result.errBtn          = capture(errBtn)
 
+  newProjectBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peNewProject))
   openProjectBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peOpenProject))
   newModuleBtn.onClicked do() {.raises: [].}:
@@ -902,6 +991,141 @@ proc newPane*(
     onEvent(PaneEvent(pane: pane, kind: peHSplit))
   closeBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peClose))
+
+  proc hideDiagPopover(pane: Pane) {.raises: [].} =
+    if pane.diagPopoverH != nil:
+      try: QWidget(h: pane.diagPopoverH, owned: false).hide()
+      except: discard
+
+  proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
+    if pane.diagLines == nil or pane.diagLines[].len == 0: return
+    try:
+      if pane.diagPopoverH != nil:
+        try:
+          QWidget(h: pane.diagPopoverH, owned: false).delete()
+        except: discard
+        pane.diagPopoverH = nil
+        pane.diagPopoverListH = nil
+        pane.diagPopoverLayoutH = nil
+
+      var popover = QWidget.create()
+      popover.owned = false
+      popover.setWindowFlags(cint(0x00000008 or 0x00000001))  # Qt::Popup | Qt::FramelessWindowHint
+      popover.setObjectName("diagPopover")
+      popover.setStyleSheet("""
+        QWidget#diagPopover {
+          background: #1e1e2e;
+          border: 1px solid #585b70;
+          border-radius: 4px;
+        }
+        QScrollArea {
+          background: transparent;
+          border: none;
+        }
+        QScrollBar:vertical {
+          background: #313244;
+          width: 8px;
+          border-radius: 4px;
+        }
+        QScrollBar::handle:vertical {
+          background: #585b70;
+          border-radius: 4px;
+          min-height: 20px;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+          height: 0px;
+        }
+        QLabel {
+          color: #cdd6f4;
+          font-family: 'Fira Code', monospace;
+          font-size: 12px;
+          background: transparent;
+        }
+      """)
+      pane.diagPopoverH = popover.h
+
+      var scroll = QScrollArea.create(popover)
+      scroll.owned = false
+      scroll.setWidgetResizable(true)
+      scroll.setHorizontalScrollBarPolicy(cint(0))  # Qt::ScrollBarAlwaysOff
+
+      var listW = QWidget.create(scroll)
+      listW.owned = false
+      var listLayout = QVBoxLayout.create()
+      listLayout.owned = false
+      listLayout.setContentsMargins(cint 4, cint 4, cint 4, cint 4)
+      listLayout.setSpacing(cint 2)
+      listW.setLayout(QLayout(h: listLayout.h, owned: false))
+      pane.diagPopoverListH = listW.h
+      pane.diagPopoverLayoutH = listLayout.h
+
+      QScrollArea(h: scroll.h, owned: false).setWidget(QWidget(h: listW.h, owned: false))
+      var popoverLayout = QVBoxLayout.create()
+      popoverLayout.owned = false
+      popoverLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+      popoverLayout.setSpacing(cint 0)
+      popoverLayout.addWidget(QWidget(h: scroll.h, owned: false))
+      popover.setLayout(QLayout(h: popoverLayout.h, owned: false))
+
+      for ll in pane.diagLines[]:
+        if ll.file != pane.buffer.path: continue
+        if ll.level != filterLevel: continue
+        let (label, color) = case ll.level
+          of llError:   ("Error",   "#ff5555")
+          of llWarning: ("Warning", "#ffaa00")
+          of llHint:    ("Hint",    "#00cccc")
+          else: continue
+        let escaped = ll.raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        let text = label & ": " & escaped & " (line " & $ll.line & ")"
+        let lineNum = ll.line
+
+        var itemBtn = QPushButton.create(text)
+        itemBtn.owned = false
+        itemBtn.setFlat(true)
+        itemBtn.setStyleSheet(
+          "QPushButton { color: #cdd6f4; background: transparent; border: none; text-align: left; padding: 6px 8px; font-family: 'Fira Code', monospace; font-size: 12px; }" &
+          "QPushButton:hover { background: #313244; }")
+        itemBtn.onClicked do() {.raises: [].}:
+          hideDiagPopover(pane)
+          if pane.buffer != nil:
+            let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+            let doc = ed.document()
+            let blk = doc.findBlockByNumber(cint(lineNum - 1))
+            var cur = ed.textCursor()
+            cur.setPosition(blk.position())
+            ed.setTextCursor(cur)
+            ed.ensureCursorVisible()
+
+        listLayout.addWidget(QWidget(h: itemBtn.h, owned: false))
+
+      if listLayout.count() == 0:
+        return
+
+      let popW = QWidget(h: pane.diagPopoverH, owned: false)
+      popW.adjustSize()
+      let pw = popW.width()
+      let ph = popW.height()
+
+      var btnPos: QPoint
+      case filterLevel
+      of llHint: btnPos = QPushButton(h: pane.hintBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+      of llWarning: btnPos = QPushButton(h: pane.warnBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+      of llError: btnPos = QPushButton(h: pane.errBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+      else: btnPos = QPoint.create(cint 0, cint 0)
+
+      var yPos = btnPos.y() + 24
+
+      popW.setGeometry(btnPos.x(), yPos, pw, min(ph, cint 400))
+      popW.raiseX()
+      popW.show()
+    except: discard
+
+  hintBtn.onClicked do() {.raises: [].}:
+    showDiagPopover(pane, llHint)
+  warnBtn.onClicked do() {.raises: [].}:
+    showDiagPopover(pane, llWarning)
+  errBtn.onClicked do() {.raises: [].}:
+    showDiagPopover(pane, llError)
 
   # --- Search helpers ---
   proc moveToCurrent(pane: Pane) {.raises: [].} =
@@ -1034,6 +1258,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   pane.diagLines[] = @[]
   pane.diagReady = false
   applySelections(pane)
+  updateDiagIcons(pane)
   applyEditorTheme(pane)
   runCheck(pane)
 
@@ -1049,6 +1274,7 @@ proc clearBuffer*(pane: Pane) =
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
   pane.diagReady = false
+  updateDiagIcons(pane)
 
 proc openModuleDialog*(pane: Pane) {.raises: [].} =
   let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))
@@ -1280,12 +1506,21 @@ proc setProjectOpen*(pane: Pane, open: bool) =
 proc setRecentProjects*(pane: Pane, projects: seq[string]) {.raises: [].} =
   try:
     pane.recentProjectPaths = projects
-    let lw = pane.recentProjectsList.get()
-    lw.clear()
+    let tw = pane.recentProjectsList.get()
+    tw.setRowCount(cint 0)
     for p in projects:
-      lw.addItem(p.lastPathPart)
+      let row = tw.rowCount()
+      tw.insertRow(row)
+      var nameItem = QTableWidgetItem.create(p.lastPathPart)
+      nameItem.owned = false
+      nameItem.setFlags(cint 0x21)  # ItemIsSelectable | ItemIsEnabled
+      var pathItem = QTableWidgetItem.create(p)
+      pathItem.owned = false
+      pathItem.setFlags(cint 0x21)
+      tw.setItem(row, cint 0, nameItem)
+      tw.setItem(row, cint 1, pathItem)
     let hasItems = projects.len > 0
-    QWidget(h: lw.h, owned: false).setVisible(hasItems)
+    QWidget(h: tw.h, owned: false).setVisible(hasItems)
     QWidget(h: pane.recentProjectsLabel.get().h, owned: false).setVisible(hasItems)
   except: discard
 

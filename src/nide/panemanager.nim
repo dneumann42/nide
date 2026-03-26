@@ -7,6 +7,7 @@ type
     onFileSelected*: proc(pane: Pane, path: string) {.raises: [].}
     onNewModule*: proc(pane: Pane) {.raises: [].}
     onOpenModule*: proc(pane: Pane) {.raises: [].}
+    onNewProject*: proc(pane: Pane) {.raises: [].}
     onOpenProject*: proc(pane: Pane) {.raises: [].}
     onOpenRecentProject*: proc(pane: Pane, path: string) {.raises: [].}
     onGotoDefinition*: proc(pane: Pane, path: string, line: int, col: int) {.raises: [].}
@@ -42,6 +43,8 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
       except: discard
     of peNewModule:    self.callbacks.onNewModule(ev.pane)
     of peOpenModule:   self.callbacks.onOpenModule(ev.pane)
+    of peNewProject:
+      if self.callbacks.onNewProject != nil: self.callbacks.onNewProject(ev.pane)
     of peOpenProject:  self.callbacks.onOpenProject(ev.pane)
     of peOpenRecentProject:
       if self.callbacks.onOpenRecentProject != nil:

@@ -135,12 +135,28 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   for panel in self.paneManager.panels:
     panel.nimSuggest = self.nimSuggest
   self.paneManager.panels[0].triggerOpenModule()
+  self.toolbar.setCloseProjectVisible(true)
 
 proc openProject(self: Application) {.raises: [].} =
   let file = QFileDialog.getOpenFileName(
     QWidget(h: self.root.h, owned: false), "", "", "Nimble files (*.nimble)")
   if file.len == 0: return
   self.openProject(file)
+
+proc closeProject*(self: Application) {.raises: [].} =
+  self.currentProject = ""
+  for panel in self.paneManager.panels:
+    panel.clearBuffer()
+  self.paneManager.setProjectOpen(false)
+  self.bufferManager = BufferManager.init()
+  self.toolbar.setProjectName("—")
+  self.fileTree.setRoot("")
+  self.toolbar.setFileTreeEnabled(false)
+  self.toolbar.setFileTreeIconColor("#888888")
+  if self.nimSuggest != nil:
+    self.nimSuggest.kill()
+    self.nimSuggest = nil
+  self.toolbar.setCloseProjectVisible(false)
 
 proc closeBuffer*(self: Application, name: string) =
   for panel in self.paneManager.panels:
@@ -153,6 +169,7 @@ proc build*(self: Application) =
   # WA_TranslucentBackground is set by setupWindowOpacity below
   QWidget(h: self.root.h, owned: false).setMinimumSize(cint(800), cint(480))
   self.toolbar.build()
+  self.toolbar.setCloseProjectVisible(false)
 
   self.root.addToolBar(QToolBar(h: self.toolbar.widget().h, owned: false))
 
@@ -223,6 +240,8 @@ proc build*(self: Application) =
         proc(path: string) {.raises: [].} =
           let buf = self.openFile(path)
           pane.setBuffer(buf)),
+    onNewProject: proc(pane: Pane) {.raises: [].} =
+      showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager),
     onOpenProject: proc(pane: Pane) {.raises: [].} =
       self.openProject(),
     onOpenRecentProject: proc(pane: Pane, path: string) {.raises: [].} =
@@ -600,7 +619,7 @@ proc build*(self: Application) =
   self.toolbar.onTriggered(OpenModule) do():
     if self.paneManager.panels.len > 0:
       self.paneManager.panels[0].triggerOpenModule()
-  
+
   self.toolbar.onTriggered(OpenFile) do():
     let file = QFileDialog.getOpenFileName(
         QWidget(h: self.root.h, owned: false), "", "", "All files (*.*)")
@@ -612,6 +631,9 @@ proc build*(self: Application) =
 
   self.toolbar.onTriggered(OpenProject) do():
     self.openProject()
+
+  self.toolbar.onTriggered(CloseProject) do():
+    self.closeProject()
 
   self.toolbar.onTriggered(Quit) do():
     QApplication.quit()

@@ -1,10 +1,6 @@
-import std/os
-import std/posix
-import seaqt/[qwidget, qfont, qboxlayout,
-              qdialog, qpushbutton, qlabel, qprocess, qobject,
-              qlistwidget, qlistwidgetitem, qbrush, qcolor,
-              qguiapplication, qclipboard]
 import logparser, widgets
+import seaqt/[qboxlayout, qbrush, qclipboard, qcolor, qdialog, qfont, qguiapplication, qlabel, qlistwidget, qlistwidgetitem, qobject, qprocess, qpushbutton, qwidget]
+import std/[os, posix]
 
 proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,
