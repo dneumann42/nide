@@ -189,6 +189,39 @@ proc cutFileTreeItem(self: Application, path: string) =
   self.fileTreeClipboardPath = path
   self.fileTreeClipboardMode = ftcCut
 
+proc moveFileTreeItem(self: Application, sourcePath, destinationDir: string): bool {.raises: [].} =
+  if not pathExistsAny(sourcePath):
+    self.showFileTreeError("Move Failed", "The source item no longer exists.")
+    return
+  if not dirExists(destinationDir):
+    return
+
+  let destinationPath = destinationDir / sourcePath.lastPathPart()
+  let sourceIsDir = dirExists(sourcePath)
+
+  if normalizedFsPath(sourcePath) == normalizedFsPath(destinationPath):
+    return
+  if normalizedFsPath(sourcePath.parentDir()) == normalizedFsPath(destinationDir):
+    return
+  if pathExistsAny(destinationPath):
+    self.showFileTreeError("Move Failed", "An item with that name already exists in the destination.")
+    return
+  if sourceIsDir and isSameOrChildPath(destinationDir, sourcePath):
+    self.showFileTreeError("Move Failed", "Cannot move a folder into itself or one of its children.")
+    return
+
+  try:
+    if sourceIsDir:
+      moveDir(sourcePath, destinationPath)
+    else:
+      moveFile(sourcePath, destinationPath)
+    self.syncOpenBuffersAfterRename(sourcePath, destinationPath, sourceIsDir)
+    self.syncClipboardAfterRename(sourcePath, destinationPath, sourceIsDir)
+    self.refreshFileTree()
+    result = true
+  except Exception as exc:
+    self.showFileTreeError("Move Failed", exc.msg)
+
 proc pasteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
   if not self.canPasteInFileTree():
     self.showFileTreeInfo("Paste", "Nothing to paste.")
@@ -221,16 +254,12 @@ proc pasteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [
         copyDir(sourcePath, destinationPath)
       else:
         copyFile(sourcePath, destinationPath)
+      self.refreshFileTree()
     of ftcCut:
-      if sourceIsDir:
-        moveDir(sourcePath, destinationPath)
-      else:
-        moveFile(sourcePath, destinationPath)
-      self.syncOpenBuffersAfterRename(sourcePath, destinationPath, sourceIsDir)
-      self.clearFileTreeClipboard()
+      if self.moveFileTreeItem(sourcePath, destinationDir):
+        self.clearFileTreeClipboard()
     of ftcNone:
       discard
-    self.refreshFileTree()
   except Exception as exc:
     self.showFileTreeError("Paste Failed", exc.msg)
 
@@ -852,6 +881,8 @@ proc build*(self: Application) =
     self.openInPane(target, path)
   self.fileTree.canPaste = proc(): bool {.raises: [].} =
     self.canPasteInFileTree()
+  self.fileTree.onMoveRequested = proc(sourcePath: string, targetDir: string): bool {.raises: [].} =
+    self.moveFileTreeItem(sourcePath, targetDir)
   self.fileTree.onMenuAction = proc(action: FileTreeMenuAction, path: string, isDir: bool) {.raises: [].} =
     case action
     of ftCopy:

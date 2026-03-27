@@ -1,6 +1,8 @@
 import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemview,
-               qabstractitemmodel, qheaderview, qlabel, qabstractfileiconprovider,
-               qmenu, qaction, qcontextmenuevent]
+               qabstractitemmodel, qabstractscrollarea, qheaderview, qlabel,
+               qabstractfileiconprovider, qmenu, qaction, qcontextmenuevent,
+               qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl]
+import std/[os, strutils]
 import ./devicons
 
 const TreeWidth = 320
@@ -19,6 +21,61 @@ type
     onFileSelected*:  proc(path: string) {.raises: [].}
     canPaste*:        proc(): bool {.raises: [].}
     onMenuAction*:    proc(action: FileTreeMenuAction, path: string, isDir: bool) {.raises: [].}
+    onMoveRequested*: proc(sourcePath: string, targetDir: string): bool {.raises: [].}
+
+proc pathExistsAny(path: string): bool =
+  fileExists(path) or dirExists(path)
+
+proc normalizedFsPath(path: string): string =
+  try:
+    result = normalizePathEnd(normalizedPath(absolutePath(path)), false)
+  except CatchableError:
+    result = normalizePathEnd(normalizedPath(path), false)
+  when defined(windows):
+    result = result.toLowerAscii()
+
+proc isSameOrChildPath(path, root: string): bool =
+  let normalizedPath = normalizedFsPath(path)
+  let normalizedRoot = normalizedFsPath(root)
+  var prefix = normalizedRoot
+  prefix.add(DirSep)
+  normalizedPath == normalizedRoot or normalizedPath.startsWith(prefix)
+
+proc draggedLocalPaths(event: QDropEvent, rootPath: string): seq[string] {.raises: [].} =
+  if rootPath.len == 0:
+    return
+  let mime = event.mimeData()
+  if not mime.hasUrls():
+    return
+  for url in mime.urls():
+    if not url.isLocalFile():
+      continue
+    let localPath = url.toLocalFile()
+    if localPath.len == 0:
+      continue
+    if isSameOrChildPath(localPath, rootPath):
+      result.add(localPath)
+
+proc dropTargetDir(tree: QTreeView, model: QFileSystemModel, pos: QPoint): string {.raises: [].} =
+  let index = tree.indexAt(pos)
+  if not index.isValid() or not model.isDir(index):
+    return ""
+  model.filePath(index)
+
+proc canDropPaths(sourcePaths: seq[string], targetDir: string): bool =
+  if sourcePaths.len != 1 or targetDir.len == 0:
+    return false
+  let sourcePath = sourcePaths[0]
+  let destinationPath = targetDir / sourcePath.lastPathPart()
+  if normalizedFsPath(sourcePath) == normalizedFsPath(destinationPath):
+    return false
+  if normalizedFsPath(sourcePath.parentDir()) == normalizedFsPath(targetDir):
+    return false
+  if dirExists(sourcePath) and isSameOrChildPath(targetDir, sourcePath):
+    return false
+  if pathExistsAny(destinationPath):
+    return false
+  true
 
 proc reposition*(self: FileTree) {.raises: [].} =
   ## Repositions the floating panel to the top-left of the main window content area.
@@ -56,7 +113,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   # File system model
   self.model = QFileSystemModel.create()
   self.model.owned = false
-  self.model.setReadOnly(true)
+  self.model.setReadOnly(false)
 
   # Custom devicon provider
   self.iconProvider = newDevIconProvider()
@@ -66,6 +123,57 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   # Tree view
   let modelH = self.model.h
   var treeVtbl = new QTreeViewVTable
+  treeVtbl.dragEnterEvent = proc(tree: QTreeView, event: QDragEnterEvent) {.raises: [], gcsafe.} =
+    try:
+      let model = QFileSystemModel(h: modelH, owned: false)
+      let dropEvent = QDropEvent(h: event.h, owned: false)
+      let sourcePaths = draggedLocalPaths(dropEvent, model.rootPath())
+      if self.onMoveRequested != nil and sourcePaths.len == 1:
+        event.accept()
+      else:
+        event.ignore()
+    except:
+      try: event.ignore() except: discard
+
+  treeVtbl.dragMoveEvent = proc(tree: QTreeView, event: QDragMoveEvent) {.raises: [], gcsafe.} =
+    try:
+      let model = QFileSystemModel(h: modelH, owned: false)
+      let dropEvent = QDropEvent(h: event.h, owned: false)
+      let sourcePaths = draggedLocalPaths(dropEvent, model.rootPath())
+      let targetDir = dropTargetDir(tree, model, dropEvent.pos())
+      if self.onMoveRequested != nil and canDropPaths(sourcePaths, targetDir):
+        dropEvent.setDropAction(cint 2)  # Qt::MoveAction
+        event.accept()
+      else:
+        event.ignore()
+    except:
+      try: event.ignore() except: discard
+
+  treeVtbl.dropEvent = proc(tree: QTreeView, event: QDropEvent) {.raises: [], gcsafe.} =
+    try:
+      let model = QFileSystemModel(h: modelH, owned: false)
+      let sourcePaths = draggedLocalPaths(event, model.rootPath())
+      let targetDir = dropTargetDir(tree, model, event.pos())
+      if self.onMoveRequested == nil or not canDropPaths(sourcePaths, targetDir):
+        event.ignore()
+        return
+
+      let targetIndex = tree.indexAt(event.pos())
+      if targetIndex.isValid():
+        QAbstractItemView(h: tree.h, owned: false).setCurrentIndex(targetIndex)
+
+      var accepted = false
+      {.cast(gcsafe).}:
+        accepted = self.onMoveRequested(sourcePaths[0], targetDir)
+
+      if accepted:
+        event.setDropAction(cint 2)  # Qt::MoveAction
+        event.acceptProposedAction()
+      else:
+        event.ignore()
+    except:
+      try: event.ignore() except: discard
+
   treeVtbl.contextMenuEvent = proc(tree: QTreeView, event: QContextMenuEvent) {.raises: [], gcsafe.} =
     try:
       let index = tree.indexAt(event.pos())
@@ -129,8 +237,17 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   self.treeView.setModel(QAbstractItemModel(h: self.model.h, owned: false))
   self.treeView.setHeaderHidden(true)
   self.treeView.setAnimated(true)
+  self.treeView.setAutoExpandDelay(cint 600)
   self.treeView.setIndentation(cint 16)
   self.treeView.setUniformRowHeights(true)
+  let treeView = QAbstractItemView(h: self.treeView.h, owned: false)
+  treeView.setEditTriggers(cint 0)  # NoEditTriggers
+  treeView.setDragEnabled(true)
+  treeView.setDropIndicatorShown(true)
+  treeView.setDragDropMode(cint 4)  # InternalMove
+  treeView.setDefaultDropAction(cint 2)  # Qt::MoveAction
+  QWidget(h: self.treeView.h, owned: false).setAcceptDrops(true)
+  QAbstractScrollArea(h: self.treeView.h, owned: false).viewport().setAcceptDrops(true)
 
   # Hide size, type, date-modified columns (1, 2, 3)
   let hdr = self.treeView.header()
