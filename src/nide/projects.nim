@@ -7,7 +7,7 @@ type
   Project* = object
     path*: string
     name*, version*, author*: string
-    description*, license*: string
+    description*, license*, nimVersion*: string
 
   ProjectRecentFiles* = object
     project*: string
@@ -67,7 +67,7 @@ license     = "{project.license}"
 srcDir      = "src"
 
 # Dependencies
-requires "nim >= 2.0.0"
+requires "nim >= {project.nimVersion}"
 """
 
     writeFile(projectDir / project.name & ".nimble", nimbleContents)
