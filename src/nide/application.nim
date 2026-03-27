@@ -1,10 +1,13 @@
 import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
-import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qkeysequence, qmainwindow, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
+import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[os, strutils]
 
 import "../../tools/nim_graph" as nim_graph
 
 type
+  FileTreeClipboardMode = enum
+    ftcNone, ftcCopy, ftcCut
+
   PaneKeyBinding* = object
     sequence: string
     callback*: proc(target: Pane) {.raises: [].}
@@ -34,6 +37,296 @@ type
     loaderTimer: QTimer
     projectDiagLines: ref seq[LogLine]
     projectCheckProcessH: ref pointer
+    fileTreeClipboardPath: string
+    fileTreeClipboardMode: FileTreeClipboardMode
+
+proc appWidget(self: Application): QWidget =
+  QWidget(h: self.root.h, owned: false)
+
+proc pathExistsAny(path: string): bool =
+  fileExists(path) or dirExists(path)
+
+proc normalizedFsPath(path: string): string =
+  try:
+    result = normalizePathEnd(normalizedPath(absolutePath(path)), false)
+  except CatchableError:
+    result = normalizePathEnd(normalizedPath(path), false)
+  when defined(windows):
+    result = result.toLowerAscii()
+
+proc isSameOrChildPath(path, root: string): bool =
+  let normalizedPath = normalizedFsPath(path)
+  let normalizedRoot = normalizedFsPath(root)
+  var prefix = normalizedRoot
+  prefix.add(DirSep)
+  normalizedPath == normalizedRoot or normalizedPath.startsWith(prefix)
+
+proc remapPath(oldPath, oldRoot, newRoot: string): string =
+  let normalizedOldPath = normalizedFsPath(oldPath)
+  let normalizedOldRoot = normalizedFsPath(oldRoot)
+  let normalizedNewRoot = normalizedFsPath(newRoot)
+  if normalizedOldPath == normalizedOldRoot:
+    normalizedNewRoot
+  else:
+    try:
+      normalizedNewRoot / relativePath(normalizedOldPath, normalizedOldRoot)
+    except CatchableError:
+      normalizedNewRoot / oldPath.lastPathPart()
+
+proc showFileTreeError(self: Application, title, message: string) {.raises: [].} =
+  discard QMessageBox.critical(self.appWidget(), title, message)
+
+proc showFileTreeInfo(self: Application, title, message: string) {.raises: [].} =
+  discard QMessageBox.information(self.appWidget(), title, message)
+
+proc promptFileTreeText(
+    self: Application,
+    title, labelText: string,
+    defaultValue = "",
+    okText = "OK"): string {.raises: [].} =
+  var dialog = QInputDialog.create(self.appWidget())
+  dialog.owned = false
+  dialog.setWindowTitle(title)
+  dialog.setInputMode(cint 0)  # TextInput
+  dialog.setLabelText(labelText)
+  dialog.setTextValue(defaultValue)
+  dialog.setOkButtonText(okText)
+  dialog.setCancelButtonText("Cancel")
+  if dialog.exec() == 1:
+    result = dialog.textValue()
+
+proc validateFileTreeName(name: string): string =
+  if name.strip().len == 0:
+    return "Name cannot be empty."
+  if name == "." or name == "..":
+    return "Name must not be '.' or '..'."
+  if '/' in name or '\\' in name:
+    return "Name must not contain path separators."
+
+proc clearFileTreeClipboard(self: Application) =
+  self.fileTreeClipboardPath = ""
+  self.fileTreeClipboardMode = ftcNone
+
+proc canPasteInFileTree(self: Application): bool =
+  self.fileTreeClipboardMode != ftcNone and self.fileTreeClipboardPath.len > 0
+
+proc refreshFileTree(self: Application) {.raises: [].} =
+  if self.currentProject.len > 0:
+    self.fileTree.setRoot(self.currentProject)
+
+proc syncClipboardAfterRename(self: Application, oldPath, newPath: string, isDir: bool) =
+  if self.fileTreeClipboardPath.len == 0:
+    return
+  if isDir:
+    if isSameOrChildPath(self.fileTreeClipboardPath, oldPath):
+      self.fileTreeClipboardPath = remapPath(self.fileTreeClipboardPath, oldPath, newPath)
+  elif normalizedFsPath(self.fileTreeClipboardPath) == normalizedFsPath(oldPath):
+    self.fileTreeClipboardPath = newPath
+
+proc clearClipboardIfDeleted(self: Application, deletedPath: string, isDir: bool) =
+  if self.fileTreeClipboardPath.len == 0:
+    return
+  if isDir:
+    if isSameOrChildPath(self.fileTreeClipboardPath, deletedPath):
+      self.clearFileTreeClipboard()
+  elif normalizedFsPath(self.fileTreeClipboardPath) == normalizedFsPath(deletedPath):
+    self.clearFileTreeClipboard()
+
+proc syncOpenBuffersAfterRename(self: Application, oldPath, newPath: string, isDir: bool) {.raises: [].} =
+  var changedBuffers: seq[Buffer]
+  for buf in self.bufferManager.items:
+    let shouldUpdate =
+      if isDir: isSameOrChildPath(buf.path, oldPath)
+      else: normalizedFsPath(buf.path) == normalizedFsPath(oldPath)
+    if not shouldUpdate:
+      continue
+
+    let previousPath = buf.path
+    let updatedPath = if isDir: remapPath(previousPath, oldPath, newPath) else: newPath
+    discard self.fileWatcher.removePath(previousPath)
+    buf.name = updatedPath
+    buf.path = updatedPath
+    if fileExists(updatedPath):
+      discard self.fileWatcher.addPath(updatedPath)
+    changedBuffers.add(buf)
+
+  for panel in self.paneManager.panels:
+    if panel.buffer == nil:
+      continue
+    for buf in changedBuffers:
+      if panel.buffer == buf:
+        panel.setBuffer(buf)
+        break
+
+proc syncOpenBuffersAfterDelete(self: Application, deletedPath: string, isDir: bool) {.raises: [].} =
+  var deletedBuffers: seq[Buffer]
+  for buf in self.bufferManager.items:
+    let shouldDelete =
+      if isDir: isSameOrChildPath(buf.path, deletedPath)
+      else: normalizedFsPath(buf.path) == normalizedFsPath(deletedPath)
+    if shouldDelete:
+      deletedBuffers.add(buf)
+      discard self.fileWatcher.removePath(buf.path)
+
+  for panel in self.paneManager.panels:
+    if panel.buffer == nil:
+      continue
+    for buf in deletedBuffers:
+      if panel.buffer == buf:
+        panel.clearBuffer()
+        break
+
+  if isDir:
+    self.bufferManager.closePathsUnder(deletedPath)
+  else:
+    self.bufferManager.closePath(deletedPath)
+
+proc copyFileTreeItem(self: Application, path: string) =
+  self.fileTreeClipboardPath = path
+  self.fileTreeClipboardMode = ftcCopy
+
+proc cutFileTreeItem(self: Application, path: string) =
+  self.fileTreeClipboardPath = path
+  self.fileTreeClipboardMode = ftcCut
+
+proc pasteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
+  if not self.canPasteInFileTree():
+    self.showFileTreeInfo("Paste", "Nothing to paste.")
+    return
+
+  let sourcePath = self.fileTreeClipboardPath
+  if not pathExistsAny(sourcePath):
+    self.clearFileTreeClipboard()
+    self.showFileTreeError("Paste Failed", "The source item no longer exists.")
+    return
+
+  let destinationDir = if isDir: path else: path.parentDir()
+  let destinationPath = destinationDir / sourcePath.lastPathPart()
+  let sourceIsDir = dirExists(sourcePath)
+
+  if normalizedFsPath(sourcePath) == normalizedFsPath(destinationPath):
+    self.showFileTreeError("Paste Failed", "The destination is the same as the source.")
+    return
+  if pathExistsAny(destinationPath):
+    self.showFileTreeError("Paste Failed", "An item with that name already exists in the destination.")
+    return
+  if sourceIsDir and isSameOrChildPath(destinationDir, sourcePath):
+    self.showFileTreeError("Paste Failed", "Cannot paste a folder into itself or one of its children.")
+    return
+
+  try:
+    case self.fileTreeClipboardMode
+    of ftcCopy:
+      if sourceIsDir:
+        copyDir(sourcePath, destinationPath)
+      else:
+        copyFile(sourcePath, destinationPath)
+    of ftcCut:
+      if sourceIsDir:
+        moveDir(sourcePath, destinationPath)
+      else:
+        moveFile(sourcePath, destinationPath)
+      self.syncOpenBuffersAfterRename(sourcePath, destinationPath, sourceIsDir)
+      self.clearFileTreeClipboard()
+    of ftcNone:
+      discard
+    self.refreshFileTree()
+  except Exception as exc:
+    self.showFileTreeError("Paste Failed", exc.msg)
+
+proc renameFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
+  let currentName = path.lastPathPart()
+  let newName = self.promptFileTreeText("Rename", "New name", currentName, "Rename")
+  if newName.len == 0:
+    return
+
+  let validationError = validateFileTreeName(newName)
+  if validationError.len > 0:
+    self.showFileTreeError("Rename Failed", validationError)
+    return
+  if newName == currentName:
+    return
+
+  let destinationPath = path.parentDir() / newName
+  if pathExistsAny(destinationPath):
+    self.showFileTreeError("Rename Failed", "An item with that name already exists.")
+    return
+
+  try:
+    if isDir:
+      moveDir(path, destinationPath)
+    else:
+      moveFile(path, destinationPath)
+    self.syncOpenBuffersAfterRename(path, destinationPath, isDir)
+    self.syncClipboardAfterRename(path, destinationPath, isDir)
+    self.refreshFileTree()
+  except Exception as exc:
+    self.showFileTreeError("Rename Failed", exc.msg)
+
+proc deleteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
+  let parent = self.appWidget()
+  let itemType = if isDir: "folder" else: "file"
+  let clicked = QMessageBox.warning(
+    parent,
+    "Delete",
+    "Delete this " & itemType & "?\n" & path,
+    cint(16384 or 4194304),  # Yes | Cancel
+    cint 4194304)
+  if clicked != cint 16384:
+    return
+
+  try:
+    if isDir:
+      removeDir(path)
+    else:
+      removeFile(path)
+    self.syncOpenBuffersAfterDelete(path, isDir)
+    self.clearClipboardIfDeleted(path, isDir)
+    self.refreshFileTree()
+  except Exception as exc:
+    self.showFileTreeError("Delete Failed", exc.msg)
+
+proc createFileTreeFile(self: Application, dir: string) {.raises: [].} =
+  let name = self.promptFileTreeText("New File", "File name", "", "Create")
+  if name.len == 0:
+    return
+
+  let validationError = validateFileTreeName(name)
+  if validationError.len > 0:
+    self.showFileTreeError("Create File Failed", validationError)
+    return
+
+  let path = dir / name
+  if pathExistsAny(path):
+    self.showFileTreeError("Create File Failed", "A file or folder with that name already exists.")
+    return
+
+  try:
+    writeFile(path, "")
+    self.refreshFileTree()
+  except Exception as exc:
+    self.showFileTreeError("Create File Failed", exc.msg)
+
+proc createFileTreeFolder(self: Application, dir: string) {.raises: [].} =
+  let name = self.promptFileTreeText("New Folder", "Folder name", "", "Create")
+  if name.len == 0:
+    return
+
+  let validationError = validateFileTreeName(name)
+  if validationError.len > 0:
+    self.showFileTreeError("Create Folder Failed", validationError)
+    return
+
+  let path = dir / name
+  if pathExistsAny(path):
+    self.showFileTreeError("Create Folder Failed", "A file or folder with that name already exists.")
+    return
+
+  try:
+    createDir(path)
+    self.refreshFileTree()
+  except Exception as exc:
+    self.showFileTreeError("Create Folder Failed", exc.msg)
 
 proc getTargetPane*(self: Application): Pane =
   result = self.paneManager.lastFocusedPane
@@ -557,6 +850,26 @@ proc build*(self: Application) =
     let target = self.getTargetPane()
     if target == nil: return
     self.openInPane(target, path)
+  self.fileTree.canPaste = proc(): bool {.raises: [].} =
+    self.canPasteInFileTree()
+  self.fileTree.onMenuAction = proc(action: FileTreeMenuAction, path: string, isDir: bool) {.raises: [].} =
+    case action
+    of ftCopy:
+      self.copyFileTreeItem(path)
+    of ftCut:
+      self.cutFileTreeItem(path)
+    of ftPaste:
+      self.pasteFileTreeItem(path, isDir)
+    of ftRename:
+      self.renameFileTreeItem(path, isDir)
+    of ftDelete:
+      self.deleteFileTreeItem(path, isDir)
+    of ftNewFile:
+      if isDir:
+        self.createFileTreeFile(path)
+    of ftNewFolder:
+      if isDir:
+        self.createFileTreeFolder(path)
 
   self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
   self.buildStatusBtn = self.createStatusButton("nimble build", self.root.h)

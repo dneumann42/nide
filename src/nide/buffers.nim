@@ -1,4 +1,4 @@
-import std/[os]
+import std/[os, strutils]
 import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont]
 import highlight
 
@@ -29,6 +29,7 @@ proc new*(T: typedesc[Buffer], path = ""): T =
   T(name: n, path: path)
 
 proc name*(b: Buffer): string = b.name
+proc `name=`*(b: Buffer, n: string) = b.name = n
 proc path*(b: Buffer): string = b.path
 proc `path=`*(b: Buffer, p: string) = b.path = p
 proc content*(b: Buffer): string = b.content
@@ -86,6 +87,20 @@ proc close*(bm: var BufferManager, name: string) =
     if bm.buffers[i].name == name:
       bm.buffers.delete(i)
       return
+
+proc closePath*(bm: var BufferManager, path: string) =
+  for i in 0..<bm.buffers.len:
+    if bm.buffers[i].path == path:
+      bm.buffers.delete(i)
+      return
+
+proc closePathsUnder*(bm: var BufferManager, dir: string) =
+  var i = bm.buffers.len - 1
+  while i >= 0:
+    let path = bm.buffers[i].path
+    if path == dir or path.startsWith(dir / ""):
+      bm.buffers.delete(i)
+    dec i
 
 proc rehighlightAll*(bm: BufferManager) =
   ## Re-highlight all open buffers (call after syntax theme change)

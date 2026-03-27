@@ -1,11 +1,15 @@
 import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemview,
-               qabstractitemmodel, qheaderview, qlabel, qabstractfileiconprovider]
+               qabstractitemmodel, qheaderview, qlabel, qabstractfileiconprovider,
+               qmenu, qaction, qcontextmenuevent]
 import ./devicons
 
 const TreeWidth = 320
 const TreeHeight = 420
 
 type
+  FileTreeMenuAction* = enum
+    ftCopy, ftPaste, ftRename, ftDelete, ftCut, ftNewFile, ftNewFolder
+
   FileTree* = ref object
     container*:       QWidget
     treeView:         QTreeView
@@ -13,6 +17,8 @@ type
     iconProvider:     DevIconProvider  # keep alive to prevent GC collection
     splitterH*:       pointer   # raw handle of the parent splitter for positioning
     onFileSelected*:  proc(path: string) {.raises: [].}
+    canPaste*:        proc(): bool {.raises: [].}
+    onMenuAction*:    proc(action: FileTreeMenuAction, path: string, isDir: bool) {.raises: [].}
 
 proc reposition*(self: FileTree) {.raises: [].} =
   ## Repositions the floating panel to the top-left of the main window content area.
@@ -58,7 +64,65 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
     QAbstractFileIconProvider(h: self.iconProvider.h, owned: false))
 
   # Tree view
-  self.treeView = QTreeView.create()
+  let modelH = self.model.h
+  var treeVtbl = new QTreeViewVTable
+  treeVtbl.contextMenuEvent = proc(tree: QTreeView, event: QContextMenuEvent) {.raises: [], gcsafe.} =
+    try:
+      let index = tree.indexAt(event.pos())
+      if not index.isValid():
+        return
+
+      let view = QAbstractItemView(h: tree.h, owned: false)
+      view.setCurrentIndex(index)
+
+      let model = QFileSystemModel(h: modelH, owned: false)
+      let path = model.filePath(index)
+      let isDir = model.isDir(index)
+
+      var menu = QMenu.create(QWidget(h: tree.h, owned: false))
+      menu.owned = false
+
+      let copyAction = menu.addAction("Copy")
+      let cutAction = menu.addAction("Cut")
+      let pasteAction = menu.addAction("Paste")
+      if self.canPaste != nil:
+        {.cast(gcsafe).}:
+          pasteAction.setEnabled(self.canPaste())
+      else:
+        pasteAction.setEnabled(false)
+      let renameAction = menu.addAction("Rename")
+      let deleteAction = menu.addAction("Delete")
+      var newFileAction: QAction
+      var newFolderAction: QAction
+
+      if isDir:
+        discard menu.addSeparator()
+        newFileAction = menu.addAction("New File")
+        newFolderAction = menu.addAction("New Folder")
+
+      let chosen = menu.exec(event.globalPos())
+      if chosen.h == nil or self.onMenuAction == nil:
+        return
+
+      {.cast(gcsafe).}:
+        if chosen.h == copyAction.h:
+          self.onMenuAction(ftCopy, path, isDir)
+        elif chosen.h == cutAction.h:
+          self.onMenuAction(ftCut, path, isDir)
+        elif chosen.h == pasteAction.h:
+          self.onMenuAction(ftPaste, path, isDir)
+        elif chosen.h == renameAction.h:
+          self.onMenuAction(ftRename, path, isDir)
+        elif chosen.h == deleteAction.h:
+          self.onMenuAction(ftDelete, path, isDir)
+        elif isDir and chosen.h == newFileAction.h:
+          self.onMenuAction(ftNewFile, path, isDir)
+        elif isDir and chosen.h == newFolderAction.h:
+          self.onMenuAction(ftNewFolder, path, isDir)
+    except:
+      discard
+
+  self.treeView = QTreeView.create(vtbl = treeVtbl)
   self.treeView.owned = false
   QWidget(h: self.treeView.h, owned: false).setSizePolicy(cint 7, cint 7)  # Expanding
   QWidget(h: self.treeView.h, owned: false).setMinimumSize(cint TreeWidth, cint TreeHeight)
@@ -79,7 +143,6 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   layout.addWidget(QWidget(h: self.treeView.h, owned: false))
 
   # Wire single-click file activation
-  let modelH = self.model.h
   QAbstractItemView(h: self.treeView.h, owned: false).onActivated do(
       index: QModelIndex) {.raises: [].}:
     try:
