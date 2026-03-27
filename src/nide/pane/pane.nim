@@ -1,3 +1,5 @@
+import logic
+export logic
 import autocomplete, buffers, commands, funcprototype, keybindings, logparser, nimcheck, nimfinddef, nimimports, nimindex, nimsuggest, syntaxtheme, widgetref, widgets
 import seaqt/[qabstractbutton, qabstractitemview, qbrush, qcheckbox, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[options, os, strutils]
@@ -39,11 +41,6 @@ type
       fwdLine*: int
       fwdCol*: int
     else: discard
-
-  JumpLocation* = object
-    file*: string
-    line*: int
-    col*: int
 
   Pane* = ref object
     container*: QWidget
@@ -100,6 +97,7 @@ type
 proc scrollUp*(pane: Pane) {.raises: [].}
 proc scrollDown*(pane: Pane) {.raises: [].}
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
+proc closeSearch*(pane: Pane) {.raises: [].}
 proc triggerJumpBack*(pane: Pane) {.raises: [].}
 proc triggerJumpForward*(pane: Pane) {.raises: [].}
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
@@ -141,16 +139,7 @@ proc scheduleDiagHide(pane: Pane) {.raises: [].} =
 proc updateDiagIcons*(pane: Pane) {.raises: [].} =
   if pane.diagLines == nil or pane.buffer == nil: return
   let currentFile = pane.buffer.path
-  var hintCount = 0
-  var warnCount = 0
-  var errCount = 0
-  for ll in pane.diagLines[]:
-    if ll.file != currentFile: continue
-    case ll.level
-    of llHint: inc hintCount
-    of llWarning: inc warnCount
-    of llError: inc errCount
-    else: discard
+  let (hintCount, warnCount, errCount) = countDiags(pane.diagLines[], currentFile)
   try:
     let hintW = QWidget(h: pane.hintBtn.h, owned: false)
     let warnW = QWidget(h: pane.warnBtn.h, owned: false)
@@ -257,32 +246,6 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
     pane.diagShownCol  = diags[0].col
   except: discard
 
-proc findMatchingBracket(text: string, pos: int): int =
-  if pos < 0 or pos >= text.len: return -1
-  let ch = text[pos]
-  let forward = ch in {'(', '[', '{'}
-  let openBr = case ch
-    of '(', ')': '('
-    of '[', ']': '['
-    else:        '{'
-  let closeBr = case ch
-    of '(', ')': ')'
-    of '[', ']': ']'
-    else:        '}'
-  var depth = 0
-  if forward:
-    for i in pos ..< text.len:
-      if text[i] == openBr: inc depth
-      elif text[i] == closeBr:
-        dec depth
-        if depth == 0: return i
-  else:
-    for i in countdown(pos, 0):
-      if text[i] == closeBr: inc depth
-      elif text[i] == openBr:
-        dec depth
-        if depth == 0: return i
-  return -1
 
 proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
   if pane.diagLines == nil or pane.buffer == nil: return
@@ -479,6 +442,181 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
     discard painter.endX()
   except: discard
 
+proc hideDiagPopover(pane: Pane) {.raises: [].} =
+  if pane.diagPopoverH != nil:
+    try: QWidget(h: pane.diagPopoverH, owned: false).hide()
+    except: discard
+
+proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
+  if pane.diagLines == nil or pane.diagLines[].len == 0: return
+  try:
+    if pane.diagPopoverH != nil:
+      try:
+        QWidget(h: pane.diagPopoverH, owned: false).delete()
+      except: discard
+      pane.diagPopoverH = nil
+      pane.diagPopoverListH = nil
+      pane.diagPopoverLayoutH = nil
+
+    var popover = QWidget.create()
+    popover.owned = false
+    popover.setWindowFlags(cint(0x00000008 or 0x00000001))  # Qt::Popup | Qt::FramelessWindowHint
+    popover.setObjectName("diagPopover")
+    popover.setStyleSheet("""
+      QWidget#diagPopover {
+        background: #1e1e2e;
+        border: 1px solid #585b70;
+        border-radius: 4px;
+      }
+      QScrollArea {
+        background: transparent;
+        border: none;
+      }
+      QScrollBar:vertical {
+        background: #313244;
+        width: 8px;
+        border-radius: 4px;
+      }
+      QScrollBar::handle:vertical {
+        background: #585b70;
+        border-radius: 4px;
+        min-height: 20px;
+      }
+      QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        height: 0px;
+      }
+      QLabel {
+        color: #cdd6f4;
+        font-family: 'Fira Code', monospace;
+        font-size: 12px;
+        background: transparent;
+      }
+    """)
+    pane.diagPopoverH = popover.h
+
+    var scroll = QScrollArea.create(popover)
+    scroll.owned = false
+    scroll.setWidgetResizable(true)
+    scroll.setHorizontalScrollBarPolicy(cint(0))  # Qt::ScrollBarAlwaysOff
+
+    var listW = QWidget.create(scroll)
+    listW.owned = false
+    var listLayout = QVBoxLayout.create()
+    listLayout.owned = false
+    listLayout.setContentsMargins(cint 4, cint 4, cint 4, cint 4)
+    listLayout.setSpacing(cint 2)
+    listW.setLayout(QLayout(h: listLayout.h, owned: false))
+    pane.diagPopoverListH = listW.h
+    pane.diagPopoverLayoutH = listLayout.h
+
+    QScrollArea(h: scroll.h, owned: false).setWidget(QWidget(h: listW.h, owned: false))
+    var popoverLayout = QVBoxLayout.create()
+    popoverLayout.owned = false
+    popoverLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+    popoverLayout.setSpacing(cint 0)
+    popoverLayout.addWidget(QWidget(h: scroll.h, owned: false))
+    popover.setLayout(QLayout(h: popoverLayout.h, owned: false))
+
+    for ll in pane.diagLines[]:
+      if ll.file != pane.buffer.path: continue
+      if ll.level != filterLevel: continue
+      let (label, color) = case ll.level
+        of llError:   ("Error",   "#ff5555")
+        of llWarning: ("Warning", "#ffaa00")
+        of llHint:    ("Hint",    "#00cccc")
+        else: continue
+      let escaped = ll.raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+      let text = label & ": " & escaped & " (line " & $ll.line & ")"
+      let lineNum = ll.line
+
+      var itemBtn = QPushButton.create(text)
+      itemBtn.owned = false
+      itemBtn.setFlat(true)
+      itemBtn.setStyleSheet(
+        "QPushButton { color: #cdd6f4; background: transparent; border: none; text-align: left; padding: 6px 8px; font-family: 'Fira Code', monospace; font-size: 12px; }" &
+        "QPushButton:hover { background: #313244; }")
+      itemBtn.onClicked do() {.raises: [].}:
+        hideDiagPopover(pane)
+        if pane.buffer != nil:
+          let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+          let doc = ed.document()
+          let blk = doc.findBlockByNumber(cint(lineNum - 1))
+          var cur = ed.textCursor()
+          cur.setPosition(blk.position())
+          ed.setTextCursor(cur)
+          ed.ensureCursorVisible()
+
+      listLayout.addWidget(QWidget(h: itemBtn.h, owned: false))
+
+    if listLayout.count() == 0:
+      return
+
+    let popW = QWidget(h: pane.diagPopoverH, owned: false)
+    popW.adjustSize()
+    let pw = popW.width()
+    let ph = popW.height()
+
+    var btnPos: QPoint
+    case filterLevel
+    of llHint: btnPos = QPushButton(h: pane.hintBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llWarning: btnPos = QPushButton(h: pane.warnBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llError: btnPos = QPushButton(h: pane.errBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    else: btnPos = QPoint.create(cint 0, cint 0)
+
+    var yPos = btnPos.y() + 24
+
+    popW.setGeometry(btnPos.x(), yPos, pw, min(ph, cint 400))
+    popW.raiseX()
+    popW.show()
+  except: discard
+
+proc moveToCurrent(pane: Pane) {.raises: [].} =
+  if pane.matchPositions.len == 0: return
+  let (s, e) = pane.matchPositions[pane.matchIndex]
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  var cur = ed.textCursor()
+  cur.setPosition(s)
+  cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
+  ed.setTextCursor(cur)
+  ed.ensureCursorVisible()
+
+proc doSearchImpl(pane: Pane) {.raises: [].} =
+  let ed    = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let inp   = pane.searchInput.get()
+  let query = inp.text()
+  if query.len == 0:
+    pane.matchPositions = @[]
+    applySelections(pane)
+    return
+  let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
+  let useRx    = QAbstractButton(h: pane.regexCheck.h, owned: false).isChecked()
+  let flags    = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively)
+                 else: cint(0)
+
+  var rx = QRegularExpression.create(query)
+  if not caseSens:
+    rx.setPatternOptions(
+      cint(QRegularExpressionPatternOptionEnum.CaseInsensitiveOption))
+
+  let doc = ed.document()
+  var pos     = cint(0)
+  var matches: seq[(cint, cint)]
+
+  while true:
+    var cur = if useRx: doc.find(rx, pos)
+              else:     doc.find(query, pos, flags)
+    if cur.isNull(): break
+    let s = cur.selectionStart()
+    let e = cur.selectionEnd()
+    if e <= pos: break  # zero-length match guard
+    matches.add((s, e))
+    pos = e
+
+  pane.matchPositions = matches
+  pane.matchIndex     = 0
+  applySelections(pane)
+  moveToCurrent(pane)
+
 proc newPane*(
   onEvent: proc(ev: PaneEvent) {.raises: [].}
 ): Pane =
@@ -653,7 +791,6 @@ proc newPane*(
         if pane.autocompleteJustOpened:
           {.cast(gcsafe).}: pane.autocompleteJustOpened = false
         else:
-          echo "[pane] keyPress dismissing menu: key=0x", key.toHex(), " mods=0x", mods.toHex()
           {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
     elif key == cint(0x01000001):  # Qt::Key_Tab → insert 2 spaces
       let cur = self.textCursor()
@@ -697,27 +834,25 @@ proc newPane*(
     let btn = e.button()
     if btn == cint(8):   # Qt::BackButton / XButton1
       {.cast(gcsafe).}:
-        if pane.jumpHistory.len > 0:
-          let loc = pane.jumpHistory[^1]
-          pane.jumpHistory.setLen(pane.jumpHistory.len - 1)
+        let loc = popJumpBack(pane.jumpHistory)
+        if loc.isSome():
           pane.eventCb(PaneEvent(
             pane: pane,
             kind: peJumpBack,
-            backFile: loc.file,
-            backLine: loc.line,
-            backCol:  loc.col
+            backFile: loc.get().file,
+            backLine: loc.get().line,
+            backCol:  loc.get().col
           ))
     elif btn == cint(16):  # Qt::ForwardButton / XButton2
       {.cast(gcsafe).}:
-        if pane.jumpFuture.len > 0:
-          let loc = pane.jumpFuture[^1]
-          pane.jumpFuture.setLen(pane.jumpFuture.len - 1)
+        let loc = popJumpForward(pane.jumpFuture)
+        if loc.isSome():
           pane.eventCb(PaneEvent(
             pane: pane,
             kind: peJumpForward,
-            fwdFile: loc.file,
-            fwdLine: loc.line,
-            fwdCol:  loc.col
+            fwdFile: loc.get().file,
+            fwdLine: loc.get().line,
+            fwdCol:  loc.get().col
           ))
     elif btn == cint(1) and (e.modifiers() and cint(67108864)) != 0:  # LeftButton + Ctrl
       # Let Qt place the cursor at the click position first, then query
@@ -1001,194 +1136,12 @@ proc newPane*(
   closeBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peClose))
 
-  proc hideDiagPopover(pane: Pane) {.raises: [].} =
-    if pane.diagPopoverH != nil:
-      try: QWidget(h: pane.diagPopoverH, owned: false).hide()
-      except: discard
-
-  proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
-    if pane.diagLines == nil or pane.diagLines[].len == 0: return
-    try:
-      if pane.diagPopoverH != nil:
-        try:
-          QWidget(h: pane.diagPopoverH, owned: false).delete()
-        except: discard
-        pane.diagPopoverH = nil
-        pane.diagPopoverListH = nil
-        pane.diagPopoverLayoutH = nil
-
-      var popover = QWidget.create()
-      popover.owned = false
-      popover.setWindowFlags(cint(0x00000008 or 0x00000001))  # Qt::Popup | Qt::FramelessWindowHint
-      popover.setObjectName("diagPopover")
-      popover.setStyleSheet("""
-        QWidget#diagPopover {
-          background: #1e1e2e;
-          border: 1px solid #585b70;
-          border-radius: 4px;
-        }
-        QScrollArea {
-          background: transparent;
-          border: none;
-        }
-        QScrollBar:vertical {
-          background: #313244;
-          width: 8px;
-          border-radius: 4px;
-        }
-        QScrollBar::handle:vertical {
-          background: #585b70;
-          border-radius: 4px;
-          min-height: 20px;
-        }
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-          height: 0px;
-        }
-        QLabel {
-          color: #cdd6f4;
-          font-family: 'Fira Code', monospace;
-          font-size: 12px;
-          background: transparent;
-        }
-      """)
-      pane.diagPopoverH = popover.h
-
-      var scroll = QScrollArea.create(popover)
-      scroll.owned = false
-      scroll.setWidgetResizable(true)
-      scroll.setHorizontalScrollBarPolicy(cint(0))  # Qt::ScrollBarAlwaysOff
-
-      var listW = QWidget.create(scroll)
-      listW.owned = false
-      var listLayout = QVBoxLayout.create()
-      listLayout.owned = false
-      listLayout.setContentsMargins(cint 4, cint 4, cint 4, cint 4)
-      listLayout.setSpacing(cint 2)
-      listW.setLayout(QLayout(h: listLayout.h, owned: false))
-      pane.diagPopoverListH = listW.h
-      pane.diagPopoverLayoutH = listLayout.h
-
-      QScrollArea(h: scroll.h, owned: false).setWidget(QWidget(h: listW.h, owned: false))
-      var popoverLayout = QVBoxLayout.create()
-      popoverLayout.owned = false
-      popoverLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-      popoverLayout.setSpacing(cint 0)
-      popoverLayout.addWidget(QWidget(h: scroll.h, owned: false))
-      popover.setLayout(QLayout(h: popoverLayout.h, owned: false))
-
-      for ll in pane.diagLines[]:
-        if ll.file != pane.buffer.path: continue
-        if ll.level != filterLevel: continue
-        let (label, color) = case ll.level
-          of llError:   ("Error",   "#ff5555")
-          of llWarning: ("Warning", "#ffaa00")
-          of llHint:    ("Hint",    "#00cccc")
-          else: continue
-        let escaped = ll.raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        let text = label & ": " & escaped & " (line " & $ll.line & ")"
-        let lineNum = ll.line
-
-        var itemBtn = QPushButton.create(text)
-        itemBtn.owned = false
-        itemBtn.setFlat(true)
-        itemBtn.setStyleSheet(
-          "QPushButton { color: #cdd6f4; background: transparent; border: none; text-align: left; padding: 6px 8px; font-family: 'Fira Code', monospace; font-size: 12px; }" &
-          "QPushButton:hover { background: #313244; }")
-        itemBtn.onClicked do() {.raises: [].}:
-          hideDiagPopover(pane)
-          if pane.buffer != nil:
-            let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-            let doc = ed.document()
-            let blk = doc.findBlockByNumber(cint(lineNum - 1))
-            var cur = ed.textCursor()
-            cur.setPosition(blk.position())
-            ed.setTextCursor(cur)
-            ed.ensureCursorVisible()
-
-        listLayout.addWidget(QWidget(h: itemBtn.h, owned: false))
-
-      if listLayout.count() == 0:
-        return
-
-      let popW = QWidget(h: pane.diagPopoverH, owned: false)
-      popW.adjustSize()
-      let pw = popW.width()
-      let ph = popW.height()
-
-      var btnPos: QPoint
-      case filterLevel
-      of llHint: btnPos = QPushButton(h: pane.hintBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-      of llWarning: btnPos = QPushButton(h: pane.warnBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-      of llError: btnPos = QPushButton(h: pane.errBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-      else: btnPos = QPoint.create(cint 0, cint 0)
-
-      var yPos = btnPos.y() + 24
-
-      popW.setGeometry(btnPos.x(), yPos, pw, min(ph, cint 400))
-      popW.raiseX()
-      popW.show()
-    except: discard
-
   hintBtn.onClicked do() {.raises: [].}:
     showDiagPopover(pane, llHint)
   warnBtn.onClicked do() {.raises: [].}:
     showDiagPopover(pane, llWarning)
   errBtn.onClicked do() {.raises: [].}:
     showDiagPopover(pane, llError)
-
-  # --- Search helpers ---
-  proc moveToCurrent(pane: Pane) {.raises: [].} =
-    if pane.matchPositions.len == 0: return
-    let (s, e) = pane.matchPositions[pane.matchIndex]
-    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-    var cur = ed.textCursor()
-    cur.setPosition(s)
-    cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
-    ed.setTextCursor(cur)
-    ed.ensureCursorVisible()
-
-  proc doSearchImpl(pane: Pane) {.raises: [].} =
-    let ed    = QPlainTextEdit(h: pane.editor.h, owned: false)
-    let inp   = pane.searchInput.get()
-    let query = inp.text()
-    if query.len == 0:
-      pane.matchPositions = @[]
-      applySelections(pane)
-      return
-    let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
-    let useRx    = QAbstractButton(h: pane.regexCheck.h, owned: false).isChecked()
-    let flags    = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively)
-                   else: cint(0)
-
-    var rx = QRegularExpression.create(query)
-    if not caseSens:
-      rx.setPatternOptions(
-        cint(QRegularExpressionPatternOptionEnum.CaseInsensitiveOption))
-
-    let doc = ed.document()
-    var pos     = cint(0)
-    var matches: seq[(cint, cint)]
-
-    while true:
-      var cur = if useRx: doc.find(rx, pos)
-                else:     doc.find(query, pos, flags)
-      if cur.isNull(): break
-      let s = cur.selectionStart()
-      let e = cur.selectionEnd()
-      if e <= pos: break  # zero-length match guard
-      matches.add((s, e))
-      pos = e
-
-    pane.matchPositions = matches
-    pane.matchIndex     = 0
-    applySelections(pane)
-    moveToCurrent(pane)
-
-  proc closeSearch(pane: Pane) {.raises: [].} =
-    pane.searchBar.get().hide()
-    pane.matchPositions = @[]
-    applySelections(pane)
-    QWidget(h: pane.editor.h, owned: false).setFocus()
 
   saveBtn.onClicked do() {.raises: [].}: save(pane)
 
@@ -1302,14 +1255,11 @@ proc triggerOpenProject*(pane: Pane) {.raises: [].} =
 proc triggerFind*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().show()
   QWidget(h: pane.searchInput.h, owned: false).setFocus()
-  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-  let inp = pane.searchInput.get()
-  let query = inp.text()
+  let query = pane.searchInput.get().text()
   if query.len == 0:
     pane.matchPositions = @[]
     applySelections(pane)
     return
-  let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
 
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
   if pane.buffer == nil or pane.buffer.path.len == 0:
@@ -1334,8 +1284,7 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
     lineNum,
     colNum,
     proc(def: Definition) {.raises: [].} =
-      pane.jumpHistory.add(fromLoc)
-      pane.jumpFuture = @[]   # new branch clears forward history
+      recordJump(pane.jumpHistory, pane.jumpFuture, fromLoc)
       pane.eventCb(PaneEvent(
         pane: pane,
         kind: peGotoDefinition,
@@ -1363,12 +1312,9 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
     return
 
   let paneRef = pane
-  echo "[pane] triggerAutocomplete called at ", lineNum, ":", colNum
   if paneRef.autocompleteMenu.isOpen():
-    echo "[pane] Autocomplete menu already showing, ignoring"
     return
   if client.pending.len > 0:
-    echo "[pane] Query already in-flight, ignoring"
     return
   # Capture the trigger-time absolute character position so insertTextCb
   # can locate and replace the typed prefix precisely at accept time.
@@ -1402,7 +1348,6 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
         e.setTextCursor(cur)
 
       proc closeCb() {.raises: [].} =
-        echo "[pane] autocomplete closeCb fired"
         paneRef.autocompleteMenu = nil
 
       paneRef.autocompleteJustOpened = true
@@ -1419,28 +1364,26 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
 
 proc triggerJumpBack*(pane: Pane) {.raises: [].} =
   ## Pop the last jump location and navigate back to it.
-  if pane.jumpHistory.len == 0: return
-  let loc = pane.jumpHistory[^1]
-  pane.jumpHistory.setLen(pane.jumpHistory.len - 1)
+  let loc = popJumpBack(pane.jumpHistory)
+  if loc.isNone(): return
   pane.eventCb(PaneEvent(
     pane: pane,
     kind: peJumpBack,
-    backFile: loc.file,
-    backLine: loc.line,
-    backCol:  loc.col
+    backFile: loc.get().file,
+    backLine: loc.get().line,
+    backCol:  loc.get().col
   ))
 
 proc triggerJumpForward*(pane: Pane) {.raises: [].} =
   ## Pop the next jump location and navigate forward to it.
-  if pane.jumpFuture.len == 0: return
-  let loc = pane.jumpFuture[^1]
-  pane.jumpFuture.setLen(pane.jumpFuture.len - 1)
+  let loc = popJumpForward(pane.jumpFuture)
+  if loc.isNone(): return
   pane.eventCb(PaneEvent(
     pane: pane,
     kind: peJumpForward,
-    fwdFile: loc.file,
-    fwdLine: loc.line,
-    fwdCol:  loc.col
+    fwdFile: loc.get().file,
+    fwdLine: loc.get().line,
+    fwdCol:  loc.get().col
   ))
 
 proc closeSearch*(pane: Pane) {.raises: [].} =

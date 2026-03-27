@@ -1,4 +1,4 @@
-import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
+import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
 import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qkeysequence, qmainwindow, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[os, strutils]
 

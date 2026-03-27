@@ -1,5 +1,5 @@
 import seaqt/[qwidget, qsplitter]
-import pane, widgetref, nimsuggest
+import pane/pane, widgetref, nimsuggest
 import ../commands
 
 type

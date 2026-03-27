@@ -5,6 +5,7 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
 # end Nimble config
 
 switch("path", thisDir() & "/src")
+switch("path", thisDir() & "/src/nide")
 
 # Add Nim root to path so compiler/* modules are importable
 import std/os
