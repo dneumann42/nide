@@ -48,10 +48,10 @@ jobs:
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install nimble deps
-        run: nimble install -d -y
+        run: nimble --useSystemNim install -d -y
 
       - name: Build nide
-        run: nimble build -d:release
+        run: nimble --useSystemNim build -d:release
 
       - name: Bundle ripgrep
         run: nimble fetchrg
@@ -141,13 +141,13 @@ jobs:
   #         Add-Content $env:GITHUB_ENV "MSYS=binmode"
   #
   #     - name: Install nimble deps
-  #       run: nimble install -d -y
+  #       run: nimble --useSystemNim install -d -y
   #
   #     - name: Bundle ripgrep
   #       run: nimble fetchrg
   #
   #     - name: Build nide.exe
-  #       run: nimble build -d:release
+  #       run: nimble --useSystemNim build -d:release
   #
   #     - name: Bundle Qt DLLs and runtime DLLs
   #       shell: pwsh
@@ -232,11 +232,11 @@ jobs:
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install nimble deps
-        run: nimble install -d -y
+        run: nimble --useSystemNim install -d -y
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
-          nimble build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
+          nimble --useSystemNim build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
           patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
           patchelf --set-rpath "" nide
 
