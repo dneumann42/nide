@@ -22,7 +22,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.nimble
-          key: nimble-linux-${{ hashFiles('nimble.lock') }}
+          key: nimble-linux-${{ hashFiles('nide.nimble') }}
           restore-keys: nimble-linux-
 
       - uses: jiro4989/setup-nim-action@v2
@@ -48,10 +48,10 @@ jobs:
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Set up nimble deps
-        run: nimble --useSystemNim setup
+        run: nimble --useSystemNim --noLockfile setup
 
       - name: Build nide
-        run: nimble --useSystemNim build -d:release
+        run: nimble --useSystemNim --noLockfile build -d:release
 
       - name: Bundle ripgrep
         run: nimble fetchrg
@@ -104,7 +104,7 @@ jobs:
   #     - uses: actions/cache@v4
   #       with:
   #         path: ~/.nimble
-  #         key: nimble-windows-${{ hashFiles('nimble.lock') }}
+  #         key: nimble-windows-${{ hashFiles('nide.nimble') }}
   #         restore-keys: nimble-windows-
   #
   #     - uses: jiro4989/setup-nim-action@v2
@@ -141,13 +141,13 @@ jobs:
   #         Add-Content $env:GITHUB_ENV "MSYS=binmode"
   #
   #     - name: Set up nimble deps
-  #       run: nimble --useSystemNim setup
+  #       run: nimble --useSystemNim --noLockfile setup
   #
   #     - name: Bundle ripgrep
   #       run: nimble fetchrg
   #
   #     - name: Build nide.exe
-  #       run: nimble --useSystemNim build -d:release
+  #       run: nimble --useSystemNim --noLockfile build -d:release
   #
   #     - name: Bundle Qt DLLs and runtime DLLs
   #       shell: pwsh
@@ -200,7 +200,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.nimble
-          key: nimble-linux-${{ hashFiles('nimble.lock') }}
+          key: nimble-linux-${{ hashFiles('nide.nimble') }}
           restore-keys: nimble-linux-
 
       - uses: actions/cache@v4
@@ -232,11 +232,11 @@ jobs:
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Set up nimble deps
-        run: nimble --useSystemNim setup
+        run: nimble --useSystemNim --noLockfile setup
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
-          nimble --useSystemNim build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
+          nimble --useSystemNim --noLockfile build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
           patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
           patchelf --set-rpath "" nide
 
