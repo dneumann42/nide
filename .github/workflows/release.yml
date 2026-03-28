@@ -47,8 +47,8 @@ jobs:
             -exec sed -i "s|^prefix=.*|prefix=${QT_ROOT_DIR}|" {} \;
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
-      - name: Install nimble deps
-        run: nimble --useSystemNim install -d -y
+      - name: Set up nimble deps
+        run: nimble --useSystemNim setup
 
       - name: Build nide
         run: nimble --useSystemNim build -d:release
@@ -140,8 +140,8 @@ jobs:
   #         # Note: MSYS2 binaries honour the MSYS variable, not CYGWIN.
   #         Add-Content $env:GITHUB_ENV "MSYS=binmode"
   #
-  #     - name: Install nimble deps
-  #       run: nimble --useSystemNim install -d -y
+  #     - name: Set up nimble deps
+  #       run: nimble --useSystemNim setup
   #
   #     - name: Bundle ripgrep
   #       run: nimble fetchrg
@@ -231,8 +231,8 @@ jobs:
             -exec sed -i "s|^prefix=.*|prefix=${QT_ROOT_DIR}|" {} \;
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
-      - name: Install nimble deps
-        run: nimble --useSystemNim install -d -y
+      - name: Set up nimble deps
+        run: nimble --useSystemNim setup
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
