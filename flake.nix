@@ -1,7 +1,7 @@
 {
   description = "nide - A productive development tool for Nim";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
 
   outputs = { self, nixpkgs }:
     let
@@ -69,16 +69,20 @@
         program = "${buildFlatpak}/bin/build-flatpak";
       };
 
-      devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [
-          nim
-          nimble
-          qt6.qtbase
-          qt6.wrapQtAppsHook
-          pkg-config
-          flatpak-builder
-          flatpak
-        ];
-      };
+      devShells.${system}.default =
+        let
+          libs = with pkgs; [
+            qt6.qtbase
+            qt6.qtsvg
+            sqlite
+            pcre
+          ];
+        in
+        pkgs.mkShell {
+          buildInputs = libs ++ (with pkgs; [ pkg-config flatpak-builder flatpak ]);
+          shellHook = ''
+            export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libs}:$LD_LIBRARY_PATH
+          '';
+        };
     };
 }
