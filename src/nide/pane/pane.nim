@@ -888,6 +888,7 @@ proc newPane*(
   var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
   editor.setFrameStyle(0)
+  editor.setCenterOnScroll(true)
   editor.viewport().setMouseTracking(true)
 
   var editorFont = QFont.create("Fira Code")
