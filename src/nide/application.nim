@@ -1,6 +1,6 @@
-import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
+import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, sessionstate, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
 import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
-import std/[os, strutils]
+import std/[options, os, strutils]
 
 import "../../tools/nim_graph" as nim_graph
 
@@ -39,6 +39,9 @@ type
     projectCheckProcessH: ref pointer
     fileTreeClipboardPath: string
     fileTreeClipboardMode: FileTreeClipboardMode
+    sessionSaveTimer: QTimer
+    sessionPersistenceReady: bool
+    restoringSession: bool
 
 proc appWidget(self: Application): QWidget =
   QWidget(h: self.root.h, owned: false)
@@ -61,7 +64,7 @@ proc isSameOrChildPath(path, root: string): bool =
   prefix.add(DirSep)
   normalizedPath == normalizedRoot or normalizedPath.startsWith(prefix)
 
-proc remapPath(oldPath, oldRoot, newRoot: string): string =
+proc remapPath(oldPath, oldRoot, newRoot: string): string {.raises: [].} =
   let normalizedOldPath = normalizedFsPath(oldPath)
   let normalizedOldRoot = normalizedFsPath(oldRoot)
   let normalizedNewRoot = normalizedFsPath(newRoot)
@@ -70,7 +73,7 @@ proc remapPath(oldPath, oldRoot, newRoot: string): string =
   else:
     try:
       normalizedNewRoot / relativePath(normalizedOldPath, normalizedOldRoot)
-    except CatchableError:
+    except Exception:
       normalizedNewRoot / oldPath.lastPathPart()
 
 proc showFileTreeError(self: Application, title, message: string) {.raises: [].} =
@@ -376,6 +379,50 @@ proc openFile(self: Application, path: string): Buffer =
     if self.currentProject.len > 0:
       self.projectManager.recordOpenedFile(self.currentProject, result.path)
 
+proc updateRestoreSessionAvailability(self: Application) {.raises: [].} =
+  let available = loadLastSession().isSome()
+  if self.paneManager == nil:
+    return
+  for panel in self.paneManager.panels:
+    panel.setRestoreLastSessionAvailable(available)
+
+proc buildLastSession(self: Application): LastSession =
+  let columns = self.paneManager.visibleColumns()
+  result.projectNimbleFile = self.projectNimbleFile
+  for colIdx, panes in columns:
+    var savedColumn = SavedColumnSession()
+    for rowIdx, pane in panes:
+      let cursor = pane.currentCursorPosition()
+      let scroll = pane.currentScrollPosition()
+      savedColumn.panes.add(SavedPaneSession(
+        filePath: if pane.buffer != nil: pane.buffer.path else: "",
+        cursorLine: cursor.line,
+        cursorColumn: cursor.col,
+        verticalScroll: scroll.vertical,
+        horizontalScroll: scroll.horizontal
+      ))
+      if pane == self.paneManager.lastFocusedPane:
+        result.activeColumnIndex = colIdx
+        result.activePaneIndex = rowIdx
+    result.columns.add(savedColumn)
+  if self.paneManager.lastFocusedPane == nil and result.columns.len > 0 and result.columns[0].panes.len > 0:
+    result.activeColumnIndex = 0
+    result.activePaneIndex = 0
+
+proc saveLastSessionNow(self: Application) {.raises: [].} =
+  if self.restoringSession or not self.sessionPersistenceReady or self.paneManager == nil:
+    return
+  saveLastSession(self.buildLastSession())
+  self.updateRestoreSessionAvailability()
+
+proc requestSessionSave(self: Application) {.raises: [].} =
+  if self.restoringSession or not self.sessionPersistenceReady:
+    return
+  if self.sessionSaveTimer.h == nil:
+    self.saveLastSessionNow()
+  else:
+    self.sessionSaveTimer.start()
+
 proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
     try:
@@ -397,6 +444,7 @@ proc openInPane(self: Application, pane: Pane, path: string) {.raises: [].} =
         if ll.file == path: prefill.add(ll)
       if prefill.len > 0:
         pane.prefillDiags(prefill)
+    self.requestSessionSave()
   except: discard
 
 proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col: int) {.raises: [].} =
@@ -465,7 +513,7 @@ proc runProjectCheck*(self: Application) {.raises: [].} =
       self.projectDiagLines[] = lines
       self.toolbar.updateDiagCounts(lines))
 
-proc openProject(self: Application, path: string) {.raises: [].} =
+proc openProject(self: Application, path: string, restoreMode = false) {.raises: [].} =
   let dir = path.parentDir()
   self.currentProject = dir
   self.projectNimbleFile = path
@@ -488,9 +536,11 @@ proc openProject(self: Application, path: string) {.raises: [].} =
   self.paneManager.nimSuggest = self.nimSuggest
   for panel in self.paneManager.panels:
     panel.nimSuggest = self.nimSuggest
-  self.paneManager.panels[0].triggerOpenModule()
+  if not restoreMode:
+    self.paneManager.panels[0].triggerOpenModule()
   self.toolbar.setCloseProjectVisible(true)
   self.runProjectCheck()
+  self.requestSessionSave()
 
 proc openProject(self: Application) {.raises: [].} =
   let file = QFileDialog.getOpenFileName(
@@ -515,12 +565,89 @@ proc closeProject*(self: Application) {.raises: [].} =
   self.toolbar.setCloseProjectVisible(false)
   self.projectDiagLines[] = @[]
   self.toolbar.updateDiagCounts(@[])
+  self.requestSessionSave()
+
+proc prepareForSessionRestore(self: Application): Pane =
+  if self.currentProject.len > 0:
+    self.closeProject()
+  if self.paneManager.panels.len == 0:
+    result = self.paneManager.addColumn()
+  else:
+    result = self.paneManager.panels[0]
+  self.paneManager.closeOtherPanes(result)
+  result.clearBuffer()
+
+proc restoreLastSession(self: Application) {.raises: [].} =
+  let loaded = loadLastSession()
+  if loaded.isNone():
+    self.updateRestoreSessionAvailability()
+    return
+
+  let session = loaded.get()
+  self.restoringSession = true
+  try:
+    var layout = session.columns
+    if layout.len == 0:
+      layout = @[SavedColumnSession(panes: @[SavedPaneSession()])]
+    elif layout[0].panes.len == 0:
+      layout[0].panes = @[SavedPaneSession()]
+
+    var firstPane = self.prepareForSessionRestore()
+    if session.projectNimbleFile.len > 0 and fileExists(session.projectNimbleFile):
+      self.openProject(session.projectNimbleFile, restoreMode = true)
+      if self.paneManager.panels.len > 0:
+        firstPane = self.paneManager.panels[0]
+
+    var paneGrid: seq[seq[Pane]] = @[@[firstPane]]
+    while paneGrid[0].len < layout[0].panes.len:
+      let newPane = self.paneManager.splitRow(paneGrid[0][^1])
+      if newPane == nil:
+        break
+      paneGrid[0].add(newPane)
+
+    for colIdx in 1..<layout.len:
+      let newColPane = self.paneManager.addColumn()
+      paneGrid.add(@[newColPane])
+      while paneGrid[colIdx].len < layout[colIdx].panes.len:
+        let newPane = self.paneManager.splitRow(paneGrid[colIdx][^1])
+        if newPane == nil:
+          break
+        paneGrid[colIdx].add(newPane)
+
+    for colIdx, savedColumn in layout:
+      if colIdx >= paneGrid.len:
+        break
+      for rowIdx, savedPane in savedColumn.panes:
+        if rowIdx >= paneGrid[colIdx].len:
+          break
+        let pane = paneGrid[colIdx][rowIdx]
+        if savedPane.filePath.len > 0 and fileExists(savedPane.filePath):
+          self.openInPane(pane, savedPane.filePath)
+          pane.restoreViewState(savedPane.cursorLine, savedPane.cursorColumn,
+                                savedPane.verticalScroll, savedPane.horizontalScroll)
+        else:
+          pane.clearBuffer()
+
+    var focusPane: Pane
+    if session.activeColumnIndex >= 0 and session.activeColumnIndex < paneGrid.len:
+      let col = paneGrid[session.activeColumnIndex]
+      if session.activePaneIndex >= 0 and session.activePaneIndex < col.len:
+        focusPane = col[session.activePaneIndex]
+    if focusPane == nil and paneGrid.len > 0 and paneGrid[0].len > 0:
+      focusPane = paneGrid[0][0]
+    if focusPane != nil:
+      focusPane.focus()
+  finally:
+    self.restoringSession = false
+
+  self.saveLastSessionNow()
 
 proc closeBuffer*(self: Application, name: string) =
   for panel in self.paneManager.panels:
     if panel.buffer != nil and panel.buffer.name == name:
       panel.clearBuffer()
   self.bufferManager.close(name)
+  self.requestSessionSave()
 
 proc build*(self: Application) =
   self.root = QMainWindow.create()
@@ -543,6 +670,13 @@ proc build*(self: Application) =
       isLoading = ns.state == csStarting or ns.pending.len > 0
     appRef.toolbar.setLoading(isLoading)
   self.loaderTimer.start()
+
+  self.sessionSaveTimer = QTimer.create()
+  self.sessionSaveTimer.owned = false
+  self.sessionSaveTimer.setInterval(cint 200)
+  self.sessionSaveTimer.setSingleShot(true)
+  self.sessionSaveTimer.onTimeout do() {.raises: [].}:
+    self.saveLastSessionNow()
 
   # Pane columns splitter — override resizeEvent to reposition the floating file tree.
   # The vtable proc captures fileTreeRef via a ref-cell so it can be assigned after create.
@@ -626,7 +760,17 @@ proc build*(self: Application) =
         for buf in self.bufferManager:
           if buf.name == key:
             pane.setBuffer(buf)
+            self.requestSessionSave()
             break
+    ,
+    onRestoreLastSession: proc(pane: Pane) {.raises: [].} =
+      discard pane
+      self.restoreLastSession(),
+    onPaneStateChanged: proc(pane: Pane) {.raises: [].} =
+      discard pane
+      self.requestSessionSave(),
+    onLayoutChanged: proc() {.raises: [].} =
+      self.requestSessionSave()
     ))
 
   # Command dispatcher — register all editor commands and bind default keys
@@ -788,10 +932,10 @@ proc build*(self: Application) =
       let p = self.getTargetPane(); if p != nil: self.paneManager.closeOtherPanes(p))
 
     disp.register("editor.splitHorizontal", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p != nil: self.paneManager.splitRow(p))
+      let p = self.getTargetPane(); if p != nil: discard self.paneManager.splitRow(p))
 
     disp.register("editor.splitVertical", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p != nil: self.paneManager.splitCol(p))
+      let p = self.getTargetPane(); if p != nil: discard self.paneManager.splitCol(p))
 
     disp.register("editor.findFile", proc() {.raises: [].} =
       let p = self.getTargetPane()
@@ -816,6 +960,7 @@ proc build*(self: Application) =
         for buf in self.bufferManager:
           if buf.name == key:
             p.setBuffer(buf)
+            self.requestSessionSave()
             break)
 
     # Search / navigation
@@ -854,7 +999,7 @@ proc build*(self: Application) =
 
     # Layout / view
     disp.register("editor.addColumn", proc() {.raises: [].} =
-      self.paneManager.addColumn()
+      discard self.paneManager.addColumn()
       self.paneManager.equalizeSplits())
 
     disp.register("editor.toggleFileTree", proc() {.raises: [].} =
@@ -863,7 +1008,7 @@ proc build*(self: Application) =
     disp.register("editor.splitRow", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
-      try: self.paneManager.splitRow(p)
+      try: discard self.paneManager.splitRow(p)
       except: discard)
 
     disp.register("editor.zoomIn", proc() {.raises: [].} =
@@ -1020,7 +1165,7 @@ proc build*(self: Application) =
     )
 
   self.toolbar.onNewPane do():
-    self.paneManager.addColumn()
+    discard self.paneManager.addColumn()
     self.paneManager.equalizeSplits()
 
   self.toolbar.onSettings do():
@@ -1083,9 +1228,11 @@ proc build*(self: Application) =
     if pane == nil: return
     self.navigateToLocation(pane, path, line, col)
 
-  self.paneManager.addColumn()  # initialize at least one
+  discard self.paneManager.addColumn()  # initialize at least one
   self.paneManager.equalizeSplits()
   self.updateRecentProjects()
+  self.updateRestoreSessionAvailability()
+  self.sessionPersistenceReady = true
 
   self.fileWatcher.onFileChanged do(path: openArray[char]):
     when defined(debugFileWatcher):
@@ -1152,6 +1299,8 @@ proc build*(self: Application) =
   appInstance.onFocusChanged do(old, now: QWidget):
     try:
       self.paneManager.updateFocus(now, self.theme == Dark)
+      discard old
+      self.requestSessionSave()
     except: 
       discard
 

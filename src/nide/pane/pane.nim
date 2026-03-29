@@ -1,7 +1,7 @@
 import logic
 export logic
 import autocomplete, buffers, commands, funcprototype, logparser, nimcheck, nimfinddef, nimimports, nimindex, nimsuggest, syntaxtheme, widgetref, widgets
-import seaqt/[qabstractbutton, qabstractitemview, qbrush, qcheckbox, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
+import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[options, os, strutils]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -19,7 +19,8 @@ type
     peFileSelected, peClose, peVSplit, peHSplit,
     peNewModule, peOpenModule, peOpenProject, peNewProject, peOpenRecentProject,
     peGotoDefinition, peJumpBack, peJumpForward,
-    peSave, peFindFile, peSwitchBuffer, peDeleteOtherWindows
+    peSave, peFindFile, peSwitchBuffer, peDeleteOtherWindows,
+    peRestoreLastSession, peStateChanged
 
   PaneEvent* = object
     pane*: Pane
@@ -58,6 +59,7 @@ type
     openProjectRow: WidgetRef[QWidget]
     recentProjectsList: WidgetRef[QTableWidget]
     recentProjectsLabel: WidgetRef[QLabel]
+    restoreSessionBtn: WidgetRef[QPushButton]
     recentProjectPaths: seq[string]
     searchBar:     WidgetRef[QWidget]
     searchInput:   WidgetRef[QLineEdit]
@@ -630,6 +632,9 @@ proc newPane*(
   newProjectBtn.owned = false
   var openProjectBtn = QPushButton.create("Open Project")
   openProjectBtn.owned = false
+  var restoreSessionBtn = QPushButton.create("Restore Last Session")
+  restoreSessionBtn.owned = false
+  QWidget(h: restoreSessionBtn.h, owned: false).setEnabled(false)
 
   var recentLabel = QLabel.create("Recent Projects")
   recentLabel.owned = false
@@ -671,6 +676,7 @@ proc newPane*(
   var btnRow = QHBoxLayout.create(); btnRow.owned = false
   btnRow.addWidget(QWidget(h: newProjectBtn.h, owned: false))
   btnRow.addWidget(QWidget(h: openProjectBtn.h, owned: false))
+  btnRow.addWidget(QWidget(h: restoreSessionBtn.h, owned: false))
   btnRow.addStretch()
 
   cardLayout.addLayout(QLayout(h: btnRow.h, owned: false))
@@ -906,6 +912,15 @@ proc newPane*(
 
   editor.onCursorPositionChanged do() {.raises: [].}:
     updateBracketMatch(pane)
+    onEvent(PaneEvent(pane: pane, kind: peStateChanged))
+
+  QAbstractSlider(h: editor.verticalScrollBar().h, owned: false).onValueChanged do(value: cint) {.raises: [].}:
+    discard value
+    onEvent(PaneEvent(pane: pane, kind: peStateChanged))
+
+  QAbstractSlider(h: editor.horizontalScrollBar().h, owned: false).onValueChanged do(value: cint) {.raises: [].}:
+    discard value
+    onEvent(PaneEvent(pane: pane, kind: peStateChanged))
 
   editor.onUpdateRequest do(rect: QRect, dy: cint) {.raises: [].}:
     let g = QWidget(h: gutterH, owned: false)
@@ -1108,6 +1123,9 @@ proc newPane*(
   result.eventCb         = onEvent
   result.moduleBtnsRow   = capture(moduleBtnsRow)
   result.openProjectRow  = capture(openProjectRow)
+  result.recentProjectsList = capture(recentTable)
+  result.recentProjectsLabel = capture(recentLabel)
+  result.restoreSessionBtn = capture(restoreSessionBtn)
   result.searchBar       = capture(searchBar)
   result.searchInput     = capture(searchInput)
   result.caseCheck       = capture(caseCheck)
@@ -1124,6 +1142,8 @@ proc newPane*(
     onEvent(PaneEvent(pane: pane, kind: peNewProject))
   openProjectBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peOpenProject))
+  restoreSessionBtn.onClicked do() {.raises: [].}:
+    onEvent(PaneEvent(pane: pane, kind: peRestoreLastSession))
   newModuleBtn.onClicked do() {.raises: [].}:
     onEvent(PaneEvent(pane: pane, kind: peNewModule))
   openModuleBtn.onClicked do() {.raises: [].}:
@@ -1476,6 +1496,53 @@ proc setRecentProjects*(pane: Pane, projects: seq[string]) {.raises: [].} =
     QWidget(h: pane.recentProjectsLabel.get().h, owned: false).setVisible(hasItems)
   except: discard
 
+proc setRestoreLastSessionAvailable*(pane: Pane, available: bool) {.raises: [].} =
+  try:
+    let btn = QWidget(h: pane.restoreSessionBtn.get().h, owned: false)
+    btn.setVisible(true)
+    btn.setEnabled(available)
+  except: discard
+
+proc currentCursorPosition*(pane: Pane): tuple[line, col: int] {.raises: [].} =
+  if pane.buffer == nil:
+    return (1, 0)
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let cur = ed.textCursor()
+    (cur.blockNumber() + 1, cur.columnNumber())
+  except:
+    (1, 0)
+
+proc currentScrollPosition*(pane: Pane): tuple[vertical, horizontal: int] {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    (ed.verticalScrollBar().value().int, ed.horizontalScrollBar().value().int)
+  except:
+    (0, 0)
+
+proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raises: [].} =
+  if pane.buffer == nil:
+    return
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let maxBlock = max(ed.blockCount().int, 1)
+    let targetLine = min(max(line, 1), maxBlock)
+    let doc = ed.document()
+    let blk = doc.findBlockByNumber(cint(targetLine - 1))
+    var cur = ed.textCursor()
+    cur.setPosition(blk.position())
+    let blockLen = max(blk.length().int - 1, 0)
+    let targetCol = min(max(col, 0), blockLen)
+    if targetCol > 0:
+      discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Right),
+                               cint(QTextCursorMoveModeEnum.MoveAnchor),
+                               cint(targetCol))
+    ed.setTextCursor(cur)
+    ed.verticalScrollBar().setValue(cint min(max(vertical, 0), ed.verticalScrollBar().maximum().int))
+    ed.horizontalScrollBar().setValue(cint min(max(horizontal, 0), ed.horizontalScrollBar().maximum().int))
+  except:
+    discard
+
 proc focus*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil:
     QWidget(h: pane.editor.h, owned: false).setFocus()
@@ -1595,4 +1662,3 @@ proc triggerCleanImports*(pane: Pane) {.raises: [].} =
         pane.diagReady = true
         applySelections(pane)
         doCleanImports(pane))
-
