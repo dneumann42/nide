@@ -7,6 +7,21 @@ type
     line*: int
     col*: int
 
+proc autoClosePairFor*(ch: char): Option[char] =
+  case ch
+  of '(': some(')')
+  of '[': some(']')
+  of '{': some('}')
+  else: none(char)
+
+proc isAutoCloseCloser*(ch: char): bool =
+  ch in {')', ']', '}'}
+
+proc shouldSkipAutoCloseCloser*(text: string, pos: int, typed: char): bool =
+  if not typed.isAutoCloseCloser():
+    return false
+  pos >= 0 and pos < text.len and text[pos] == typed
+
 proc findMatchingBracket*(text: string, pos: int): int =
   if pos < 0 or pos >= text.len: return -1
   let ch = text[pos]

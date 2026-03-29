@@ -1,5 +1,5 @@
 import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, sessionstate, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
-import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
+import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
 
 import "../../tools/nim_graph" as nim_graph
@@ -872,6 +872,14 @@ proc build*(self: Application) =
       else:
         c.deleteChar()
       ed.setTextCursor(c))
+
+    disp.register("editor.copySelection", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
+      let c = ed.textCursor()
+      if c.hasSelection():
+        QGuiApplication.clipboard().setText($c.selectedText()))
 
     disp.register("editor.killWordForward", proc() {.raises: [].} =
       let p = self.getTargetPane()

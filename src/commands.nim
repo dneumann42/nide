@@ -62,6 +62,7 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x44, altMod),  "editor.killWordForward")
   d.bindKey(combo(0x01000003, altMod), "editor.killWordBackward")
   d.bindKey(combo(0x57, ctrlMod), "editor.killRegion")
+  d.bindKey(combo(0x57, altMod),  "editor.copySelection")
   d.bindKey(combo(0x59, ctrlMod), "editor.yank")
   d.bindKey(combo(0x58, ctrlMod), "editor.chordCx")
   d.bindKey(combo(0x4F, ctrlMod), "editor.openLine")

@@ -79,6 +79,7 @@ Run with:
 | `Ctrl+F3` | Show function prototype |
 | `Ctrl+K` | Kill line |
 | `Ctrl+W` | Kill region |
+| `Alt+W` | Copy selection |
 | `Ctrl+Y` | Yank |
 | `Ctrl+X Ctrl+S` | Save buffer |
 | `Ctrl+X K` | Kill buffer |

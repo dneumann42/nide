@@ -823,6 +823,45 @@ proc newPane*(
         self.setTextCursor(cur)
       return
 
+    if (mods and (ctrlMod or altMod)) == 0:
+      let typed = $e.text()
+      if typed.len == 1:
+        let ch = typed[0]
+        let maybeClose = autoClosePairFor(ch)
+        if maybeClose.isSome():
+          let closeCh = maybeClose.get()
+          let cur = self.textCursor()
+          if cur.hasSelection():
+            let selected = $cur.selectedText()
+            cur.beginEditBlock()
+            cur.insertText($ch & selected & $closeCh)
+            discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Left),
+                                     cint(QTextCursorMoveModeEnum.MoveAnchor),
+                                     cint(1 + selected.len))
+            discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Right),
+                                     cint(QTextCursorMoveModeEnum.KeepAnchor),
+                                     cint(selected.len))
+            cur.endEditBlock()
+            self.setTextCursor(cur)
+          else:
+            cur.beginEditBlock()
+            cur.insertText($ch & $closeCh)
+            discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Left),
+                                     cint(QTextCursorMoveModeEnum.MoveAnchor))
+            cur.endEditBlock()
+            self.setTextCursor(cur)
+          return
+        elif ch.isAutoCloseCloser():
+          let cur = self.textCursor()
+          if not cur.hasSelection():
+            let pos = cur.position().int
+            let text = self.document().toPlainText()
+            if shouldSkipAutoCloseCloser(text, pos, ch):
+              discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Right),
+                                       cint(QTextCursorMoveModeEnum.MoveAnchor))
+              self.setTextCursor(cur)
+              return
+
     # Command dispatcher — ignore modifier-only keypresses
     let isModifierOnly = key >= cint(0x01000020) and key <= cint(0x01000023)
     if not isModifierOnly:

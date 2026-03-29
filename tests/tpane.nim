@@ -56,6 +56,31 @@ suite "findMatchingBracket":
   test "empty string returns -1":
     check findMatchingBracket("", 0) == -1
 
+# ── auto-close pairs ──────────────────────────────────────────────────────────
+
+suite "autoClosePairs":
+  test "maps supported openers to closers":
+    check autoClosePairFor('(').get() == ')'
+    check autoClosePairFor('[').get() == ']'
+    check autoClosePairFor('{').get() == '}'
+
+  test "does not support angle bracket":
+    check autoClosePairFor('<').isNone()
+
+  test "recognizes supported closers":
+    check isAutoCloseCloser(')')
+    check isAutoCloseCloser(']')
+    check isAutoCloseCloser('}')
+    check not isAutoCloseCloser('>')
+
+  test "skip-over only when next char matches closer":
+    check shouldSkipAutoCloseCloser("()", 1, ')')
+    check shouldSkipAutoCloseCloser("[]", 1, ']')
+    check not shouldSkipAutoCloseCloser("(]", 1, ')')
+    check not shouldSkipAutoCloseCloser("()", 0, ')')
+    check not shouldSkipAutoCloseCloser("", 0, ')')
+    check not shouldSkipAutoCloseCloser("<>", 1, '>')
+
 # ── countDiags ────────────────────────────────────────────────────────────────
 
 suite "countDiags":
