@@ -63,6 +63,7 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x01000003, altMod), "editor.killWordBackward")
   d.bindKey(combo(0x57, ctrlMod), "editor.killRegion")
   d.bindKey(combo(0x57, altMod),  "editor.copySelection")
+  d.bindKey(combo(0x47, ctrlMod), "editor.closeSearch")    ## Ctrl+G
   d.bindKey(combo(0x59, ctrlMod), "editor.yank")
   d.bindKey(combo(0x58, ctrlMod), "editor.chordCx")
   d.bindKey(combo(0x4F, ctrlMod), "editor.openLine")
@@ -75,7 +76,8 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x45, ctrlMod or shiftMod), "editor.toggleFileTree") ## Ctrl+Shift+E
   d.bindKey(combo(0x5C, ctrlMod or shiftMod), "editor.splitRow")       ## Ctrl+Shift+\
   d.bindKey(combo(0x01000032, noMod),         "editor.gotoDefinition") ## F3
-  d.bindKey(combo(0x20, ctrlMod),             "editor.autocomplete")   ## Ctrl+Space
+  d.bindKey(combo(0x20, ctrlMod),             "editor.setMark")        ## Ctrl+Space
+  d.bindKey(combo(0x3B, ctrlMod),             "editor.autocomplete")   ## Ctrl+;
   d.bindKey(combo(0x01000032, ctrlMod),       "editor.showPrototype")  ## Ctrl+F3
   d.bindKey(combo(0x3D, ctrlMod),             "editor.zoomIn")         ## Ctrl+=
   d.bindKey(combo(0x2D, ctrlMod),             "editor.zoomOut")        ## Ctrl+-
@@ -86,6 +88,7 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindChordKey(combo(0x33, noMod),   "editor.splitVertical")
   d.bindChordKey(combo(0x4B, noMod),   "editor.killBuffer")
   d.bindChordKey(combo(0x42, noMod),   "editor.switchBuffer")
+  d.bindChordKey(combo(0x20, noMod),   "editor.rectangleMark")
   d.bindChordKey(combo(0x53, ctrlMod), "editor.saveBuffer")
   d.bindChordKey(combo(0x43, ctrlMod), "editor.quitApplication")
   d.bindChordKey(combo(0x46, ctrlMod), "editor.findFile")

@@ -71,7 +71,13 @@ proc parseSugResponse*(lines: seq[string]): seq[Completion] {.raises: [].} =
       try:
         var c: Completion
         c.symkind = parts[1]
-        c.name = parts[2]
+        let qpath = parts[2]
+        let dot = qpath.rfind('.')
+        c.name =
+          if dot >= 0 and dot + 1 < qpath.len:
+            qpath[dot + 1 .. ^1]
+          else:
+            qpath
         c.signature = parts[3]
         c.file = parts[4]
         c.line = parseInt(parts[5])
@@ -359,11 +365,17 @@ proc new*(T: typedesc[NimSuggestClient],
 
 proc querySug*(client: NimSuggestClient,
                filePath: string,
+               dirtyFilePath: string,
                line: int,
                col: int,
                onResult: proc(completions: seq[Completion]) {.raises: [].},
                onError: proc(msg: string) {.raises: [].}) {.raises: [].} =
-  let request = "sug " & filePath & ":" & $line & ":" & $col & "\n"
+  let location =
+    if dirtyFilePath.len > 0:
+      filePath & ";" & dirtyFilePath
+    else:
+      filePath
+  let request = "sug " & location & ":" & $line & ":" & $col & "\n"
   client.log("querySug: " & request.strip())
 
   if client.pending.len > 0:

@@ -530,7 +530,9 @@ proc openProject(self: Application, path: string, restoreMode = false) {.raises:
   # Start nimsuggest for this project
   if self.nimSuggest != nil:
     self.nimSuggest.kill()
-  let entryFile = findNimbleEntry(path)
+  var entryFile = findProjectMain(path)
+  if entryFile.len == 0:
+    entryFile = findNimbleEntry(path)
   self.nimSuggest = NimSuggestClient.new(self.root.h, entryFile, debug = true)
   startNimSuggest(self.nimSuggest)
   self.paneManager.nimSuggest = self.nimSuggest
@@ -780,70 +782,43 @@ proc build*(self: Application) =
     disp.applyCustomBindings(self.settings.keybindings.toTable())
     self.paneManager.dispatcher = disp
 
+    proc moveTarget(op: cint) {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      discard p.moveCursor(op)
+
     disp.register("editor.chordCx", proc() {.raises: [].} =
       disp.inChord = true)
 
+    disp.register("editor.setMark", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: p.activateMark())
+
+    disp.register("editor.rectangleMark", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p != nil: p.activateRectangleMark())
+
     # Cursor movement
     disp.register("editor.forwardChar", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Right), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.Right)))
     disp.register("editor.backwardChar", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Left), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.Left)))
     disp.register("editor.nextLine", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Down), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.Down)))
     disp.register("editor.prevLine", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Up), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.Up)))
     disp.register("editor.beginningOfLine", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.StartOfLine), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.StartOfLine)))
     disp.register("editor.endOfLine", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.EndOfLine), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.EndOfLine)))
     disp.register("editor.forwardWord", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.NextWord), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.NextWord)))
     disp.register("editor.backwardWord", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.PreviousWord), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.PreviousWord)))
     disp.register("editor.beginningOfBuffer", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.Start), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.Start)))
     disp.register("editor.endOfBuffer", proc() {.raises: [].} =
-      let p = self.getTargetPane(); if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      discard c.movePosition(cint(QTextCursorMoveOperationEnum.End), cint(QTextCursorMoveModeEnum.MoveAnchor))
-      ed.setTextCursor(c))
+      moveTarget(cint(QTextCursorMoveOperationEnum.End)))
 
     # Scroll
     disp.register("editor.scrollDown", proc() {.raises: [].} =
@@ -855,6 +830,7 @@ proc build*(self: Application) =
     disp.register("editor.deleteForwardChar", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
+      p.clearMarkState(clearNativeSelection = false)
       let ed = QPlainTextEdit(h: p.editor.h, owned: false)
       let c = ed.textCursor()
       c.deleteChar()
@@ -863,6 +839,7 @@ proc build*(self: Application) =
     disp.register("editor.killLine", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
+      p.clearMarkState()
       let ed = QPlainTextEdit(h: p.editor.h, owned: false)
       let c = ed.textCursor()
       discard c.movePosition(cint(QTextCursorMoveOperationEnum.EndOfLine),
@@ -876,14 +853,13 @@ proc build*(self: Application) =
     disp.register("editor.copySelection", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
-      let ed = QPlainTextEdit(h: p.editor.h, owned: false)
-      let c = ed.textCursor()
-      if c.hasSelection():
-        QGuiApplication.clipboard().setText($c.selectedText()))
+      p.copyRegion()
+      p.clearMarkState())
 
     disp.register("editor.killWordForward", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
+      p.clearMarkState()
       let ed = QPlainTextEdit(h: p.editor.h, owned: false)
       let c = ed.textCursor()
       discard c.movePosition(cint(QTextCursorMoveOperationEnum.NextWord),
@@ -894,6 +870,7 @@ proc build*(self: Application) =
     disp.register("editor.killWordBackward", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
+      p.clearMarkState()
       let ed = QPlainTextEdit(h: p.editor.h, owned: false)
       let c = ed.textCursor()
       discard c.movePosition(cint(QTextCursorMoveOperationEnum.PreviousWord),
@@ -907,6 +884,7 @@ proc build*(self: Application) =
       if p.buffer == nil:
         p.triggerOpenProject()
         return
+      p.clearMarkState()
       let ed = QPlainTextEdit(h: p.editor.h, owned: false)
       let c = ed.textCursor()
       c.insertText("\n")
@@ -920,11 +898,13 @@ proc build*(self: Application) =
 
     disp.register("editor.killRegion", proc() {.raises: [].} =
       let p = self.getTargetPane()
-      if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).cut())
+      if p != nil: p.killRegion())
 
     disp.register("editor.yank", proc() {.raises: [].} =
       let p = self.getTargetPane()
-      if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).paste())
+      if p != nil:
+        p.clearMarkState(clearNativeSelection = false)
+        QPlainTextEdit(h: p.editor.h, owned: false).paste())
 
     # Buffer / window management
     disp.register("editor.saveBuffer", proc() {.raises: [].} =
@@ -978,7 +958,9 @@ proc build*(self: Application) =
 
     disp.register("editor.closeSearch", proc() {.raises: [].} =
       let p = self.getTargetPane()
-      if p != nil: p.closeSearch())
+      if p != nil:
+        p.clearMarkState()
+        p.closeSearch())
 
     disp.register("editor.ripgrepFind", proc() {.raises: [].} =
       let p = self.getTargetPane()
@@ -1241,6 +1223,8 @@ proc build*(self: Application) =
   self.updateRecentProjects()
   self.updateRestoreSessionAvailability()
   self.sessionPersistenceReady = true
+  if self.settings.restoreLastSessionOnLaunch:
+    self.restoreLastSession()
 
   self.fileWatcher.onFileChanged do(path: openArray[char]):
     when defined(debugFileWatcher):

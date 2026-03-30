@@ -1,7 +1,7 @@
 import logic
 export logic
 import autocomplete, buffers, commands, funcprototype, logparser, nimcheck, nimfinddef, nimimports, nimindex, nimsuggest, syntaxtheme, widgetref, widgets
-import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
+import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[options, os, strutils]
 
 {.compile("search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
@@ -67,6 +67,9 @@ type
     regexCheck:    WidgetRef[QCheckBox]
     matchPositions: seq[(cint, cint)]
     bracketMatchPositions: seq[(cint, cint)]
+    markActive: bool
+    rectangleMarkActive: bool
+    markPos: cint
     jumpHistory*:  seq[JumpLocation]
     jumpFuture*:   seq[JumpLocation]
     nimSuggest*:   NimSuggestClient
@@ -79,6 +82,7 @@ type
     diagShownCol:   int      # col of the diagnostic currently in the popup
     diagReady:      bool     # true once nim check has returned at least once for this buffer
     diagHideTimerH: pointer  # single-shot QTimer that hides the popup after a delay
+    autocompleteRefreshTimerH: pointer
     autocompleteMenu: AutocompleteMenu
     prototypeWindow: PrototypeWindow
     autocompleteJustOpened: bool  ## suppress the keyPressEvent that triggered open
@@ -96,18 +100,30 @@ type
 
   EditorWidget* = ref object of QPlainTextEdit
 
+  AutocompleteTrigger* = enum
+    atCommand
+    atRefresh
+
 proc scrollUp*(pane: Pane) {.raises: [].}
 proc scrollDown*(pane: Pane) {.raises: [].}
+proc applySelections*(pane: Pane) {.raises: [].}
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
 proc closeSearch*(pane: Pane) {.raises: [].}
 proc triggerJumpBack*(pane: Pane) {.raises: [].}
 proc triggerJumpForward*(pane: Pane) {.raises: [].}
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
-proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].}
+proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient,
+                          trigger: AutocompleteTrigger = atCommand) {.raises: [].}
 proc triggerPrototype*(pane: Pane) {.raises: [].}
 proc triggerCleanImports*(pane: Pane) {.raises: [].}
 proc showPrototypeAtCursor*(pane: Pane) {.raises: [].}
 proc updatePrototypeAtCursor*(pane: Pane) {.raises: [].}
+proc clearMarkState*(pane: Pane, clearNativeSelection = true) {.raises: [].}
+proc activateMark*(pane: Pane) {.raises: [].}
+proc activateRectangleMark*(pane: Pane) {.raises: [].}
+proc moveCursor*(pane: Pane, op: cint, count: cint = 1): bool {.raises: [].}
+proc copyRegion*(pane: Pane) {.raises: [].}
+proc killRegion*(pane: Pane) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -115,10 +131,139 @@ const StatusLight = "★"
 const VsplitSvg = staticRead("icons/vsplit.svg")
 const HsplitSvg = staticRead("icons/hsplit.svg")
 const SaveSvg = staticRead("icons/save.svg")
+const AutocompleteRefreshMs = cint 120
 
 
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)
+
+proc currentPointPos(pane: Pane): cint =
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  ed.textCursor().position()
+
+proc stopAutocompleteRefresh(pane: Pane) {.raises: [].} =
+  if pane.autocompleteRefreshTimerH != nil:
+    try: QTimer(h: pane.autocompleteRefreshTimerH, owned: false).stop()
+    except: discard
+
+proc scheduleAutocompleteRefresh(pane: Pane) {.raises: [].} =
+  if pane.autocompleteRefreshTimerH == nil:
+    return
+  try: QTimer(h: pane.autocompleteRefreshTimerH, owned: false).start()
+  except: discard
+
+proc dirtyNimSuggestPath(filePath: string): string =
+  let tempDir = getTempDir() / "nide-nimsuggest"
+  try:
+    createDir(tempDir)
+  except OSError:
+    discard
+  filePath.replace('\\', '_').replace('/', '_').replace(':', '_') & ".dirty.nim"
+
+proc writeDirtyNimSuggestFile(pane: Pane): string {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.path.len == 0:
+    return ""
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let doc = ed.document()
+  if not doc.isModified():
+    return ""
+  let tempDir = getTempDir() / "nide-nimsuggest"
+  try:
+    createDir(tempDir)
+    let dirtyPath = tempDir / dirtyNimSuggestPath(pane.buffer.path)
+    writeFile(dirtyPath, ed.toPlainText())
+    return dirtyPath
+  except:
+    return ""
+
+proc syncTransientSelection(pane: Pane) {.raises: [].} =
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let pointPos = currentPointPos(pane)
+  if pane.rectangleMarkActive:
+    let cur = ed.textCursor()
+    cur.setPosition(pointPos, cint(QTextCursorMoveModeEnum.MoveAnchor))
+    ed.setTextCursor(cur)
+  elif pane.markActive:
+    let cur = ed.textCursor()
+    cur.setPosition(pane.markPos, cint(QTextCursorMoveModeEnum.MoveAnchor))
+    cur.setPosition(pointPos, cint(QTextCursorMoveModeEnum.KeepAnchor))
+    ed.setTextCursor(cur)
+  applySelections(pane)
+
+proc clearMarkState*(pane: Pane, clearNativeSelection = true) {.raises: [].} =
+  let wasRectangle = pane.rectangleMarkActive
+  pane.markActive = false
+  pane.rectangleMarkActive = false
+  pane.markPos = 0
+  if clearNativeSelection:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    let cur = ed.textCursor()
+    let pos = cur.position()
+    cur.setPosition(pos, cint(QTextCursorMoveModeEnum.MoveAnchor))
+    ed.setTextCursor(cur)
+  if wasRectangle:
+    applySelections(pane)
+
+proc activateMark*(pane: Pane) {.raises: [].} =
+  pane.markPos = currentPointPos(pane)
+  pane.markActive = true
+  pane.rectangleMarkActive = false
+  syncTransientSelection(pane)
+
+proc activateRectangleMark*(pane: Pane) {.raises: [].} =
+  pane.markPos = currentPointPos(pane)
+  pane.markActive = false
+  pane.rectangleMarkActive = true
+  syncTransientSelection(pane)
+
+proc moveCursor*(pane: Pane, op: cint, count: cint = 1): bool {.raises: [].} =
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  let cur = ed.textCursor()
+  let mode =
+    if pane.rectangleMarkActive: cint(QTextCursorMoveModeEnum.MoveAnchor)
+    elif pane.markActive: cint(QTextCursorMoveModeEnum.KeepAnchor)
+    else: cint(QTextCursorMoveModeEnum.MoveAnchor)
+  result = cur.movePosition(op, mode, count)
+  ed.setTextCursor(cur)
+  if pane.rectangleMarkActive:
+    applySelections(pane)
+
+proc copyRegion*(pane: Pane) {.raises: [].} =
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  if pane.rectangleMarkActive:
+    let text = ed.document().toPlainText()
+    QGuiApplication.clipboard().setText(
+      copyRectangleText(text, pane.markPos.int, currentPointPos(pane).int))
+    return
+  let cur = ed.textCursor()
+  if cur.hasSelection():
+    QGuiApplication.clipboard().setText($cur.selectedText())
+
+proc killRegion*(pane: Pane) {.raises: [].} =
+  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+  if pane.rectangleMarkActive:
+    let oldText = ed.document().toPlainText()
+    let anchor = offsetToLineCol(oldText, pane.markPos.int)
+    let point = offsetToLineCol(oldText, currentPointPos(pane).int)
+    let newText = removeRectangleText(oldText, pane.markPos.int, currentPointPos(pane).int)
+    QGuiApplication.clipboard().setText(
+      copyRectangleText(oldText, pane.markPos.int, currentPointPos(pane).int))
+    let cur = ed.textCursor()
+    cur.beginEditBlock()
+    discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Start),
+                             cint(QTextCursorMoveModeEnum.MoveAnchor))
+    discard cur.movePosition(cint(QTextCursorMoveOperationEnum.End),
+                             cint(QTextCursorMoveModeEnum.KeepAnchor))
+    cur.insertText(newText)
+    let targetPos = lineColToOffset(newText, min(anchor.line, point.line),
+                                    min(anchor.col, point.col))
+    cur.setPosition(cint(targetPos), cint(QTextCursorMoveModeEnum.MoveAnchor))
+    cur.endEditBlock()
+    ed.setTextCursor(cur)
+    pane.clearMarkState(clearNativeSelection = false)
+    return
+  pane.clearMarkState(clearNativeSelection = false)
+  ed.cut()
 
 proc hideDiagPopup(pane: Pane) {.raises: [].} =
   if pane.diagHideTimerH != nil:
@@ -299,6 +444,26 @@ proc applySelections*(pane: Pane) {.raises: [].} =
         var cur = ed.textCursor()
         cur.setPosition(s)
         cur.setPosition(e, cint(QTextCursorMoveModeEnum.KeepAnchor))
+        var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
+        sel.setCursor(cur)
+        sel.setFormat(fmt)
+        sels.add(sel)
+
+    # Rectangle mark overlay
+    if pane.rectangleMarkActive:
+      let text = doc.toPlainText()
+      let pointPos = currentPointPos(pane).int
+      var fmt = QTextCharFormat.create()
+      QTextFormat(h: fmt.h, owned: false).setBackground(
+        QBrush.create(QColor.create(selectionColor())))
+      for span in rectangleSpans(text, pane.markPos.int, pointPos):
+        if span.startCol >= span.endCol or doc.blockCount() <= cint(span.line):
+          continue
+        let blk = doc.findBlockByNumber(cint(span.line))
+        var cur = ed.textCursor()
+        cur.setPosition(blk.position() + cint(span.startCol))
+        cur.setPosition(blk.position() + cint(span.endCol),
+                        cint(QTextCursorMoveModeEnum.KeepAnchor))
         var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
         sel.setCursor(cur)
         sel.setFormat(fmt)
@@ -759,6 +924,7 @@ proc newPane*(
     {.cast(gcsafe).}: hideDiagPopup(pane)
     let key = e.key()
     let mods = e.modifiers()
+    let typedText = $e.text()
 
     if pane.prototypeWindow.isPrototypeVisible():
       if key == cint(0x01000000):  # Escape
@@ -786,19 +952,36 @@ proc newPane*(
         {.cast(gcsafe).}: pane.autocompleteMenu.prevItem()
         return
       elif key == cint(0x01000004) or key == cint(0x01000005):  # Return / Enter
-        {.cast(gcsafe).}: pane.autocompleteMenu.accept()
-        return  # consume the Return so no newline is inserted
-      elif key == cint(0x01000000):  # Escape
+        if pane.autocompleteMenu.hasExplicitSelection():
+          {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
+          {.cast(gcsafe).}: pane.autocompleteMenu.accept()
+          return  # consume the Return only when accepting a visible choice
         {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
+      elif key == cint(0x01000000):  # Escape
+        {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
+        {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
+        return
+      elif shouldRefreshAutocompleteOnKeyPress(key.int, mods.int, typedText):
+        {.cast(gcsafe).}: pane.autocompleteJustOpened = false
+        {.cast(gcsafe).}:
+          if (pane.markActive or pane.rectangleMarkActive) and
+             shouldClearMarkOnKeyPress(key.int, mods.int, typedText):
+            pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
+        QPlainTextEditkeyPressEvent(self, e)
+        {.cast(gcsafe).}: pane.scheduleAutocompleteRefresh()
         return
       else:
         # Suppress the very first keyPressEvent after the menu opens — it's
         # the Ctrl+Space (or key repeat) that triggered the open.
         if pane.autocompleteJustOpened:
           {.cast(gcsafe).}: pane.autocompleteJustOpened = false
-        else:
+        elif (mods and (ctrlMod or altMod)) == 0:
+          {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
           {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
     elif key == cint(0x01000001):  # Qt::Key_Tab → insert 2 spaces
+      {.cast(gcsafe).}:
+        if pane.markActive or pane.rectangleMarkActive:
+          pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
       let cur = self.textCursor()
       if cur.hasSelection():
         # Indent every selected line by 2 spaces
@@ -824,11 +1007,13 @@ proc newPane*(
       return
 
     if (mods and (ctrlMod or altMod)) == 0:
-      let typed = $e.text()
-      if typed.len == 1:
-        let ch = typed[0]
+      if typedText.len == 1:
+        let ch = typedText[0]
         let maybeClose = autoClosePairFor(ch)
         if maybeClose.isSome():
+          {.cast(gcsafe).}:
+            if pane.markActive or pane.rectangleMarkActive:
+              pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
           let closeCh = maybeClose.get()
           let cur = self.textCursor()
           if cur.hasSelection():
@@ -857,10 +1042,18 @@ proc newPane*(
             let pos = cur.position().int
             let text = self.document().toPlainText()
             if shouldSkipAutoCloseCloser(text, pos, ch):
+              {.cast(gcsafe).}:
+                if pane.markActive or pane.rectangleMarkActive:
+                  pane.clearMarkState(clearNativeSelection = false)
               discard cur.movePosition(cint(QTextCursorMoveOperationEnum.Right),
                                        cint(QTextCursorMoveModeEnum.MoveAnchor))
               self.setTextCursor(cur)
               return
+
+    {.cast(gcsafe).}:
+      if (pane.markActive or pane.rectangleMarkActive) and
+         shouldClearMarkOnKeyPress(key.int, mods.int, typedText):
+        pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
 
     # Command dispatcher — ignore modifier-only keypresses
     let isModifierOnly = key >= cint(0x01000020) and key <= cint(0x01000023)
@@ -875,7 +1068,11 @@ proc newPane*(
   editorVtbl.mousePressEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
     # Any mouse click dismisses the autocomplete menu
     if pane.autocompleteMenu.isOpen():
+      {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
       {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
+    {.cast(gcsafe).}:
+      if pane.markActive or pane.rectangleMarkActive:
+        pane.clearMarkState()
     let btn = e.button()
     if btn == cint(8):   # Qt::BackButton / XButton1
       {.cast(gcsafe).}:
@@ -1148,6 +1345,14 @@ proc newPane*(
       QTimer(h: pane.diagHideTimerH, owned: false).start()
     else:
       hideDiagPopup(pane)
+  var autocompleteRefreshTimer = QTimer.create(QObject(h: result.container.h, owned: false))
+  autocompleteRefreshTimer.owned = false
+  QTimer(h: autocompleteRefreshTimer.h, owned: false).setSingleShot(true)
+  QTimer(h: autocompleteRefreshTimer.h, owned: false).setInterval(AutocompleteRefreshMs)
+  result.autocompleteRefreshTimerH = autocompleteRefreshTimer.h
+  QTimer(h: autocompleteRefreshTimer.h, owned: false).onTimeout do() {.raises: [].}:
+    if pane.autocompleteMenu.isOpen() and pane.nimSuggest != nil:
+      pane.triggerAutocomplete(pane.nimSuggest, atRefresh)
   result.label = label
   result.statusLabel = statusLabel
   result.stack = stack
@@ -1263,6 +1468,7 @@ proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
   QWidget(h: pane.closeBtn.get().h, owned: false).setStyleSheet("QPushButton { color: " & iconColor & "; }")
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
+  pane.stopAutocompleteRefresh()
   var displayName = buf.name
   try: displayName = relativePath(buf.name, getCurrentDir())
   except: discard
@@ -1276,6 +1482,9 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
     pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
   pane.stack.setCurrentIndex(cint(1))
   pane.searchBar.get().hide()
+  pane.markActive = false
+  pane.rectangleMarkActive = false
+  pane.markPos = 0
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
   pane.diagReady = false
@@ -1285,6 +1494,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   runCheck(pane)
 
 proc clearBuffer*(pane: Pane) =
+  pane.stopAutocompleteRefresh()
   pane.label.setText("")
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   ed.setDocument(pane.emptyDoc.get())
@@ -1292,6 +1502,8 @@ proc clearBuffer*(pane: Pane) =
   pane.statusLabel.setText(StatusDark)
   pane.stack.setCurrentIndex(cint(0))
   pane.buffer = nil
+  pane.markActive = false
+  pane.rectangleMarkActive = false
   pane.searchBar.get().hide()
   pane.matchPositions = @[]
   pane.diagLines[] = @[]
@@ -1333,6 +1545,7 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
   let colNum = cur.columnNumber()   # nimsuggest expects 0-based columns
 
   let filePath = pane.buffer.path
+  let dirtyFilePath = pane.writeDirtyNimSuggestFile()
   if filePath.len == 0:
     return
 
@@ -1341,6 +1554,7 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 
   client.queryDef(
     filePath,
+    dirtyFilePath,
     lineNum,
     colNum,
     proc(def: Definition) {.raises: [].} =
@@ -1356,8 +1570,13 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
       echo "Goto definition error: " & msg
   )
 
-proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
+proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient,
+                          trigger: AutocompleteTrigger = atCommand) {.raises: [].} =
   if pane.buffer == nil or pane.buffer.path.len == 0:
+    return
+  if trigger == atCommand and pane.autocompleteMenu.isOpen():
+    pane.stopAutocompleteRefresh()
+    pane.autocompleteMenu.accept()
     return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   let cur = ed.textCursor()
@@ -1366,31 +1585,43 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
   let textBlock = doc.findBlock(pos)
   let lineNum = textBlock.blockNumber() + 1
   let colNum = cur.columnNumber()
+  let prefix = identifierPrefixAt(doc.toPlainText(), pos.int)
 
   let filePath = pane.buffer.path
+  let dirtyFilePath = pane.writeDirtyNimSuggestFile()
   if filePath.len == 0:
     return
 
   let paneRef = pane
-  if paneRef.autocompleteMenu.isOpen():
-    return
-  if client.pending.len > 0:
-    return
   # Capture the trigger-time absolute character position so insertTextCb
   # can locate and replace the typed prefix precisely at accept time.
   let triggerPos = pos
   let edRef = ed
   client.querySug(
     filePath,
+    dirtyFilePath,
     lineNum,
     colNum,
     proc(completions: seq[Completion]) {.raises: [].} =
-      if completions.len == 0:
+      var items: seq[tuple[name, symkind, file: string]]
+      items.setLen(completions.len)
+      for i, completion in completions:
+        items[i] = (completion.name, completion.symkind, completion.file)
+      let rankedIdx = sortAutocompleteMatches(items, prefix, filePath)
+      var rankedCompletions: seq[Completion]
+      rankedCompletions.setLen(rankedIdx.len)
+      for i, idx in rankedIdx:
+        rankedCompletions[i] = completions[idx]
+      if rankedCompletions.len == 0:
+        if paneRef.autocompleteMenu.isOpen():
+          paneRef.stopAutocompleteRefresh()
+          paneRef.autocompleteMenu.dismiss()
         return
 
       proc insertTextCb(text: string) {.raises: [].} =
         let e = QPlainTextEdit(h: paneRef.editor.h, owned: false)
         let cur = e.textCursor()
+        paneRef.clearMarkState()
         # Move to the trigger position, then extend selection back to the
         # start of the word — this selects only the typed prefix and replaces
         # it with the chosen completion. We do NOT use select(WordUnderCursor)
@@ -1408,12 +1639,13 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
         e.setTextCursor(cur)
 
       proc closeCb() {.raises: [].} =
+        paneRef.stopAutocompleteRefresh()
         paneRef.autocompleteMenu = nil
 
-      paneRef.autocompleteJustOpened = true
+      paneRef.autocompleteJustOpened = trigger == atCommand
       showCompletions(
         edRef,
-        completions,
+        rankedCompletions,
         insertTextCb,
         closeCb,
         addr(paneRef.autocompleteMenu)

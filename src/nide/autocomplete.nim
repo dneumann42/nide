@@ -7,12 +7,14 @@
 import seaqt/[qwidget, qlistwidget, qlistwidgetitem,
               qrect, qplaintextedit, qobject]
 import nimsuggest, widgets
+import std/os
 
 type
   AutocompleteMenu* = ref object
     widgetH*:  pointer    ## QWidget popup handle (nil when closed/not yet open)
     listH*:    pointer    ## QListWidget handle
     completions*: seq[Completion]
+    explicitSelection*: bool
     insertTextCb*: proc(text: string) {.raises: [].}
     closeCb*:      proc() {.raises: [].}
 
@@ -30,12 +32,18 @@ proc nextItem*(menu: AutocompleteMenu) {.raises: [].} =
   let lw = QListWidget(h: menu.listH, owned: false)
   let next = min(lw.currentRow() + cint 1, lw.count() - cint 1)
   lw.setCurrentRow(next)
+  menu.explicitSelection = next >= 0
 
 proc prevItem*(menu: AutocompleteMenu) {.raises: [].} =
   if menu == nil or menu.listH == nil: return
   let lw = QListWidget(h: menu.listH, owned: false)
   let prev = max(lw.currentRow() - cint 1, cint 0)
   lw.setCurrentRow(prev)
+  menu.explicitSelection = prev >= 0
+
+proc hasExplicitSelection*(menu: AutocompleteMenu): bool {.raises: [].} =
+  menu != nil and menu.explicitSelection and menu.listH != nil and
+    QListWidget(h: menu.listH, owned: false).currentRow() >= 0
 
 proc accept*(menu: AutocompleteMenu) {.raises: [].} =
   ## Insert selected completion then close.
@@ -127,23 +135,31 @@ proc showCompletions*(editor: QPlainTextEdit,
       menu.accept()
 
     for c in completions:
+      let location =
+        if c.file.len > 0:
+          "  " & c.file.lastPathPart & ":" & $c.line & ":" & $c.col
+        else:
+          ""
       let label = c.symkind & "  " & c.name &
-                  (if c.signature.len > 0: "  " & c.signature else: "")
+                  (if c.signature.len > 0: "  " & c.signature else: "") &
+                  location
       var item = QListWidgetItem.create(label)
       item.owned = false
       QListWidget(h: listH, owned: false).addItem(item)
 
     QListWidget(h: listH, owned: false).setCurrentRow(cint 0)
+    menu.explicitSelection = true
 
     let layout = vbox(margins = (cint 1, cint 1, cint 1, cint 1))
     layout.add(QWidget(h: listH, owned: false))
     layout.applyTo(pw)
 
-    # Size: cap height to show at most ~10 items, max 280px
+    # Size: cap height to show at most ~10 items. Keep a safer minimum size so
+    # short result sets don't end up with scrollbars obscuring the row text.
     let itemH = cint 22
     let visItems = min(cint(completions.len), cint 10)
-    let popupW = cint 560
-    let popupH2 = visItems * itemH + cint 4  # +4 for border
+    let popupW = cint 720
+    let popupH2 = max(visItems, cint 2) * itemH + cint 4  # +4 for border
 
     let vpW = viewport.width()
     let vpH = viewport.height()

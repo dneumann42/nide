@@ -1,4 +1,4 @@
-import std/[strutils, options, os]
+import std/[strutils, options]
 import db_connector/db_sqlite
 
 type

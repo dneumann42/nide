@@ -75,7 +75,9 @@ Run with:
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Space` | Autocomplete |
+| `Ctrl+Space` | Set mark |
+| `Ctrl+;` | Autocomplete |
+| `Ctrl+G` | Cancel selection/search |
 | `Ctrl+F3` | Show function prototype |
 | `Ctrl+K` | Kill line |
 | `Ctrl+W` | Kill region |
@@ -83,6 +85,7 @@ Run with:
 | `Ctrl+Y` | Yank |
 | `Ctrl+X Ctrl+S` | Save buffer |
 | `Ctrl+X K` | Kill buffer |
+| `Ctrl+X Space` | Rectangle mark |
 
 ### Panes
 

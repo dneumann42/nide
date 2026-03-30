@@ -1,5 +1,4 @@
 import std/[strutils]
-import seaqt/[qprocess, qobject, qtcpsocket, qabstractsocket, qiodevice]
 import nimsuggest
 
 type
@@ -29,11 +28,17 @@ proc parseDefResponse*(lines: seq[string]): (bool, Definition) {.raises: [].} =
 
 proc queryDef*(client: NimSuggestClient,
                filePath: string,
+               dirtyFilePath: string,
                line: int,
                col: int,
                onResult: proc(def: Definition) {.raises: [].},
                onError: proc(msg: string) {.raises: [].}) {.raises: [].} =
-  let request = "def " & filePath & ":" & $line & ":" & $col & "\n"
+  let location =
+    if dirtyFilePath.len > 0:
+      filePath & ";" & dirtyFilePath
+    else:
+      filePath
+  let request = "def " & location & ":" & $line & ":" & $col & "\n"
 
   let onSug = proc(completions: seq[Completion]) {.raises: [].} =
     let (ok, def) = parseDefResponse(client.responseLines)

@@ -4,12 +4,12 @@ import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbu
               qgraphicsopacityeffect, qgraphicseffect,
               qtabwidget, qtablewidget, qheaderview, qpushbutton, qkeysequenceedit,
               qkeysequence, qtableview, qabstractitemview]
-import toml_serialization, os
 import std/[tables, algorithm, strutils]
 
 import theme
 import themedialog
 import opacity
+import settingsstore
 import ../commands
 
 type
@@ -29,13 +29,56 @@ type
 
   Settings* = object
     appearance*:  AppearanceSettings
+    restoreLastSessionOnLaunch*: bool
     keybindings*: seq[KeybindingOverride]  ## user-defined overrides, e.g. {command: "editor.forwardChar", key: "Ctrl+T"}
-
-const 
-  SettingsFile = "settings.toml"
 
 proc syntaxTheme*(s: Settings): string = s.appearance.syntaxTheme
 proc `syntaxTheme=`*(s: var Settings, v: string) = s.appearance.syntaxTheme = v
+
+proc toStored(overrides: seq[KeybindingOverride]): seq[StoredKeybindingOverride] =
+  for o in overrides:
+    result.add(StoredKeybindingOverride(command: o.command, key: o.key))
+
+proc toRuntime(overrides: seq[StoredKeybindingOverride]): seq[KeybindingOverride] =
+  for o in overrides:
+    result.add(KeybindingOverride(command: o.command, key: o.key))
+
+proc toStoredTheme(theme: Theme): string =
+  case theme
+  of Dark: "Dark"
+  of Light: "Light"
+
+proc parseStoredTheme(value: string): Theme =
+  if value.toLowerAscii() == "dark": Dark else: Light
+
+proc toStored(settings: Settings): StoredSettings =
+  result.appearance.themeMode = toStoredTheme(settings.appearance.themeMode)
+  result.appearance.transparent = settings.appearance.transparent
+  result.appearance.lineNumbers = settings.appearance.lineNumbers
+  result.appearance.font = settings.appearance.font
+  result.appearance.fontSize = settings.appearance.fontSize
+  result.appearance.syntaxTheme = settings.appearance.syntaxTheme
+  result.appearance.opacityEnabled = settings.appearance.opacityEnabled
+  result.appearance.opacityLevel = settings.appearance.opacityLevel
+  result.restoreLastSessionOnLaunch = settings.restoreLastSessionOnLaunch
+  result.keybindings = settings.keybindings.toStored()
+
+proc toRuntime(stored: StoredSettings): Settings =
+  result = Settings()
+  result.appearance.themeMode = parseStoredTheme(stored.appearance.themeMode)
+  result.appearance.transparent = stored.appearance.transparent
+  result.appearance.lineNumbers = stored.appearance.lineNumbers
+  if stored.appearance.font.len > 0:
+    result.appearance.font = stored.appearance.font
+  if stored.appearance.fontSize > 0:
+    result.appearance.fontSize = stored.appearance.fontSize
+  if stored.appearance.syntaxTheme.len > 0:
+    result.appearance.syntaxTheme = stored.appearance.syntaxTheme
+  result.appearance.opacityEnabled = stored.appearance.opacityEnabled
+  if stored.appearance.opacityLevel > 0:
+    result.appearance.opacityLevel = stored.appearance.opacityLevel
+  result.restoreLastSessionOnLaunch = stored.restoreLastSessionOnLaunch
+  result.keybindings = stored.keybindings.toRuntime()
 
 proc toTable*(overrides: seq[KeybindingOverride]): Table[string, string] =
   for o in overrides: result[o.command] = o.key
@@ -43,25 +86,11 @@ proc toTable*(overrides: seq[KeybindingOverride]): Table[string, string] =
 proc toOverrides*(t: Table[string, string]): seq[KeybindingOverride] =
   for cmd, key in t: result.add(KeybindingOverride(command: cmd, key: key))
 
-proc load*(T: typedesc[Settings]): T {.raises: [].} =
-  result = T()
-  try:
-    if not dirExists(getConfigDir() / "nide"):
-      createDir(getConfigDir() / "nide")
-    let path = getConfigDir() / "nide" / SettingsFile
-    if fileExists(path):
-      result = Toml.decode(readFile(path), T)
-  except:
-    echo getCurrentExceptionMsg()
+proc load*(_: typedesc[Settings]): Settings {.raises: [].} =
+  loadStoredSettings().toRuntime()
 
 proc write*(settings: Settings) {.raises: [].} =
-  try:
-    if not dirExists(getConfigDir() / "nide"):
-      createDir(getConfigDir() / "nide")
-    let path = getConfigDir() / "nide" / SettingsFile
-    writeFile(path, Toml.encode(settings))
-  except:
-    echo getCurrentExceptionMsg()
+  writeStoredSettings(settings.toStored())
 
 proc showSettingsDialog*(
   parent:           QWidget,
@@ -132,6 +161,11 @@ proc showSettingsDialog*(
     QAbstractButton(h: opacityCheck.h, owned: false).setChecked(
       current.appearance.opacityEnabled)
 
+    var restoreSessionCheck = QCheckBox.create("Automatically restore last session on launch")
+    restoreSessionCheck.owned = false
+    QAbstractButton(h: restoreSessionCheck.h, owned: false).setChecked(
+      current.restoreLastSessionOnLaunch)
+
     # Opacity slider — Qt::Horizontal = 1
     var opacitySlider = QSlider.create(cint 1)
     opacitySlider.owned = false
@@ -184,6 +218,7 @@ proc showSettingsDialog*(
     form.addRow("Font family",   QWidget(h: fontEdit.h,         owned: false))
     form.addRow("Font size",     QWidget(h: fontSizeSpin.h,     owned: false))
     form.addRow("",              QWidget(h: lineNumbersCheck.h, owned: false))
+    form.addRow("",              QWidget(h: restoreSessionCheck.h, owned: false))
     form.addRow("",              QWidget(h: opacityCheck.h,     owned: false))
     form.addRow("Opacity level", QLayout(h: opacityRowLayout.h, owned: false))
 
@@ -352,6 +387,8 @@ proc showSettingsDialog*(
       updated.appearance.fontSize   = int fontSizeSpin.value()
       updated.appearance.lineNumbers =
         QAbstractButton(h: lineNumbersCheck.h, owned: false).isChecked()
+      updated.restoreLastSessionOnLaunch =
+        QAbstractButton(h: restoreSessionCheck.h, owned: false).isChecked()
       updated.appearance.opacityEnabled =
         QAbstractButton(h: opacityCheck.h, owned: false).isChecked()
       updated.appearance.opacityLevel =
