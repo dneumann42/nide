@@ -1,5 +1,9 @@
 import seaqt/[qwidget, qvboxlayout, qlabel, qdialog, qpainter, qrect, qcursor]
 import nimsuggest
+import qtconst
+
+const
+  ProtoMinWidth = cint 450
 
 type
   PrototypeWindow* = ref object
@@ -48,8 +52,8 @@ proc showPrototype*(parent: QWidget,
     w.dialogH = dialogH
 
     dialog.setWindowTitle("Prototype - " & symbol)
-    dialog.setWindowFlags(cint(0x00000008) or cint(0x00000080))
-    dialog.setWindowFlags(cint(dialog.windowFlags()) and not cint(0x00000001))
+    dialog.setWindowFlags(WF_Tool or WF_CustomizeWindowHint)
+    dialog.setWindowFlags(cint(dialog.windowFlags()) and not WF_WindowTitleHint)
 
     var label = QLabel.create()
     label.owned = false
@@ -70,8 +74,8 @@ proc showPrototype*(parent: QWidget,
       font-size: 13px;
     """)
 
-    label.setMinimumWidth(cint 450)
-    label.setTextFormat(cint(1))
+    label.setMinimumWidth(ProtoMinWidth)
+    label.setTextFormat(TF_RichText)
 
     var layout = QVBoxLayout.create()
     layout.owned = false

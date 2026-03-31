@@ -2,6 +2,9 @@ import seaqt/[qwidget, qsplitter]
 import pane/pane, widgetref, nimsuggest
 import ../commands
 import std/algorithm
+import qtconst
+
+const SplitterHandleWidth = cint 4
 
 type
   PaneCallbacks* = object
@@ -82,8 +85,8 @@ proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T
   T(splitter: capture(splitter), callbacks: cbs)
 
 proc addColumn*(self: PaneManager): Pane =
-  var col = QSplitter.create(cint 2)    # vertical
-  col.setHandleWidth(cint 4)
+  var col = QSplitter.create(Vertical)    # vertical
+  col.setHandleWidth(SplitterHandleWidth)
   QWidget(h: col.h, owned: false).setAutoFillBackground(true)
   QWidget(h: col.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   col.owned = false
@@ -101,8 +104,8 @@ proc insertCol*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter]): 
   if idx < 0: return
   let oldSizes = self.splitter.get().sizes()
   let srcW = oldSizes[idx]
-  var newCol = QSplitter.create(cint 2)   # vertical
-  newCol.setHandleWidth(cint 4)
+  var newCol = QSplitter.create(Vertical)   # vertical
+  newCol.setHandleWidth(SplitterHandleWidth)
   QWidget(h: newCol.h, owned: false).setAutoFillBackground(true)
   QWidget(h: newCol.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   newCol.owned = false

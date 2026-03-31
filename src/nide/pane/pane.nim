@@ -1,6 +1,7 @@
 import logic
 export logic
 import autocomplete, buffers, commands, funcprototype, logparser, nimcheck, nimfinddef, nimimports, nimindex, nimsuggest, syntaxtheme, widgetref, widgets
+import ../qtconst
 import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[options, os, strutils]
 
@@ -132,6 +133,27 @@ const VsplitSvg = staticRead("icons/vsplit.svg")
 const HsplitSvg = staticRead("icons/hsplit.svg")
 const SaveSvg = staticRead("icons/save.svg")
 const AutocompleteRefreshMs = cint 120
+
+const
+  DiagBtnFontSize = "11px"
+  DiagPopupFontSize = "13px"
+  DiagPopupYOffset = cint 18
+  LineNumberPadding = 12
+  WelcomeCardMinWidth = cint 480
+  CardMargin = cint 20
+  CardSpacing = cint 10
+  OuterMargin = cint 40
+  HeaderButtonSize = cint 18
+  HeaderButtonMinWidth = cint 24
+  SearchButtonSize = cint 22
+  DiagHideMs = cint 500
+  MinFontSize = cint 6
+  ScrollStepPx = 10.0
+  ScrollAnimMs = cint 80
+  WheelAngleDivisor = 120.0
+  WheelPixelStep = 20.0
+  PopoverYOffset = cint 24
+  MaxPopoverHeight = cint 400
 
 
 proc widget*(pane: Pane): QWidget =
@@ -293,19 +315,19 @@ proc updateDiagIcons*(pane: Pane) {.raises: [].} =
     let errW = QWidget(h: pane.errBtn.h, owned: false)
     if hintCount > 0:
       QPushButton(h: pane.hintBtn.h, owned: false).setText("◆" & $hintCount)
-      QPushButton(h: pane.hintBtn.h, owned: false).setStyleSheet("QPushButton { color: #00cccc; background: transparent; border: none; font-size: 11px; } QPushButton:hover { color: #00eeee; }")
+      QPushButton(h: pane.hintBtn.h, owned: false).setStyleSheet("QPushButton { color: #00cccc; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #00eeee; }")
       hintW.show()
     else:
       hintW.hide()
     if warnCount > 0:
       QPushButton(h: pane.warnBtn.h, owned: false).setText("⚠" & $warnCount)
-      QPushButton(h: pane.warnBtn.h, owned: false).setStyleSheet("QPushButton { color: #ffaa00; background: transparent; border: none; font-size: 11px; } QPushButton:hover { color: #ffcc00; }")
+      QPushButton(h: pane.warnBtn.h, owned: false).setStyleSheet("QPushButton { color: #ffaa00; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #ffcc00; }")
       warnW.show()
     else:
       warnW.hide()
     if errCount > 0:
       QPushButton(h: pane.errBtn.h, owned: false).setText("✗" & $errCount)
-      QPushButton(h: pane.errBtn.h, owned: false).setStyleSheet("QPushButton { color: #ff5555; background: transparent; border: none; font-size: 11px; } QPushButton:hover { color: #ff7777; }")
+      QPushButton(h: pane.errBtn.h, owned: false).setStyleSheet("QPushButton { color: #ff5555; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #ff7777; }")
       errW.show()
     else:
       errW.hide()
@@ -360,8 +382,8 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
       var label = QLabel.create()
       label.owned = false
       QLabel(h: label.h, owned: false).setWordWrap(true)
-      QLabel(h: label.h, owned: false).setTextFormat(cint 1)  # Qt::RichText
-      QLabel(h: label.h, owned: false).setTextInteractionFlags(cint 3)  # TextSelectableByMouse | TextSelectableByKeyboard
+      QLabel(h: label.h, owned: false).setTextFormat(TF_RichText)
+      QLabel(h: label.h, owned: false).setTextInteractionFlags(TIF_TextSelectableAll)
       pane.diagLabelH = label.h
 
       var layout = QVBoxLayout.create()
@@ -382,7 +404,7 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
     let vpW = viewport.width()
     let vpH = viewport.height()
     var px = mousePos.x()
-    var py = mousePos.y() + cint 18
+    var py = mousePos.y() + DiagPopupYOffset
     if px + popupW > vpW: px = max(cint 0, vpW - popupW)
     if py + popupH > vpH: py = max(cint 0, mousePos.y() - popupH)
 
@@ -407,7 +429,7 @@ proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
       let start = blk.position() + cint(max(0, ll.col - 1))
       var cur = ed.textCursor()
       cur.setPosition(start)
-      discard cur.movePosition(cint 14, cint 1)  # EndOfWord, KeepAnchor
+      discard cur.movePosition(TC_EndOfWord, TM_KeepAnchor)
       let endPos = cur.position()
       if pos >= start and pos < endPos:
         result.add(ll)
@@ -483,9 +505,9 @@ proc applySelections*(pane: Pane) {.raises: [].} =
         let blk = doc.findBlockByNumber(cint(ll.line - 1))
         var cur = ed.textCursor()
         cur.setPosition(blk.position() + cint(max(0, ll.col - 1)))
-        discard cur.movePosition(cint 14, cint 1)  # EndOfWord, KeepAnchor
+        discard cur.movePosition(TC_EndOfWord, TM_KeepAnchor)
         var fmt = QTextCharFormat.create()
-        fmt.setUnderlineStyle(cint 7)  # SpellCheckUnderline
+        fmt.setUnderlineStyle(UL_SpellCheckUnderline)
         fmt.setUnderlineColor(QColor.create(colorStr))
         var sel = QTextEditExtraSelection(h: createDefaultExtraSelection(), owned: true)
         sel.setCursor(cur)
@@ -551,9 +573,9 @@ proc save*(pane: Pane) {.raises: [].} =
         parent,
         "File Modified Externally",
         "This file was changed outside the editor. Overwrite it with your changes, or discard them and reload from disk?",
-        cint(2048 or 8388608),
-        cint(2048))
-      if clicked == cint(8388608):
+        (MsgBox_Save or MsgBox_Discard),
+        MsgBox_Save)
+      if clicked == MsgBox_Discard:
         try:
           let content = readFile(pane.buffer.path)
           pane.buffer.document().setPlainText(content)
@@ -576,7 +598,7 @@ proc save*(pane: Pane) {.raises: [].} =
 proc lineNumberAreaWidth*(editor: QPlainTextEdit): cint =
   let digits = max(1, ($editor.blockCount()).len)
   let fm = QFontMetrics.create(editor.document().defaultFont())
-  cint(fm.horizontalAdvance("0") * digits + 12)
+  cint(fm.horizontalAdvance("0") * digits + LineNumberPadding)
 
 proc updateLineNumberAreaWidth(editor: QPlainTextEdit) =
   editor.setViewportMargins(editor.lineNumberAreaWidth(), 0, 0, 0)
@@ -604,7 +626,7 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
       let numStr = $(blk.blockNumber() + 1)
       let lineH = cint(QFontMetrics.create(editorFont).height())
       painter.setPen(QColor.create(gutterForeground()))
-      painter.drawText(0, top, w - 4, lineH, cint(0x0022), numStr)
+      painter.drawText(0, top, w - 4, lineH, AlignRightVCenter, numStr)
       blk = blk.next()
     discard painter.endX()
   except: discard
@@ -627,7 +649,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
 
     var popover = QWidget.create()
     popover.owned = false
-    popover.setWindowFlags(cint(0x00000008 or 0x00000001))  # Qt::Popup | Qt::FramelessWindowHint
+    popover.setWindowFlags(WF_PopupFrameless)
     popover.setObjectName("diagPopover")
     popover.setStyleSheet("""
       QWidget#diagPopover {
@@ -664,7 +686,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
     var scroll = QScrollArea.create(popover)
     scroll.owned = false
     scroll.setWidgetResizable(true)
-    scroll.setHorizontalScrollBarPolicy(cint(0))  # Qt::ScrollBarAlwaysOff
+    scroll.setHorizontalScrollBarPolicy(SBP_AlwaysOff)
 
     var listW = QWidget.create(scroll)
     listW.owned = false
@@ -730,9 +752,9 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
     of llError: btnPos = QPushButton(h: pane.errBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
     else: btnPos = QPoint.create(cint 0, cint 0)
 
-    var yPos = btnPos.y() + 24
+    var yPos = btnPos.y() + PopoverYOffset
 
-    popW.setGeometry(btnPos.x(), yPos, pw, min(ph, cint 400))
+    popW.setGeometry(btnPos.x(), yPos, pw, min(ph, MaxPopoverHeight))
     popW.raiseX()
     popW.show()
   except: discard
@@ -832,11 +854,11 @@ proc newPane*(
   cardWidget.setObjectName("welcomeCard")
   cardWidget.setStyleSheet(
     "QWidget#welcomeCard { border: 1px solid #333333; border-radius: 4px; }")
-  QWidget(h: cardWidget.h, owned: false).setMinimumWidth(cint 480)
+  QWidget(h: cardWidget.h, owned: false).setMinimumWidth(WelcomeCardMinWidth)
 
   var cardLayout = QVBoxLayout.create(); cardLayout.owned = false
-  QLayout(h: cardLayout.h, owned: false).setContentsMargins(cint 20, cint 20, cint 20, cint 20)
-  QLayout(h: cardLayout.h, owned: false).setSpacing(cint 10)
+  QLayout(h: cardLayout.h, owned: false).setContentsMargins(CardMargin, CardMargin, CardMargin, CardMargin)
+  QLayout(h: cardLayout.h, owned: false).setSpacing(CardSpacing)
 
   var btnRow = QHBoxLayout.create(); btnRow.owned = false
   btnRow.addWidget(QWidget(h: newProjectBtn.h, owned: false))
@@ -851,7 +873,7 @@ proc newPane*(
 
   # Outer centering layout
   var openProjectLayout = QVBoxLayout.create(); openProjectLayout.owned = false
-  QLayout(h: openProjectLayout.h, owned: false).setContentsMargins(cint 40, cint 40, cint 40, cint 40)
+  QLayout(h: openProjectLayout.h, owned: false).setContentsMargins(OuterMargin, OuterMargin, OuterMargin, OuterMargin)
   openProjectLayout.addStretch()
   openProjectLayout.addWidget(QWidget(h: cardWidget.h, owned: false))
   openProjectLayout.addStretch()
@@ -890,7 +912,7 @@ proc newPane*(
   var openModuleWidget = QWidget.create()
   openModuleWidget.owned = false
   openModuleWidget.setLayout(QLayout(h: layout.h, owned: false))
-  openModuleWidget.setFocusPolicy(cint 2)  # Qt::ClickFocus
+  openModuleWidget.setFocusPolicy(FP_ClickFocus)
 
   var gutterH: pointer = nil
   var editorVtbl = new QPlainTextEditVTable
@@ -927,15 +949,15 @@ proc newPane*(
     let typedText = $e.text()
 
     if pane.prototypeWindow.isPrototypeVisible():
-      if key == cint(0x01000000):  # Escape
+      if key == Key_Escape:
         {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
         QPlainTextEditkeyPressEvent(self, e)
         return
-      elif key == cint(0x01000004) or key == cint(0x01000005):  # Return
+      elif key == Key_Return or key == Key_Enter:
         {.cast(gcsafe).}: hidePrototype(addr pane.prototypeWindow)
         QPlainTextEditkeyPressEvent(self, e)
         return
-      elif key == cint(0x01000021):  # Ctrl (shouldn't happen but just in case)
+      elif key == Key_Control:
         QPlainTextEditkeyPressEvent(self, e)
         return
       else:
@@ -945,19 +967,19 @@ proc newPane*(
         return
     
     if pane.autocompleteMenu.isOpen():
-      if (mods and ctrlMod) != 0 and key == cint(0x4e):  # Ctrl+N
+      if (mods and ctrlMod) != 0 and key == Key_N:
         {.cast(gcsafe).}: pane.autocompleteMenu.nextItem()
         return  # consume — do not pass to QPlainTextEdit
-      elif (mods and ctrlMod) != 0 and key == cint(0x50):  # Ctrl+P
+      elif (mods and ctrlMod) != 0 and key == Key_P:
         {.cast(gcsafe).}: pane.autocompleteMenu.prevItem()
         return
-      elif key == cint(0x01000004) or key == cint(0x01000005):  # Return / Enter
+      elif key == Key_Return or key == Key_Enter:
         if pane.autocompleteMenu.hasExplicitSelection():
           {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
           {.cast(gcsafe).}: pane.autocompleteMenu.accept()
           return  # consume the Return only when accepting a visible choice
         {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
-      elif key == cint(0x01000000):  # Escape
+      elif key == Key_Escape:
         {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
         {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
         return
@@ -978,7 +1000,7 @@ proc newPane*(
         elif (mods and (ctrlMod or altMod)) == 0:
           {.cast(gcsafe).}: pane.stopAutocompleteRefresh()
           {.cast(gcsafe).}: pane.autocompleteMenu.dismiss()
-    elif key == cint(0x01000001):  # Qt::Key_Tab → insert 2 spaces
+    elif key == Key_Tab:  # insert 2 spaces
       {.cast(gcsafe).}:
         if pane.markActive or pane.rectangleMarkActive:
           pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
@@ -1056,7 +1078,7 @@ proc newPane*(
         pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
 
     # Command dispatcher — ignore modifier-only keypresses
-    let isModifierOnly = key >= cint(0x01000020) and key <= cint(0x01000023)
+    let isModifierOnly = key >= Key_Shift and key <= Key_Meta
     if not isModifierOnly:
       let relevantMods = mods and (ctrlMod or altMod or shiftMod)
       let c: KeyCombo = (key, relevantMods)
@@ -1074,7 +1096,7 @@ proc newPane*(
       if pane.markActive or pane.rectangleMarkActive:
         pane.clearMarkState()
     let btn = e.button()
-    if btn == cint(8):   # Qt::BackButton / XButton1
+    if btn == MB_BackButton:
       {.cast(gcsafe).}:
         let loc = popJumpBack(pane.jumpHistory)
         if loc.isSome():
@@ -1085,7 +1107,7 @@ proc newPane*(
             backLine: loc.get().line,
             backCol:  loc.get().col
           ))
-    elif btn == cint(16):  # Qt::ForwardButton / XButton2
+    elif btn == MB_ForwardButton:
       {.cast(gcsafe).}:
         let loc = popJumpForward(pane.jumpFuture)
         if loc.isSome():
@@ -1096,7 +1118,7 @@ proc newPane*(
             fwdLine: loc.get().line,
             fwdCol:  loc.get().col
           ))
-    elif btn == cint(1) and (e.modifiers() and cint(67108864)) != 0:  # LeftButton + Ctrl
+    elif btn == MB_LeftButton and (e.modifiers() and ControlModifier) != 0:
       # Let Qt place the cursor at the click position first, then query
       QPlainTextEditmousePressEvent(self, e)
       {.cast(gcsafe).}:
@@ -1116,14 +1138,14 @@ proc newPane*(
         dy = float64(-e.pixelDelta().y)
       else:
         # angleDelta: 120 units per notch on a standard mouse wheel
-        dy = float64(-e.angleDelta().y) / 120.0 * 20.0
+        dy = float64(-e.angleDelta().y) / WheelAngleDivisor * WheelPixelStep
       let newY = min(max(curY + dy, 0.0), maxY)
-      scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
+      scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
     except: discard
 
   var editor = QPlainTextEdit.create(vtbl = editorVtbl)
   editor.owned = false
-  editor.setFrameStyle(0)
+  editor.setFrameStyle(NoFrame)
   editor.setCenterOnScroll(true)
   editor.viewport().setMouseTracking(true)
 
@@ -1184,48 +1206,48 @@ proc newPane*(
   hintBtn.owned = false
   hintBtn.setFlat(true)
   QWidget(h: hintBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
-  QWidget(h: hintBtn.h, owned: false).setMinimumWidth(cint 24)
-  QWidget(h: hintBtn.h, owned: false).setFixedHeight(cint 18)
+  QWidget(h: hintBtn.h, owned: false).setMinimumWidth(HeaderButtonMinWidth)
+  QWidget(h: hintBtn.h, owned: false).setFixedHeight(HeaderButtonSize)
 
   var warnBtn = QPushButton.create("")
   warnBtn.owned = false
   warnBtn.setFlat(true)
   QWidget(h: warnBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
-  QWidget(h: warnBtn.h, owned: false).setMinimumWidth(cint 24)
-  QWidget(h: warnBtn.h, owned: false).setFixedHeight(cint 18)
+  QWidget(h: warnBtn.h, owned: false).setMinimumWidth(HeaderButtonMinWidth)
+  QWidget(h: warnBtn.h, owned: false).setFixedHeight(HeaderButtonSize)
 
   var errBtn = QPushButton.create("")
   errBtn.owned = false
   errBtn.setFlat(true)
   QWidget(h: errBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
-  QWidget(h: errBtn.h, owned: false).setMinimumWidth(cint 24)
-  QWidget(h: errBtn.h, owned: false).setFixedHeight(cint 18)
+  QWidget(h: errBtn.h, owned: false).setMinimumWidth(HeaderButtonMinWidth)
+  QWidget(h: errBtn.h, owned: false).setFixedHeight(HeaderButtonSize)
 
   const IconSize = 10
 
   var vSplitBtn = QPushButton.create("")
   vSplitBtn.owned = false
   vSplitBtn.setFlat(true)
-  QWidget(h: vSplitBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QWidget(h: vSplitBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
   QAbstractButton(h: vSplitBtn.h, owned: false).setIcon(svgIcon(VsplitSvg, cint IconSize))
   QAbstractButton(h: vSplitBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
 
   var hSplitBtn = QPushButton.create("")
   hSplitBtn.owned = false
   hSplitBtn.setFlat(true)
-  QWidget(h: hSplitBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QWidget(h: hSplitBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
   QAbstractButton(h: hSplitBtn.h, owned: false).setIcon(svgIcon(HsplitSvg, cint IconSize))
   QAbstractButton(h: hSplitBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
 
   var closeBtn = QPushButton.create("×")
   closeBtn.owned = false
   closeBtn.setFlat(true)
-  QWidget(h: closeBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QWidget(h: closeBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
 
   var saveBtn = QPushButton.create("")
   saveBtn.owned = false
   saveBtn.setFlat(true)
-  QWidget(h: saveBtn.h, owned: false).setFixedSize(cint 18, cint 18)
+  QWidget(h: saveBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
   QAbstractButton(h: saveBtn.h, owned: false).setIcon(svgIcon(SaveSvg, cint IconSize))
   QAbstractButton(h: saveBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
 
@@ -1253,7 +1275,7 @@ proc newPane*(
   inputVtbl.keyPressEvent = proc(self: QLineEdit, e: QKeyEvent) {.raises: [], gcsafe.} =
     let key  = e.key()
     let mods = e.modifiers()
-    if key == cint(0x01000000):  # Escape → close search
+    if key == Key_Escape:  # close search
       {.cast(gcsafe).}:
         pane.searchBar.get().hide()
         pane.matchPositions = @[]
@@ -1289,17 +1311,17 @@ proc newPane*(
   var prevBtn = QPushButton.create("▲")
   prevBtn.owned = false
   prevBtn.setFlat(true)
-  QWidget(h: prevBtn.h, owned: false).setFixedSize(cint 22, cint 22)
+  QWidget(h: prevBtn.h, owned: false).setFixedSize(SearchButtonSize, SearchButtonSize)
 
   var nextBtn = QPushButton.create("▼")
   nextBtn.owned = false
   nextBtn.setFlat(true)
-  QWidget(h: nextBtn.h, owned: false).setFixedSize(cint 22, cint 22)
+  QWidget(h: nextBtn.h, owned: false).setFixedSize(SearchButtonSize, SearchButtonSize)
 
   var searchCloseBtn = QPushButton.create("×")
   searchCloseBtn.owned = false
   searchCloseBtn.setFlat(true)
-  QWidget(h: searchCloseBtn.h, owned: false).setFixedSize(cint 22, cint 22)
+  QWidget(h: searchCloseBtn.h, owned: false).setFixedSize(SearchButtonSize, SearchButtonSize)
 
   var searchLayout = QHBoxLayout.create()
   searchLayout.owned = false
@@ -1336,7 +1358,7 @@ proc newPane*(
   var diagHideTimer = QTimer.create(QObject(h: result.container.h, owned: false))
   diagHideTimer.owned = false
   QTimer(h: diagHideTimer.h, owned: false).setSingleShot(true)
-  QTimer(h: diagHideTimer.h, owned: false).setInterval(cint 500)
+  QTimer(h: diagHideTimer.h, owned: false).setInterval(DiagHideMs)
   result.diagHideTimerH = diagHideTimer.h
   QTimer(h: diagHideTimer.h, owned: false).onTimeout do() {.raises: [].}:
     if pane.diagPopupH != nil and
@@ -1443,7 +1465,7 @@ proc newPane*(
   var diagSc = QShortcut.create(QKeySequence.create("Ctrl+Shift+D"),
                                 QObject(h: pane.container.h, owned: false))
   diagSc.owned = false
-  diagSc.setContext(cint 1)  # WidgetWithChildrenShortcut
+  diagSc.setContext(SC_WidgetWithChildrenShortcut)
   diagSc.onActivated do() {.raises: [].}:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     let cur = ed.textCursor()
@@ -1698,7 +1720,7 @@ proc zoomOut*(pane: Pane) {.raises: [].} =
   try:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     var font = ed.document().defaultFont()
-    let newSize = max(font.pointSize() - cint 1, cint 6)
+    let newSize = max(font.pointSize() - cint 1, MinFontSize)
     font.setPointSize(newSize)
     QWidget(h: ed.h, owned: false).setFont(font)
     ed.document().setDefaultFont(font)
@@ -1711,8 +1733,8 @@ proc scrollUp*(pane: Pane) {.raises: [].} =
     let vp = ed.viewport()
     let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
     let curY = scroller.finalPosition().y
-    let newY = max(curY - 10.0, 0.0)
-    scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
+    let newY = max(curY - ScrollStepPx, 0.0)
+    scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
   except: discard
 
 proc scrollDown*(pane: Pane) {.raises: [].} =
@@ -1722,8 +1744,8 @@ proc scrollDown*(pane: Pane) {.raises: [].} =
     let scroller = QScroller.scroller(QObject(h: vp.h, owned: false))
     let curY = scroller.finalPosition().y
     let maxY = float(ed.verticalScrollBar().maximum())
-    let newY = min(curY + 10.0, maxY)
-    scroller.scrollTo(QPointF.create(0.0, newY), cint(80))
+    let newY = min(curY + ScrollStepPx, maxY)
+    scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
   except: discard
 
 proc setupSmoothScrolling*(pane: Pane) {.raises: [].} =
@@ -1757,10 +1779,10 @@ proc setRecentProjects*(pane: Pane, projects: seq[string]) {.raises: [].} =
       tw.insertRow(row)
       var nameItem = QTableWidgetItem.create(p.lastPathPart)
       nameItem.owned = false
-      nameItem.setFlags(cint 0x21)  # ItemIsSelectable | ItemIsEnabled
+      nameItem.setFlags(IF_SelectableEnabled)
       var pathItem = QTableWidgetItem.create(p)
       pathItem.owned = false
-      pathItem.setFlags(cint 0x21)
+      pathItem.setFlags(IF_SelectableEnabled)
       tw.setItem(row, cint 0, nameItem)
       tw.setItem(row, cint 1, pathItem)
     let hasItems = projects.len > 0
@@ -1843,7 +1865,7 @@ proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
   var cur = ed.textCursor()
   cur.setPosition(blk.position())
   if col > 0:
-    discard cur.movePosition(cint 19, cint 0, cint(col - 1))  # Right, MoveAnchor, col-1 times
+    discard cur.movePosition(TC_Right, TM_MoveAnchor, cint(col - 1))
   ed.setTextCursor(cur)
   ed.ensureCursorVisible()
 
@@ -1856,7 +1878,7 @@ proc scrollToLine*(pane: Pane, line: int, col: int = 0) {.raises: [].} =
     var cur = ed.textCursor()
     cur.setPosition(targetBlock.position())
     if col > 0:
-      discard cur.movePosition(cint 19, cint 0, cint(col - 1))  # Right, MoveAnchor
+      discard cur.movePosition(TC_Right, TM_MoveAnchor, cint(col - 1))
     ed.setTextCursor(cur)
     ed.centerCursor()
 

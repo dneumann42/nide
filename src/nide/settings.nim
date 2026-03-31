@@ -11,6 +11,18 @@ import themedialog
 import opacity
 import settingsstore
 import ../commands
+import qtconst
+
+const
+  MinFontSize = cint 6
+  MaxFontSize = cint 72
+  MinOpacity = cint 20
+  MaxOpacity = cint 100
+  OpacityStep = cint 5
+  OpacityLabelMinWidth = cint 36
+  KeybindSetColWidth = cint 60
+  KeyCaptureWidth = cint 360
+  KeyCaptureHeight = cint 130
 
 type
   AppearanceSettings* = object
@@ -145,8 +157,8 @@ proc showSettingsDialog*(
     # Font size
     var fontSizeSpin = QSpinBox.create()
     fontSizeSpin.owned = false
-    fontSizeSpin.setMinimum(cint 6)
-    fontSizeSpin.setMaximum(cint 72)
+    fontSizeSpin.setMinimum(MinFontSize)
+    fontSizeSpin.setMaximum(MaxFontSize)
     fontSizeSpin.setValue(cint current.appearance.fontSize)
 
     # Line numbers toggle
@@ -170,9 +182,9 @@ proc showSettingsDialog*(
     var opacitySlider = QSlider.create(cint 1)
     opacitySlider.owned = false
     QWidget(h: opacitySlider.h, owned: false).setMinimumHeight(cint 24)
-    QAbstractSlider(h: opacitySlider.h, owned: false).setMinimum(cint 20)
-    QAbstractSlider(h: opacitySlider.h, owned: false).setMaximum(cint 100)
-    QAbstractSlider(h: opacitySlider.h, owned: false).setSingleStep(cint 5)
+    QAbstractSlider(h: opacitySlider.h, owned: false).setMinimum(MinOpacity)
+    QAbstractSlider(h: opacitySlider.h, owned: false).setMaximum(MaxOpacity)
+    QAbstractSlider(h: opacitySlider.h, owned: false).setSingleStep(OpacityStep)
     QAbstractSlider(h: opacitySlider.h, owned: false).setValue(
       cint current.appearance.opacityLevel)
     QWidget(h: opacitySlider.h, owned: false).setEnabled(
@@ -181,7 +193,7 @@ proc showSettingsDialog*(
     # Percentage label
     var opacityLabel = QLabel.create($current.appearance.opacityLevel & "%")
     opacityLabel.owned = false
-    QWidget(h: opacityLabel.h, owned: false).setMinimumWidth(cint 36)
+    QWidget(h: opacityLabel.h, owned: false).setMinimumWidth(OpacityLabelMinWidth)
 
     # Wire checkbox → enable/disable slider + live preview
     let sliderH   = opacitySlider.h
@@ -258,17 +270,17 @@ proc showSettingsDialog*(
     let kbTableH = kbTable.h
 
     # Table configuration: no editing, select rows, no grid
-    QAbstractItemView(h: kbTableH, owned: false).setEditTriggers(cint 0)
-    QAbstractItemView(h: kbTableH, owned: false).setSelectionBehavior(cint 1)
+    QAbstractItemView(h: kbTableH, owned: false).setEditTriggers(DD_NoEditTriggers)
+    QAbstractItemView(h: kbTableH, owned: false).setSelectionBehavior(SB_SelectRows)
     QTableView(h: kbTableH, owned: false).setShowGrid(false)
     QTableWidget(h: kbTableH, owned: false).setHorizontalHeaderLabels(
       @["Command", "Binding", ""])
     let hdr = QTableView(h: kbTableH, owned: false).horizontalHeader()
     hdr.setStretchLastSection(false)
-    hdr.setSectionResizeMode(cint 0, cint 1)  # ResizeToContents
-    hdr.setSectionResizeMode(cint 1, cint 1)
-    hdr.setSectionResizeMode(cint 2, cint 2)  # Fixed
-    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 2, cint 60)
+    hdr.setSectionResizeMode(cint 0, HR_ResizeToContents)
+    hdr.setSectionResizeMode(cint 1, HR_ResizeToContents)
+    hdr.setSectionResizeMode(cint 2, HR_Fixed)
+    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 2, KeybindSetColWidth)
     let vhdr = QTableView(h: kbTableH, owned: false).verticalHeader()
     QWidget(h: vhdr.h, owned: false).setVisible(false)
 
@@ -282,7 +294,7 @@ proc showSettingsDialog*(
       # Col 0: command id — read-only
       var idItem = QTableWidgetItem.create(entry.id)
       idItem.owned = false
-      idItem.setFlags(cint 0x21)  # ItemIsSelectable | ItemIsEnabled
+      idItem.setFlags(IF_SelectableEnabled)
       QTableWidget(h: kbTableH, owned: false).setItem(row, cint 0, idItem)
 
       # Col 1: current binding string — read-only
@@ -291,7 +303,7 @@ proc showSettingsDialog*(
         else: keyComboToString(entry.combo)
       var bindItem = QTableWidgetItem.create(bindStr)
       bindItem.owned = false
-      bindItem.setFlags(cint 0x21)
+      bindItem.setFlags(IF_SelectableEnabled)
       QTableWidget(h: kbTableH, owned: false).setItem(row, cint 1, bindItem)
 
       # Col 2: "Set" button (single bindings only; chord bindings are fixed)
@@ -307,7 +319,7 @@ proc showSettingsDialog*(
           capDlg.owned = false
           let capDlgH = capDlg.h
           QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
-          QWidget(h: capDlgH, owned: false).resize(cint 360, cint 130)
+          QWidget(h: capDlgH, owned: false).resize(KeyCaptureWidth, KeyCaptureHeight)
 
           var capLabel = QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:")
           capLabel.owned = false
@@ -316,7 +328,7 @@ proc showSettingsDialog*(
           keyEdit.owned = false
           let keyEditH = keyEdit.h
 
-          var capBtns = QDialogButtonBox.create2(cint(1024 or 4194304))
+          var capBtns = QDialogButtonBox.create2(Btn_OkCancel)
           capBtns.owned = false
           capBtns.onAccepted do():
             QDialog(h: capDlgH, owned: false).accept()
@@ -355,7 +367,7 @@ proc showSettingsDialog*(
       QWidget(h: kbTabH, owned: false), "Keybindings")
 
     # ── Buttons ─────────────────────────────────────────────────────────────
-    var buttons = QDialogButtonBox.create2(cint(1024 or 4194304))  # Ok | Cancel
+    var buttons = QDialogButtonBox.create2(Btn_OkCancel)
     buttons.owned = false
     buttons.onAccepted do():
       QDialog(h: dialogH, owned: false).accept()

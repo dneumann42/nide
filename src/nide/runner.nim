@@ -1,6 +1,12 @@
 import logparser, widgets
 import seaqt/[qboxlayout, qbrush, qclipboard, qcolor, qdialog, qfont, qguiapplication, qlabel, qlistwidget, qlistwidgetitem, qobject, qprocess, qpushbutton, qwidget]
 import std/[os, posix]
+import qtconst
+
+const
+  RunnerWidth = cint 640
+  RunnerHeight = cint 400
+  FontHint_TypeWriter = cint 2
 
 proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,
@@ -10,12 +16,12 @@ proc runCommand*(parent: QWidget, title, command: string,
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle(title)
-    QWidget(h: dialogH, owned: false).resize(cint 640, cint 400)
+    QWidget(h: dialogH, owned: false).resize(RunnerWidth, RunnerHeight)
 
     var listWidget = QListWidget.create()
     listWidget.owned = false
     var font = QFont.create("Monospace")
-    font.setStyleHint(cint 2)  # TypeWriter
+    font.setStyleHint(FontHint_TypeWriter)  # TypeWriter
     QWidget(h: listWidget.h, owned: false).setFont(font)
 
     var killBtn = QPushButton.create("Kill")
@@ -106,7 +112,7 @@ proc runCommand*(parent: QWidget, title, command: string,
         pending[] = buf[start .. ^1]
       except: discard
 
-    process.setProcessChannelMode(cint 1)   # MergedChannels
+    process.setProcessChannelMode(PC_MergedChannels)   # MergedChannels
     process.setWorkingDirectory(getCurrentDir())
 
     process.onReadyReadStandardOutput do() {.raises: [].}:

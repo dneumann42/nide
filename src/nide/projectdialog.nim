@@ -1,6 +1,14 @@
 import std/[json, os, osproc, algorithm]
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout, qdialogbuttonbox, qpushbutton, qfiledialog, qcombobox, qlabel, qframe]
 import projects
+import qtconst
+
+const
+  DialogMinWidth = cint 520
+  DialogMinHeight = cint 420
+  FieldMinWidth = cint 280
+  PathMinWidth = cint 220
+  FormSpacing = cint 12
 
 proc getNimVersions*(): seq[string] =
   try:
@@ -25,18 +33,18 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   var dialog = QDialog.create(parent)
   let dialogH = dialog.h
   QWidget(h: dialogH, owned: false).setWindowTitle("New Project")
-  QWidget(h: dialogH, owned: false).setMinimumWidth(cint 520)
-  QWidget(h: dialogH, owned: false).setMinimumHeight(cint 420)
+  QWidget(h: dialogH, owned: false).setMinimumWidth(DialogMinWidth)
+  QWidget(h: dialogH, owned: false).setMinimumHeight(DialogMinHeight)
 
   var nameEdit    = QLineEdit.create(); nameEdit.owned    = false
   var versionEdit = QLineEdit.create(); versionEdit.owned = false
   var authorEdit  = QLineEdit.create(); authorEdit.owned  = false
   var descEdit    = QLineEdit.create(); descEdit.owned    = false
 
-  nameEdit.setMinimumWidth(cint 280)
-  versionEdit.setMinimumWidth(cint 280)
-  authorEdit.setMinimumWidth(cint 280)
-  descEdit.setMinimumWidth(cint 280)
+  nameEdit.setMinimumWidth(FieldMinWidth)
+  versionEdit.setMinimumWidth(FieldMinWidth)
+  authorEdit.setMinimumWidth(FieldMinWidth)
+  descEdit.setMinimumWidth(FieldMinWidth)
 
   nameEdit.setPlaceholderText("myproject")
   versionEdit.setText("0.1.0")
@@ -44,7 +52,7 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   descEdit.setPlaceholderText("A short description of your project")
 
   var licenseCombo = QComboBox.create(); licenseCombo.owned = false
-  licenseCombo.setMinimumWidth(cint 280)
+  licenseCombo.setMinimumWidth(FieldMinWidth)
   licenseCombo.addItem("MIT")
   licenseCombo.addItem("Apache-2.0")
   licenseCombo.addItem("GPL-2.0")
@@ -56,7 +64,7 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
 
   var nimVersions = getNimVersions()
   var nimVersionCombo = QComboBox.create(); nimVersionCombo.owned = false
-  nimVersionCombo.setMinimumWidth(cint 280)
+  nimVersionCombo.setMinimumWidth(FieldMinWidth)
   for ver in nimVersions:
     nimVersionCombo.addItem(ver)
   nimVersionCombo.setCurrentIndex(cint 0)
@@ -70,7 +78,7 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   pathEditRow.owned = false
 
   var pathEdit = QLineEdit.create(); pathEdit.owned = false
-  pathEdit.setMinimumWidth(cint 220)
+  pathEdit.setMinimumWidth(PathMinWidth)
   pathEditRowLayout.addWidget(QWidget(h: pathEdit.h, owned: false))
   QLayout(h: pathEditRowLayout.h, owned: false).setContentsMargins(0, 0, 0, 0)
 
@@ -86,12 +94,12 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
 
   var separator = QFrame.create()
   separator.owned = false
-  separator.setFrameShape(cint 1)
-  separator.setFrameShadow(cint 1)
+  separator.setFrameShape(QF_Box)
+  separator.setFrameShadow(QF_Plain)
   separator.setStyleSheet("QFrame { background: #e0e0e0; min-height: 2px; max-height: 2px; }")
 
   var form = QFormLayout.create(); form.owned = false
-  form.setSpacing(cint 12)
+  form.setSpacing(FormSpacing)
   form.addRow("Name",        QWidget(h: nameEdit.h,    owned: false))
   form.addRow("Version",     QWidget(h: versionEdit.h, owned: false))
   form.addRow("Author",      QWidget(h: authorEdit.h,  owned: false))
@@ -104,7 +112,7 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   label.owned = false
   QWidget(h: label.h, owned: false).setStyleSheet("QLabel { font-weight: bold; font-size: 14px; padding-bottom: 8px; }")
 
-  var buttons = QDialogButtonBox.create2(cint(1024 or 4194304))
+  var buttons = QDialogButtonBox.create2(Btn_OkCancel)
   buttons.owned = false
   buttons.onAccepted do(): dialog.accept()
   buttons.onRejected do(): dialog.reject()

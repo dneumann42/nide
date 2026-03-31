@@ -4,6 +4,12 @@ import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
               qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush,
               qshortcut, qkeysequence, qobject, qcombobox]
 import syntaxtheme, highlight
+import qtconst
+
+const
+  PreviewFontSize = 11
+  ThemeDialogWidth = cint 820
+  ThemeDialogHeight = cint 520
 
 const SampleCode* = """# Nim syntax highlighting preview
 import std/[strutils, tables]
@@ -79,7 +85,7 @@ proc buildThemePickerWidget*(
     result.preview.owned = false
     result.preview.setReadOnly(true)
     var previewFont = QFont.create("Fira Code")
-    previewFont.setPointSize(11)
+    previewFont.setPointSize(PreviewFontSize)
     previewFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
     QWidget(h: result.preview.h, owned: false).setFont(previewFont)
     let previewH = result.preview.h
@@ -107,7 +113,7 @@ proc buildThemePickerWidget*(
 
     applyPreviewTheme(currentName)
 
-    result.splitter = QSplitter.create(cint 1)   # horizontal
+    result.splitter = QSplitter.create(Horizontal)   # horizontal
     result.splitter.owned = false
     result.splitter.addWidget(QWidget(h: listH,              owned: false))
     result.splitter.addWidget(QWidget(h: previewH,           owned: false))
@@ -139,7 +145,7 @@ proc showThemeDialog*(
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Syntax Theme")
-    QWidget(h: dialogH, owned: false).resize(cint 820, cint 520)
+    QWidget(h: dialogH, owned: false).resize(ThemeDialogWidth, ThemeDialogHeight)
 
     var titleLabel = QLabel.create("Select a syntax highlighting theme:")
     titleLabel.owned = false
@@ -148,7 +154,7 @@ proc showThemeDialog*(
       QWidget(h: dialogH, owned: false), currentName)
 
     var buttonBox = QDialogButtonBox.create(
-      cint(0x00000400 or 0x00400000))  # Ok | Cancel
+      Btn_OkCancel2)  # Ok | Cancel
     buttonBox.owned = false
 
     var outerLayout = QVBoxLayout.create()
@@ -172,7 +178,7 @@ proc showThemeDialog*(
     var enterSc = QShortcut.create(QKeySequence.create("Return"),
                                    QObject(h: dialogH, owned: false))
     enterSc.owned = false
-    enterSc.setContext(cint 2)  # WindowShortcut
+    enterSc.setContext(SC_WindowShortcut)  # WindowShortcut
     enterSc.onActivated do() {.raises: [].}:
       let name = picker.currentThemeSelection()
       if name.len > 0:

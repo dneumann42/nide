@@ -2,10 +2,8 @@ import logparser
 import std/algorithm
 import std/options
 import std/strutils
-
-const
-  ctrlModMask = 0x04000000
-  altModMask = 0x08000000
+import ../keybindings
+import ../qtconst
 
 type
   JumpLocation* = object
@@ -19,6 +17,17 @@ type
     endCol*: int
 
 const identifierChars = {'a'..'z', 'A'..'Z', '0'..'9', '_'}
+
+const
+  ScoreExactMatch = 400
+  ScorePrefixMatch = 250
+  ScoreSubstringMatch = 50
+  MaxNameLenPenalty = 80
+  ScoreNoPrefix = 25
+  ScoreSameFile = 40
+  ScoreProcSymbol = 15
+  ScoreVarSymbol = 10
+  ScoreTypeSymbol = 5
 
 proc autoClosePairFor*(ch: char): Option[char] =
   case ch
@@ -150,17 +159,17 @@ proc removeRectangleText*(text: string, anchorPos, pointPos: int): string =
   result = lines.join("\n")
 
 proc shouldClearMarkOnKeyPress*(key, mods: int, text: string): bool =
-  if (mods and (ctrlModMask or altModMask)) != 0:
+  if (mods and (ctrlMod or altMod)) != 0:
     return false
-  if key == 0x01000003 or key == 0x01000004 or key == 0x01000005 or
-     key == 0x01000007 or key == 0x01000001:
+  if key == Key_Backspace or key == Key_Return or key == Key_Enter or
+     key == Key_Delete or key == Key_Tab:
     return true
   text.len > 0
 
 proc shouldRefreshAutocompleteOnKeyPress*(key, mods: int, text: string): bool =
-  if (mods and (ctrlModMask or altModMask)) != 0:
+  if (mods and (ctrlMod or altMod)) != 0:
     return false
-  if key == 0x01000003 or key == 0x01000007:
+  if key == Key_Backspace or key == Key_Delete:
     return true
   text.len > 0
 
@@ -191,28 +200,28 @@ proc sortAutocompleteMatches*(items: openArray[tuple[name, symkind, file: string
 
     if normalizedPrefix.len > 0:
       if normalizedName == normalizedPrefix:
-        score += 400
+        score += ScoreExactMatch
       if normalizedName.startsWith(normalizedPrefix):
-        score += 250
+        score += ScorePrefixMatch
       elif normalizedName.contains(normalizedPrefix):
-        score += 50
+        score += ScoreSubstringMatch
       else:
         continue
 
-      score -= min(item.name.len, 80)
+      score -= min(item.name.len, MaxNameLenPenalty)
     else:
-      score += 25
+      score += ScoreNoPrefix
 
     if currentFile.len > 0 and item.file == currentFile:
-      score += 40
+      score += ScoreSameFile
 
     case item.symkind
     of "skProc", "skFunc", "skMethod", "skTemplate", "skMacro":
-      score += 15
+      score += ScoreProcSymbol
     of "skVar", "skLet", "skConst", "skParam", "skResult":
-      score += 10
+      score += ScoreVarSymbol
     of "skType", "skEnumField":
-      score += 5
+      score += ScoreTypeSymbol
     else:
       discard
 

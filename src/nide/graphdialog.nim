@@ -4,7 +4,6 @@ import seaqt/[qwidget, qdialog, qvboxlayout, qhboxlayout, qlayout,
               qabstractscrollarea, qabstractslider, qscrollbar,
               qmouseevent, qwheelevent, qcursor, qpoint,
               qsize]
-
 # Cursor shape constants (Qt::CursorShape)
 const
   OpenHandCursor   = cint(17)
@@ -17,6 +16,17 @@ const
 # Keyboard modifier constants (Qt::KeyboardModifier)
 const
   CtrlModifier = cint(0x04000000)
+
+const
+  GraphWidth = cint 900
+  GraphHeight = cint 700
+  ZoomSensitivity = 0.005
+  MinZoom = 0.1
+  MaxZoom = 10.0
+  FallbackSvgWidth = cint 800
+  FallbackSvgHeight = cint 600
+  WheelAngleDivisor = 120.0
+  WheelPixelStep = 20.0
 
 proc findDot(): string =
   for dir in ["/usr/sbin", "/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]:
@@ -46,7 +56,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
   dialog.owned = false
   let dialogH = dialog.h
   QWidget(h: dialogH, owned: false).setWindowTitle("Module Graph")
-  QWidget(h: dialogH, owned: false).resize(cint 900, cint 700)
+  QWidget(h: dialogH, owned: false).resize(GraphWidth, GraphHeight)
 
   let dotBin = findDot()
   if dotBin.len == 0:
@@ -145,12 +155,12 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
           if e.hasPixelDelta():
             delta = float64(e.pixelDelta().y())
           else:
-            delta = float64(e.angleDelta().y()) / 120.0 * 20.0
+            delta = float64(e.angleDelta().y()) / WheelAngleDivisor * WheelPixelStep
 
           let oldScale = scale
-          scale = scale * (1.0 + delta * 0.005)
-          if scale < 0.1: scale = 0.1
-          if scale > 10.0: scale = 10.0
+          scale = scale * (1.0 + delta * ZoomSensitivity)
+          if scale < MinZoom: scale = MinZoom
+          if scale > MaxZoom: scale = MaxZoom
 
           let newW = cint(float64(svgNatW) * scale)
           let newH = cint(float64(svgNatH) * scale)
@@ -181,8 +191,8 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
     let hint = svgWidget.sizeHint()
     svgNatW = hint.width()
     svgNatH = hint.height()
-    if svgNatW <= 0: svgNatW = cint(800)
-    if svgNatH <= 0: svgNatH = cint(600)
+    if svgNatW <= 0: svgNatW = FallbackSvgWidth
+    if svgNatH <= 0: svgNatH = FallbackSvgHeight
 
     # Set initial size and tracking
     let w = QWidget(h: svgWidgetH, owned: false)

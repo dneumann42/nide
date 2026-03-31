@@ -1,6 +1,7 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject]
 import logparser
+import qtconst
 
 proc runNimCheck*(
     parentH:  pointer,
@@ -19,7 +20,7 @@ proc runNimCheck*(
 
     # nim check writes everything to stderr; MergedChannels routes it through
     # readAllStandardOutput / readyReadStandardOutput.
-    process.setProcessChannelMode(cint 1)  # MergedChannels
+    process.setProcessChannelMode(PC_MergedChannels)  # MergedChannels
     process.setWorkingDirectory(getCurrentDir())
 
     # Accumulate output incrementally so Qt's pipe buffer never fills up.

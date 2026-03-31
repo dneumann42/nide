@@ -1,6 +1,7 @@
 import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, sessionstate, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
+import qtconst
 
 import "../../tools/nim_graph" as nim_graph
 
@@ -42,6 +43,18 @@ type
     sessionSaveTimer: QTimer
     sessionPersistenceReady: bool
     restoringSession: bool
+
+const
+  MinWindowWidth = cint 800
+  MinWindowHeight = cint 480
+  LoaderIntervalMs = cint 200
+  SessionSaveDebounceMs = cint 200
+  SplitterHandleWidth = cint 4
+  RunStatusOffsetX = cint 110
+  RunStatusOffsetY = cint 40
+  BuildStatusOffsetY = cint 80
+  FileWatcherRetryMs = 50
+  FileReadRetries = 3
 
 proc appWidget(self: Application): QWidget =
   QWidget(h: self.root.h, owned: false)
@@ -90,7 +103,7 @@ proc promptFileTreeText(
   var dialog = QInputDialog.create(self.appWidget())
   dialog.owned = false
   dialog.setWindowTitle(title)
-  dialog.setInputMode(cint 0)  # TextInput
+  dialog.setInputMode(ID_TextInput)
   dialog.setLabelText(labelText)
   dialog.setTextValue(defaultValue)
   dialog.setOkButtonText(okText)
@@ -302,9 +315,9 @@ proc deleteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: 
     parent,
     "Delete",
     "Delete this " & itemType & "?\n" & path,
-    cint(16384 or 4194304),  # Yes | Cancel
-    cint 4194304)
-  if clicked != cint 16384:
+    (MsgBox_Yes or MsgBox_Cancel),
+    MsgBox_Cancel)
+  if clicked != MsgBox_Yes:
     return
 
   try:
@@ -464,7 +477,7 @@ proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(t
   var sc = QShortcut.create(QKeySequence.create(sequence),
                             QObject(h: self.root.h, owned: false))
   sc.owned = false
-  sc.setContext(cint 2)
+  sc.setContext(SC_WindowShortcut)
   sc.onActivated do() {.raises: [].}:
     let target = self.getTargetPane()
     if target != nil and not (target.dispatcher != nil and target.dispatcher.inChord):
@@ -474,7 +487,7 @@ proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc
   var sc = QShortcut.create(QKeySequence.create(sequence),
                             QObject(h: self.root.h, owned: false))
   sc.owned = false
-  sc.setContext(cint 2)
+  sc.setContext(SC_WindowShortcut)
   sc.onActivated do() {.raises: [].}:
     let target = self.getTargetPane()
     if target != nil and target.dispatcher != nil and target.dispatcher.inChord: return
@@ -654,7 +667,7 @@ proc closeBuffer*(self: Application, name: string) =
 proc build*(self: Application) =
   self.root = QMainWindow.create()
   # WA_TranslucentBackground is set by setupWindowOpacity below
-  QWidget(h: self.root.h, owned: false).setMinimumSize(cint(800), cint(480))
+  QWidget(h: self.root.h, owned: false).setMinimumSize(MinWindowWidth, MinWindowHeight)
   self.toolbar.build()
   self.toolbar.setCloseProjectVisible(false)
 
@@ -663,7 +676,7 @@ proc build*(self: Application) =
   # Loader timer to update spinner based on nimsuggest state
   self.loaderTimer = QTimer.create()
   self.loaderTimer.owned = false
-  self.loaderTimer.setInterval(cint 200)
+  self.loaderTimer.setInterval(LoaderIntervalMs)
   let appRef = self
   self.loaderTimer.onTimeout do() {.raises: [].}:
     var isLoading = appRef.projectCheckProcessH[] != nil
@@ -675,7 +688,7 @@ proc build*(self: Application) =
 
   self.sessionSaveTimer = QTimer.create()
   self.sessionSaveTimer.owned = false
-  self.sessionSaveTimer.setInterval(cint 200)
+  self.sessionSaveTimer.setInterval(SessionSaveDebounceMs)
   self.sessionSaveTimer.setSingleShot(true)
   self.sessionSaveTimer.onTimeout do() {.raises: [].}:
     self.saveLastSessionNow()
@@ -690,8 +703,8 @@ proc build*(self: Application) =
     if fileTreeCell[] != nil and fileTreeCell[].isVisible():
       {.cast(gcsafe).}: fileTreeCell[].reposition()
 
-  var splitter = QSplitter.create(cint(1), vtbl = splitterVtbl)
-  splitter.setHandleWidth(cint 4)
+  var splitter = QSplitter.create(Horizontal, vtbl = splitterVtbl)
+  splitter.setHandleWidth(SplitterHandleWidth)
   QWidget(h: splitter.h, owned: false).setAutoFillBackground(true)
   QWidget(h: splitter.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
   self.root.setCentralWidget(QWidget(h: splitter.h, owned: false))
@@ -1059,7 +1072,7 @@ proc build*(self: Application) =
       self.runReopen = reopen
       let rw = QWidget(h: self.root.h, owned: false)
       let btn = QWidget(h: self.runStatusBtn.h, owned: false)
-      btn.move(rw.width() - cint(110), rw.height() - cint(40))
+      btn.move(rw.width() - RunStatusOffsetX, rw.height() - RunStatusOffsetY)
       btn.show()
       btn.raiseX()
     let gotoRun = proc(file: string, line, col: int) {.raises: [].} =
@@ -1076,7 +1089,7 @@ proc build*(self: Application) =
       self.buildReopen = reopen
       let rw = QWidget(h: self.root.h, owned: false)
       let btn = QWidget(h: self.buildStatusBtn.h, owned: false)
-      btn.move(rw.width() - cint(110), rw.height() - cint(80))
+      btn.move(rw.width() - RunStatusOffsetX, rw.height() - BuildStatusOffsetY)
       btn.show()
       btn.raiseX()
     let gotoBuild = proc(file: string, line, col: int) {.raises: [].} =
@@ -1238,7 +1251,7 @@ proc build*(self: Application) =
     if not added:
       when defined(debugFileWatcher):
         echo "[FileWatcher] re-add failed, retrying..."
-      sleep(50)
+      sleep(FileWatcherRetryMs)
       added = self.fileWatcher.addPath(p)
       when defined(debugFileWatcher):
         echo "[FileWatcher] re-add retry result: ", added, ", files: ", self.fileWatcher.files()
@@ -1266,7 +1279,7 @@ proc build*(self: Application) =
     else:
       var content = ""
       var readOk = false
-      for i in 0..<3:
+      for i in 0..<FileReadRetries:
         try:
           content = readFile(p)
           readOk = true
@@ -1274,7 +1287,7 @@ proc build*(self: Application) =
         except:
           when defined(debugFileWatcher):
             echo "[FileWatcher] retry readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
-          sleep(50)
+          sleep(FileWatcherRetryMs)
       if readOk:
         if content != buf.document().toPlainText():
           buf.document().setPlainText(content)

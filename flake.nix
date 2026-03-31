@@ -82,6 +82,50 @@
           buildInputs = libs ++ (with pkgs; [ pkg-config flatpak-builder flatpak ]);
           shellHook = ''
             export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libs}:$LD_LIBRARY_PATH
+
+            # Auto-install nimble deps if nimble.paths references missing packages.
+            # nimble's lock/install has a bug with git URLs containing '#branch' —
+            # the '#' ends up in a temp directory name that breaks. This workaround
+            # installs deps individually and regenerates nimble.paths from whatever
+            # is actually present in ~/.nimble/pkgs2.
+            _nide_check_deps() {
+              local missing=0
+              if [ -f nimble.paths ]; then
+                while IFS= read -r line; do
+                  case "$line" in --path:*)
+                    local p
+                    p="''${line#--path:}"
+                    p="''${p%\"}"
+                    p="''${p#\"}"
+                    [ -d "$p" ] || missing=1
+                  ;; esac
+                done < nimble.paths
+              else
+                missing=1
+              fi
+              echo $missing
+            }
+
+            if [ "$(_nide_check_deps)" = "1" ]; then
+              echo "[nide] Installing nimble dependencies..."
+              nimble install "https://github.com/seaqt/nim-seaqt.git@#qt-6.4" -y 2>/dev/null || true
+              nimble install "db_connector >= 0.1.0" -y 2>/dev/null || true
+              nimble install "toml_serialization >= 0.2.18" -y 2>/dev/null || true
+
+              echo "[nide] Regenerating nimble.paths..."
+              {
+                echo "--noNimblePath"
+                for pkg in seaqt unittest2 db_connector toml_serialization stew results serialization faststreams; do
+                  local p
+                  p="$(nimble path "$pkg" 2>/dev/null | tail -1)" || true
+                  if [ -n "$p" ] && [ -d "$p" ]; then
+                    echo "--path:\"$p\""
+                  fi
+                done
+                echo "--path:\"$(pwd)/src\""
+              } > nimble.paths
+              echo "[nide] Dependencies ready."
+            fi
           '';
         };
     };

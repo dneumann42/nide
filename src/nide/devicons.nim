@@ -1,6 +1,7 @@
 import std/[tables, strutils]
 import seaqt/[qabstractfileiconprovider, qfileinfo, qicon, qpixmap,
               qpainter, qcolor, qfont, qfontdatabase, qpaintdevice, qrect]
+import qtconst
 
 const IconSize = 16
 
@@ -108,9 +109,8 @@ proc glyphToIcon(glyph: string, color: string): QIcon {.raises: [].} =
   font.setPixelSize(cint IconSize)
   painter.setFont(font)
   painter.setPen(QColor.create(color))
-  # Qt::AlignHCenter | Qt::AlignVCenter = 4 | 128 = 132
   painter.drawText(QRect.create(cint 0, cint 0, cint IconSize, cint IconSize),
-                   cint 132, glyph.toOpenArray(0, glyph.high))
+                   AlignHCenterVCenter, glyph.toOpenArray(0, glyph.high))
   discard painter.endX()
   QIcon.create(pm)
 

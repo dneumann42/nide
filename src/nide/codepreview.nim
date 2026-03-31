@@ -1,5 +1,8 @@
 import syntaxtheme
 import seaqt/[qcolor, qfont, qfontmetrics, qpaintdevice, qpainter, qpaintevent, qplaintextedit, qpoint, qrect, qresizeevent, qtextdocument, qtextobject, qwidget]
+import qtconst
+
+const LineNumberPadding = 12
 
 proc QWidget_virtbase(src: pointer, outQObject: ptr pointer, outPaintDevice: ptr pointer) {.importc: "QWidget_virtbase".}
 
@@ -12,7 +15,7 @@ proc widgetToPaintDevice(w: QWidget): QPaintDevice =
 proc lineNumberAreaWidth*(editor: QPlainTextEdit): cint =
   let digits = max(1, ($editor.blockCount()).len)
   let fm = QFontMetrics.create(editor.document().defaultFont())
-  cint(fm.horizontalAdvance("0") * digits + 12)
+  cint(fm.horizontalAdvance("0") * digits + LineNumberPadding)
 
 proc lineNumberAreaPaintEvent*(editor: QPlainTextEdit, event: QPaintEvent, gutter: QWidget) {.raises: [].} =
   try:
@@ -34,7 +37,7 @@ proc lineNumberAreaPaintEvent*(editor: QPlainTextEdit, event: QPaintEvent, gutte
       let numStr = $(blk.blockNumber() + 1)
       let lineH = cint(QFontMetrics.create(editorFont).height())
       painter.setPen(QColor.create(gutterForeground()))
-      painter.drawText(0, top, w - 4, lineH, cint(0x0022), numStr)
+      painter.drawText(0, top, w - 4, lineH, AlignRightVCenter, numStr)
       blk = blk.next()
     discard painter.endX()
   except: discard

@@ -1,6 +1,10 @@
 import std/os
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout,
               qdialogbuttonbox, qpushbutton, qfiledialog]
+import qtconst
+
+const
+  PathEditMinWidth = 150
 
 proc showNewModuleDialog*(parent: QWidget): string =
   var dialog = QDialog.create(parent)
@@ -17,7 +21,7 @@ proc showNewModuleDialog*(parent: QWidget): string =
   pathEditRow.owned = false
 
   var pathEdit = QLineEdit.create(); pathEdit.owned = false
-  pathEdit.setMinimumWidth(150)
+  pathEdit.setMinimumWidth(PathEditMinWidth)
   let defaultPath = try: getCurrentDir() / "src" except OSError: "src"
   pathEdit.setText(defaultPath)
   pathEditRowLayout.addWidget(QWidget(h: pathEdit.h, owned: false))
@@ -36,7 +40,7 @@ proc showNewModuleDialog*(parent: QWidget): string =
   form.addRow("Path", QWidget(h: pathEditRow.h, owned: false))
 
   # Ok=1024, Cancel=4194304 (QDialogButtonBox::StandardButton)
-  var buttons = QDialogButtonBox.create2(cint(1024 or 4194304))
+  var buttons = QDialogButtonBox.create2(Btn_OkCancel)
   buttons.owned = false
   buttons.onAccepted do(): dialog.accept()
   buttons.onRejected do(): dialog.reject()

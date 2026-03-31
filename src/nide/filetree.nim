@@ -4,9 +4,16 @@ import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemvi
                qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl]
 import std/[os, strutils]
 import ./devicons
+import ./qtconst
 
 const TreeWidth = 320
 const TreeHeight = 420
+
+const
+  ToolbarHeight = cint 28
+  HeaderHeight = cint 28
+  TreeIndent = cint 16
+  AutoExpandDelayMs = cint 600
 
 type
   FileTreeMenuAction* = enum
@@ -82,7 +89,7 @@ proc reposition*(self: FileTree) {.raises: [].} =
   if self.splitterH == nil: return
   try:
     let mainWin = QWidget(h: self.splitterH, owned: false)
-    let toolbarHeight = cint 28
+    let toolbarHeight = ToolbarHeight
     self.container.setGeometry(cint 0, toolbarHeight, cint TreeWidth, cint TreeHeight)
     self.container.raiseX()
   except:
@@ -94,7 +101,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
 
   # Create as a top-level widget positioned manually over the content area.
   # Parent is mainWindow so it stays on top, but with Tool flag for floating behavior.
-  self.container = QWidget.create(mainWindow, cint 0x00000008)  # Qt.Tool
+  self.container = QWidget.create(mainWindow, WF_Tool)
   self.container.owned = false
 
   let layout = QVBoxLayout.create()
@@ -107,7 +114,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   header.owned = false
   QWidget(h: header.h, owned: false).setStyleSheet(
     "QLabel { padding: 4px 8px; font-weight: bold; }")
-  QWidget(h: header.h, owned: false).setFixedHeight(cint 28)
+  QWidget(h: header.h, owned: false).setFixedHeight(HeaderHeight)
   layout.addWidget(QWidget(h: header.h, owned: false))
 
   # File system model
@@ -142,7 +149,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
       let sourcePaths = draggedLocalPaths(dropEvent, model.rootPath())
       let targetDir = dropTargetDir(tree, model, dropEvent.pos())
       if self.onMoveRequested != nil and canDropPaths(sourcePaths, targetDir):
-        dropEvent.setDropAction(cint 2)  # Qt::MoveAction
+        dropEvent.setDropAction(DD_MoveAction)
         event.accept()
       else:
         event.ignore()
@@ -167,7 +174,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
         accepted = self.onMoveRequested(sourcePaths[0], targetDir)
 
       if accepted:
-        event.setDropAction(cint 2)  # Qt::MoveAction
+        event.setDropAction(DD_MoveAction)
         event.acceptProposedAction()
       else:
         event.ignore()
@@ -232,20 +239,20 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
 
   self.treeView = QTreeView.create(vtbl = treeVtbl)
   self.treeView.owned = false
-  QWidget(h: self.treeView.h, owned: false).setSizePolicy(cint 7, cint 7)  # Expanding
+  QWidget(h: self.treeView.h, owned: false).setSizePolicy(SP_Expanding, SP_Expanding)
   QWidget(h: self.treeView.h, owned: false).setMinimumSize(cint TreeWidth, cint TreeHeight)
   self.treeView.setModel(QAbstractItemModel(h: self.model.h, owned: false))
   self.treeView.setHeaderHidden(true)
   self.treeView.setAnimated(true)
-  self.treeView.setAutoExpandDelay(cint 600)
-  self.treeView.setIndentation(cint 16)
+  self.treeView.setAutoExpandDelay(AutoExpandDelayMs)
+  self.treeView.setIndentation(TreeIndent)
   self.treeView.setUniformRowHeights(true)
   let treeView = QAbstractItemView(h: self.treeView.h, owned: false)
-  treeView.setEditTriggers(cint 0)  # NoEditTriggers
+  treeView.setEditTriggers(DD_NoEditTriggers)
   treeView.setDragEnabled(true)
   treeView.setDropIndicatorShown(true)
-  treeView.setDragDropMode(cint 4)  # InternalMove
-  treeView.setDefaultDropAction(cint 2)  # Qt::MoveAction
+  treeView.setDragDropMode(DD_InternalMove)
+  treeView.setDefaultDropAction(DD_MoveAction)
   QWidget(h: self.treeView.h, owned: false).setAcceptDrops(true)
   QAbstractScrollArea(h: self.treeView.h, owned: false).viewport().setAcceptDrops(true)
 
@@ -254,7 +261,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   hdr.hideSection(cint 1)
   hdr.hideSection(cint 2)
   hdr.hideSection(cint 3)
-  hdr.setSectionResizeMode(cint 0, cint 1)  # Stretch
+  hdr.setSectionResizeMode(cint 0, HR_Stretch)
   hdr.setStretchLastSection(false)
 
   layout.addWidget(QWidget(h: self.treeView.h, owned: false))

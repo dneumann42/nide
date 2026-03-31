@@ -3,6 +3,13 @@ import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject,
               qsplitter, qplaintextedit, qlabel]
 import highlight, codepreview, widgets
+import qtconst
+
+const
+  FinderWidth = cint 1100
+  FinderHeight = cint 550
+  BufferFinderWidth = cint 480
+  BufferFinderHeight = cint 320
 
 proc toStr*(oa: openArray[char]): string {.raises: [].} =
   result = newString(oa.len)
@@ -34,7 +41,7 @@ proc showFileFinder*(parent: QWidget,
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Open File")
-    QWidget(h: dialogH, owned: false).resize(cint 1100, cint 550)
+    QWidget(h: dialogH, owned: false).resize(FinderWidth, FinderHeight)
 
     var searchBox = QLineEdit.create()
     searchBox.owned = false
@@ -79,7 +86,7 @@ proc showFileFinder*(parent: QWidget,
     previewHl.attach(preview.document())
     let previewH = preview.h
 
-    var splitter = QSplitter.create(cint 1)
+    var splitter = QSplitter.create(Horizontal)
     splitter.owned = false
     splitter.addWidget(QWidget(h: leftPanel.h, owned: false))
     splitter.addWidget(QWidget(h: preview.h, owned: false))
@@ -127,7 +134,7 @@ proc showFileFinder*(parent: QWidget,
     var nextSc = QShortcut.create(QKeySequence.create("Ctrl+N"),
                                   QObject(h: dialogH, owned: false))
     nextSc.owned = false
-    nextSc.setContext(cint 2)   # WindowShortcut
+    nextSc.setContext(SC_WindowShortcut)   # WindowShortcut
     nextSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       let next = min(lw.currentRow() + cint 1, lw.count() - cint 1)
@@ -137,7 +144,7 @@ proc showFileFinder*(parent: QWidget,
     var prevSc = QShortcut.create(QKeySequence.create("Ctrl+P"),
                                   QObject(h: dialogH, owned: false))
     prevSc.owned = false
-    prevSc.setContext(cint 2)   # WindowShortcut
+    prevSc.setContext(SC_WindowShortcut)   # WindowShortcut
     prevSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       let prev = max(lw.currentRow() - cint 1, cint 0)
@@ -147,7 +154,7 @@ proc showFileFinder*(parent: QWidget,
     var enterSc = QShortcut.create(QKeySequence.create("Return"),
                                    QObject(h: dialogH, owned: false))
     enterSc.owned = false
-    enterSc.setContext(cint 2)
+    enterSc.setContext(SC_WindowShortcut)
     enterSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       let row = lw.currentRow()
@@ -173,7 +180,7 @@ proc showBufferFinder*(parent: QWidget,
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Switch Buffer")
-    QWidget(h: dialogH, owned: false).resize(cint 480, cint 320)
+    QWidget(h: dialogH, owned: false).resize(BufferFinderWidth, BufferFinderHeight)
 
     var searchBox = QLineEdit.create()
     searchBox.owned = false
@@ -217,7 +224,7 @@ proc showBufferFinder*(parent: QWidget,
     var nextSc = QShortcut.create(QKeySequence.create("Ctrl+N"),
                                   QObject(h: dialogH, owned: false))
     nextSc.owned = false
-    nextSc.setContext(cint 2)
+    nextSc.setContext(SC_WindowShortcut)
     nextSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       let next = min(lw.currentRow() + cint 1, lw.count() - cint 1)
@@ -227,7 +234,7 @@ proc showBufferFinder*(parent: QWidget,
     var prevSc = QShortcut.create(QKeySequence.create("Ctrl+B"),
                                   QObject(h: dialogH, owned: false))
     prevSc.owned = false
-    prevSc.setContext(cint 2)
+    prevSc.setContext(SC_WindowShortcut)
     prevSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       let prev = max(lw.currentRow() - cint 1, cint 0)
@@ -237,7 +244,7 @@ proc showBufferFinder*(parent: QWidget,
     var enterSc = QShortcut.create(QKeySequence.create("Return"),
                                    QObject(h: dialogH, owned: false))
     enterSc.owned = false
-    enterSc.setContext(cint 2)
+    enterSc.setContext(SC_WindowShortcut)
     enterSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       let row = lw.currentRow()

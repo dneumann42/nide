@@ -1,11 +1,12 @@
 import seaqt/[qwidget, qgraphicsopacityeffect, qgraphicseffect]
+import qtconst
 
 proc setupWindowOpacity*(topLevel: QWidget, target: QWidget,
                          enabled: bool, level: int): QGraphicsOpacityEffect =
   ## Attach a QGraphicsOpacityEffect to `target` and mark `topLevel` as
   ## translucent.  `target` should be a child widget that fills `topLevel`
   ## (e.g. the central splitter or a content container).
-  QWidget(h: topLevel.h, owned: false).setAttribute(cint 120)  # WA_TranslucentBackground
+  QWidget(h: topLevel.h, owned: false).setAttribute(WA_TranslucentBackground)
   QWidget(h: target.h,   owned: false).setAutoFillBackground(true)
   var eff = QGraphicsOpacityEffect.create()
   eff.owned = false

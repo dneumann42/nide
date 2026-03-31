@@ -14,6 +14,7 @@ type
     buffers: seq[Buffer]
 
 const ScratchBufferName* = "scratch"
+const DefaultBufferFontSize = 12
 
 var scratchCount {.global.} = 0
 
@@ -43,7 +44,7 @@ proc document*(b: Buffer): QTextDocument =
     layout.owned = false
     doc.setDocumentLayout(QAbstractTextDocumentLayout(h: layout.h, owned: false))
     var font = QFont.create("Fira Code")
-    font.setPointSize(12)
+    font.setPointSize(DefaultBufferFontSize)
     font.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
     doc.setDefaultFont(font)
     doc.setPlainText(b.content)

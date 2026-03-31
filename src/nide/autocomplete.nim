@@ -6,7 +6,7 @@
 
 import seaqt/[qwidget, qlistwidget, qlistwidgetitem,
               qrect, qplaintextedit, qobject]
-import nimsuggest, widgets
+import nimsuggest, widgets, uicolors
 import std/os
 
 type
@@ -17,6 +17,13 @@ type
     explicitSelection*: bool
     insertTextCb*: proc(text: string) {.raises: [].}
     closeCb*:      proc() {.raises: [].}
+
+const
+  AcItemHeight = cint 22
+  AcMaxVisibleItems = cint 10
+  AcPopupWidth = cint 720
+  AcMinVisibleRows = cint 2
+  AcBorderPadding = cint 4
 
 proc closeWidget(menu: AutocompleteMenu) {.raises: [].} =
   if menu.widgetH == nil: return
@@ -105,25 +112,25 @@ proc showCompletions*(editor: QPlainTextEdit,
 
     let pw = QWidget(h: popupH, owned: false)
     pw.setObjectName("acPopup")
-    pw.setStyleSheet("""
-      QWidget#acPopup {
-        background: #1e1e2e;
-        border: 1px solid #585b70;
-      }
-      QListWidget {
-        background: #1e1e2e;
-        color: #cdd6f4;
-        border: none;
-        font-family: 'Fira Code', monospace;
-        font-size: 13px;
-        outline: 0;
-      }
-      QListWidget::item { padding: 2px 8px; }
-      QListWidget::item:selected {
-        background: #313244;
-        color: #cdd6f4;
-      }
-    """)
+    pw.setStyleSheet(
+      "QWidget#acPopup {" &
+      "  background: " & clBase & ";" &
+      "  border: 1px solid " & clSurface2 & ";" &
+      "}" &
+      "QListWidget {" &
+      "  background: " & clBase & ";" &
+      "  color: " & clText & ";" &
+      "  border: none;" &
+      "  font-family: '" & clMonoFont & "', monospace;" &
+      "  font-size: " & clMonoSize & ";" &
+      "  outline: 0;" &
+      "}" &
+      "QListWidget::item { padding: 2px 8px; }" &
+      "QListWidget::item:selected {" &
+      "  background: " & clSurface0 & ";" &
+      "  color: " & clText & ";" &
+      "}"
+    )
 
     # List widget (parented to popup via layout — it owns it)
     var listWidget = QListWidget.create()
@@ -156,10 +163,10 @@ proc showCompletions*(editor: QPlainTextEdit,
 
     # Size: cap height to show at most ~10 items. Keep a safer minimum size so
     # short result sets don't end up with scrollbars obscuring the row text.
-    let itemH = cint 22
-    let visItems = min(cint(completions.len), cint 10)
-    let popupW = cint 720
-    let popupH2 = max(visItems, cint 2) * itemH + cint 4  # +4 for border
+    let itemH = AcItemHeight
+    let visItems = min(cint(completions.len), AcMaxVisibleItems)
+    let popupW = AcPopupWidth
+    let popupH2 = max(visItems, AcMinVisibleRows) * itemH + AcBorderPadding  # +border
 
     let vpW = viewport.width()
     let vpH = viewport.height()

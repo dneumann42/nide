@@ -1,5 +1,10 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject, qtcpsocket, qabstractsocket, qiodevice]
+import qtconst
+
+const
+  MaxTcpPort = 65535
+  ProcessKillTimeoutMs = cint 2000
 
 type
   Completion* = object
@@ -195,7 +200,7 @@ proc reconnect*(client: NimSuggestClient) {.raises: [].} =
       if clientRef.socketH == sockH: clientRef.socketH = nil
       if clientRef.state != csIdle and clientRef.pending.len > 0:
         clientRef.onSocketDead("socket error: " & $err)
-    sock.connectToHost("127.0.0.1", cushort(client.port), cint(3), cint(0))
+    sock.connectToHost("127.0.0.1", cushort(client.port), IO_ReadWrite, AS_IPv4Protocol)
   except:
     client.state = csDead
     client.log("reconnect failed: " & getCurrentExceptionMsg())
@@ -246,7 +251,7 @@ proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
     if nl < 0: return
     let portStr = client.portBuf[0 ..< nl].strip()
     let p = try: parseInt(portStr) except: 0
-    if p <= 0 or p > 65535:
+    if p <= 0 or p > MaxTcpPort:
       client.onSocketDead("invalid port: " & portStr)
       return
     client.port = p
@@ -255,7 +260,7 @@ proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
     let sock = QTcpSocket(h: client.socketH, owned: false)
     let sockH = client.socketH
     let clientRef = client
-    sock.connectToHost("127.0.0.1", cushort(p), cint(3), cint(0))
+    sock.connectToHost("127.0.0.1", cushort(p), IO_ReadWrite, AS_IPv4Protocol)
     QAbstractSocket(h: sockH, owned: false).onConnected do() {.raises: [].}:
       clientRef.onSocketConnected()
     QIODevice(h: sockH, owned: false).onReadyRead do() {.raises: [].}:
@@ -292,7 +297,7 @@ proc kill*(client: NimSuggestClient) {.raises: [].} =
     client.processH = nil  # clear before ops — kill() fires onFinished synchronously
     try:
       QProcess(h: h, owned: false).kill()
-      discard QProcess(h: h, owned: false).waitForFinished(cint 2000)
+      discard QProcess(h: h, owned: false).waitForFinished(ProcessKillTimeoutMs)
     except: discard
   discard prevState
 
@@ -311,7 +316,7 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
     client.processH = nil
     try:
       QProcess(h: h, owned: false).kill()
-      discard QProcess(h: h, owned: false).waitForFinished(cint 2000)
+      discard QProcess(h: h, owned: false).waitForFinished(ProcessKillTimeoutMs)
     except: discard
   client.port = 0
   client.portBuf = ""

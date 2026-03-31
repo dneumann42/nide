@@ -3,6 +3,13 @@ import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer,
               qsplitter, qplaintextedit, qtextdocument, qtextcursor, qtextobject]
 import highlight, codepreview, widgets
+import qtconst
+
+const
+  RgFinderWidth = cint 900
+  RgFinderHeight = cint 500
+  SearchDebounceMs = cint 300
+  MaxRgResults = 200
 
 proc dbg(msg: string) {.raises: [].} =
   try: stderr.write(msg & "\n") except: discard
@@ -26,7 +33,7 @@ proc showRipgrepFinder*(parent: QWidget,
     dialog.owned = false
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Find in Files")
-    QWidget(h: dialogH, owned: false).resize(cint 900, cint 500)
+    QWidget(h: dialogH, owned: false).resize(RgFinderWidth, RgFinderHeight)
 
     var searchBox = QLineEdit.create()
     searchBox.owned = false
@@ -48,7 +55,7 @@ proc showRipgrepFinder*(parent: QWidget,
     previewHl.attach(preview.document())
     let previewH = preview.h
 
-    var splitter = QSplitter.create(cint 1)
+    var splitter = QSplitter.create(Horizontal)
     splitter.owned = false
     splitter.addWidget(QWidget(h: leftPanel.h, owned: false))
     splitter.addWidget(QWidget(h: preview.h, owned: false))
@@ -66,7 +73,7 @@ proc showRipgrepFinder*(parent: QWidget,
     timer.owned = false
     let timerH = timer.h
     QTimer(h: timerH, owned: false).setSingleShot(true)
-    QTimer(h: timerH, owned: false).setInterval(cint 300)
+    QTimer(h: timerH, owned: false).setInterval(SearchDebounceMs)
 
     proc populate(query: string) {.raises: [].} =
       let lw = QListWidget(h: listH, owned: false)
@@ -102,7 +109,7 @@ proc showRipgrepFinder*(parent: QWidget,
           dbg("rgfinder: first120: " & output[0 .. min(119, output.len-1)])
         for lineStr in output.splitLines():
           if lineStr.len == 0: continue
-          if currentMatches.len >= 200: break
+          if currentMatches.len >= MaxRgResults: break
           try:
             let parts = lineStr.split(':', 2)
             if parts.len == 3:
@@ -148,7 +155,7 @@ proc showRipgrepFinder*(parent: QWidget,
     var nextSc = QShortcut.create(QKeySequence.create("Ctrl+N"),
                                   QObject(h: dialogH, owned: false))
     nextSc.owned = false
-    nextSc.setContext(cint 2)
+    nextSc.setContext(SC_WindowShortcut)
     nextSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       lw.setCurrentRow(min(lw.currentRow() + cint 1, lw.count() - cint 1))
@@ -157,7 +164,7 @@ proc showRipgrepFinder*(parent: QWidget,
     var prevSc = QShortcut.create(QKeySequence.create("Ctrl+P"),
                                   QObject(h: dialogH, owned: false))
     prevSc.owned = false
-    prevSc.setContext(cint 2)
+    prevSc.setContext(SC_WindowShortcut)
     prevSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       lw.setCurrentRow(max(lw.currentRow() - cint 1, cint 0))
@@ -173,7 +180,7 @@ proc showRipgrepFinder*(parent: QWidget,
     var enterSc = QShortcut.create(QKeySequence.create("Return"),
                                    QObject(h: dialogH, owned: false))
     enterSc.owned = false
-    enterSc.setContext(cint 2)
+    enterSc.setContext(SC_WindowShortcut)
     enterSc.onActivated do() {.raises: [].}:
       doSelect(QListWidget(h: listH, owned: false).currentRow())
 
