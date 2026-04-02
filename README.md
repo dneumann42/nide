@@ -69,6 +69,8 @@ Run with:
 | `Ctrl+Shift+E` | Toggle file tree |
 | `Ctrl+O` | Open file |
 | `Ctrl+D` | Dashboard |
+| `Ctrl+.` | Goto definition |
+| `Ctrl+,` | Jump back |
 | `F3` | Goto definition |
 
 ### Editing

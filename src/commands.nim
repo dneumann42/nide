@@ -75,6 +75,8 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x5C, ctrlMod),             "editor.addColumn")      ## Ctrl+\
   d.bindKey(combo(0x45, ctrlMod or shiftMod), "editor.toggleFileTree") ## Ctrl+Shift+E
   d.bindKey(combo(0x5C, ctrlMod or shiftMod), "editor.splitRow")       ## Ctrl+Shift+\
+  d.bindKey(combo(0x2E, ctrlMod),             "editor.gotoDefinition") ## Ctrl+.
+  d.bindKey(combo(0x2C, ctrlMod),             "editor.jumpBack")       ## Ctrl+,
   d.bindKey(combo(0x01000032, noMod),         "editor.gotoDefinition") ## F3
   d.bindKey(combo(0x20, ctrlMod),             "editor.setMark")        ## Ctrl+Space
   d.bindKey(combo(0x3B, ctrlMod),             "editor.autocomplete")   ## Ctrl+;

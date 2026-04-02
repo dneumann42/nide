@@ -988,6 +988,12 @@ proc build*(self: Application) =
       try: p.triggerGotoDefinition(self.nimSuggest)
       except: discard)
 
+    disp.register("editor.jumpBack", proc() {.raises: [].} =
+      let p = self.getTargetPane()
+      if p == nil: return
+      try: p.triggerJumpBack()
+      except: discard)
+
     disp.register("editor.autocomplete", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil or self.nimSuggest == nil: return
