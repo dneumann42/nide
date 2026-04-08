@@ -1,7 +1,7 @@
 import std/[sets, strutils]
 import compiler/[lexer, llstream, idents, options, pathutils]
 import seaqt/[qsyntaxhighlighter, qtextblock, qtextdocument]
-import syntaxtheme
+import nide/settings/syntaxtheme
 
 type
   FormatKind = enum

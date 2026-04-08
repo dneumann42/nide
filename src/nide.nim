@@ -1,4 +1,5 @@
-import nide/application
+import nide/application/application
+import nide/helpers/qtconst
 import seaqt/qapplication
 
 proc start() =

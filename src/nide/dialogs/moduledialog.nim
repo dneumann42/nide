@@ -1,7 +1,7 @@
 import std/os
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout,
               qdialogbuttonbox, qpushbutton, qfiledialog]
-import qtconst
+import nide/helpers/qtconst
 
 const
   PathEditMinWidth = 150

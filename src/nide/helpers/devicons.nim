@@ -1,7 +1,7 @@
 import std/[tables, strutils]
 import seaqt/[qabstractfileiconprovider, qfileinfo, qicon, qpixmap,
               qpainter, qcolor, qfont, qfontdatabase, qpaintdevice, qrect]
-import qtconst
+import nide/helpers/qtconst
 
 const IconSize = 16
 

@@ -3,8 +3,8 @@ import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
               qlistwidget, qlistwidgetitem, qplaintextedit, qfont,
               qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush,
               qshortcut, qkeysequence, qobject, qcombobox]
-import syntaxtheme, highlight
-import qtconst
+import nide/settings/syntaxtheme, nide/editor/highlight
+import nide/helpers/qtconst
 
 const
   PreviewFontSize = 11

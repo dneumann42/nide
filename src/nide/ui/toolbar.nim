@@ -2,9 +2,9 @@ import std/[tables, strutils]
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
               qabstractbutton, qsize, qicon, qlabel, qhboxlayout, qpushbutton, qpoint,
               qscrollarea, qvboxlayout, qscroller]
-import widgets
-import logparser
-import qtconst, uicolors
+import nide/ui/widgets
+import nide/helpers/logparser
+import nide/helpers/qtconst, nide/helpers/uicolors
 
 const RunSvg       = staticRead("icons/run.svg")
 const BuildSvg     = staticRead("icons/build.svg")

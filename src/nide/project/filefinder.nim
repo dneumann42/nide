@@ -2,8 +2,8 @@ import std/[os, algorithm, strutils]
 import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject,
               qsplitter, qplaintextedit, qlabel]
-import highlight, codepreview, widgets
-import qtconst
+import nide/editor/highlight, nide/ui/codepreview, nide/ui/widgets
+import nide/helpers/qtconst
 
 var gitignorePatterns*: seq[string] = @[]
 var gitignoreRoot*: string = ""

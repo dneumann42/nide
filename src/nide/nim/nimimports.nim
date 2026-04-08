@@ -1,6 +1,6 @@
 import std/[strutils, sequtils, algorithm, tables, sets]
 import compiler/[lexer, llstream, idents, options, pathutils]
-import logparser
+import nide/helpers/logparser
 
 type
   ImportEntry = object

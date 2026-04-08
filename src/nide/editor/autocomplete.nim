@@ -6,7 +6,7 @@
 
 import seaqt/[qwidget, qlistwidget, qlistwidgetitem,
               qrect, qplaintextedit, qobject]
-import nimsuggest, widgets, uicolors
+import nide/nim/nimsuggest, nide/ui/widgets, nide/helpers/uicolors
 import std/os
 
 type

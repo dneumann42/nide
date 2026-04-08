@@ -2,8 +2,8 @@ import std/[strutils, os, osproc]
 import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer,
               qsplitter, qplaintextedit, qtextdocument, qtextcursor, qtextobject]
-import highlight, codepreview, widgets
-import qtconst
+import nide/editor/highlight, nide/ui/codepreview, nide/ui/widgets
+import nide/helpers/qtconst
 
 const
   RgFinderWidth = cint 900

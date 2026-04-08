@@ -1,6 +1,6 @@
 import std/[unittest, os, osproc, strutils]
-import logparser
-import nimproject
+import nide/helpers/logparser
+import nide/nim/nimproject
 
 # ---------------------------------------------------------------------------
 # Helpers shared across suites

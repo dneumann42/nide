@@ -1,6 +1,6 @@
 import std/[os, strutils]
 import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont]
-import highlight
+import nide/editor/highlight
 
 type
   Buffer* = ref object

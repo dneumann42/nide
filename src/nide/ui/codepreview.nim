@@ -1,6 +1,6 @@
-import syntaxtheme
+import nide/settings/syntaxtheme
 import seaqt/[qcolor, qfont, qfontmetrics, qpaintdevice, qpainter, qpaintevent, qplaintextedit, qpoint, qrect, qresizeevent, qtextdocument, qtextobject, qwidget]
-import qtconst
+import nide/helpers/qtconst
 
 const LineNumberPadding = 12
 

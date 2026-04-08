@@ -1,5 +1,5 @@
 import seaqt/[qwidget, qgraphicsopacityeffect, qgraphicseffect]
-import qtconst
+import nide/helpers/qtconst
 
 proc setupWindowOpacity*(topLevel: QWidget, target: QWidget,
                          enabled: bool, level: int): QGraphicsOpacityEffect =

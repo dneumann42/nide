@@ -3,8 +3,8 @@ import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemvi
                qabstractfileiconprovider, qmenu, qaction, qcontextmenuevent,
                qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl]
 import std/[os, strutils]
-import ./devicons
-import ./qtconst
+import nide/helpers/devicons
+import nide/helpers/qtconst
 
 const TreeWidth = 320
 const TreeHeight = 420

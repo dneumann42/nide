@@ -1,8 +1,7 @@
 import std/[unittest, sets, strutils]
-import nimimports
+import nide/nim/nimimports
 
-# Helper: build a fake LogLine-compatible sequence using logparser
-import logparser
+import nide/helpers/logparser
 
 proc unusedHint(file, module: string, line = 1): LogLine =
   let raw = file & "(" & $line & ", 1) Hint: imported and not used: '" & module & "' [UnusedImport]"

@@ -1,6 +1,6 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject, qtcpsocket, qabstractsocket, qiodevice]
-import qtconst
+import nide/helpers/qtconst
 
 const
   MaxTcpPort = 65535

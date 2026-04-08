@@ -1,7 +1,7 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject]
-import logparser
-import qtconst
+import nide/helpers/logparser
+import nide/helpers/qtconst
 
 proc runNimCheck*(
     parentH:  pointer,

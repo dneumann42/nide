@@ -1,7 +1,7 @@
 import std/[json, os, osproc, algorithm]
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout, qdialogbuttonbox, qpushbutton, qfiledialog, qcombobox, qlabel, qframe]
-import projects
-import qtconst
+import nide/project/projects
+import nide/helpers/qtconst
 
 const
   DialogMinWidth = cint 520

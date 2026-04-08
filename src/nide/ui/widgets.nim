@@ -12,7 +12,7 @@ import std/strutils
 import seaqt/[qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsvgrenderer,
               qwidget, qabstractbutton, qlayout, qboxlayout,
               qvboxlayout, qhboxlayout, qsize, qtoolbutton, qpushbutton]
-import uicolors
+import nide/helpers/uicolors
 
 export uicolors
 

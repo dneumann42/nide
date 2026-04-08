@@ -1,9 +1,9 @@
-import logparser
+import nide/helpers/logparser
 import std/algorithm
 import std/options
 import std/strutils
-import ../keybindings
-import ../qtconst
+import nide/settings/keybindings
+import nide/helpers/qtconst
 
 type
   JumpLocation* = object

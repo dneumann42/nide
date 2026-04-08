@@ -6,13 +6,13 @@ import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbu
               qkeysequence, qtableview, qabstractitemview, qradiobutton]
 import std/[tables, algorithm, strutils, os, osproc]
 
-import theme
-import themedialog
-import opacity
-import settingsstore
-import projectdialog
-import ../commands
-import qtconst
+import nide/settings/theme
+import nide/dialogs/themedialog
+import nide/ui/opacity
+import nide/settings/settingsstore
+import nide/dialogs/projectdialog
+import commands
+import nide/helpers/qtconst
 
 const
   MinFontSize = cint 6

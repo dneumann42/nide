@@ -1,4 +1,4 @@
-import projects
+import nide/project/projects
 import std/[options, os]
 
 import toml_serialization

@@ -1,5 +1,5 @@
 import std/[strutils]
-import nimsuggest
+import nide/nim/nimsuggest
 
 type
   Definition* = object

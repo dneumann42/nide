@@ -1,7 +1,7 @@
-import logparser, widgets
+import nide/helpers/logparser, nide/ui/widgets
 import seaqt/[qboxlayout, qbrush, qclipboard, qcolor, qdialog, qfont, qguiapplication, qlabel, qlistwidget, qlistwidgetitem, qobject, qprocess, qpushbutton, qwidget]
 import std/[os, posix]
-import qtconst
+import nide/helpers/qtconst
 
 const
   RunnerWidth = cint 640

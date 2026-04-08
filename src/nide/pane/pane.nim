@@ -1,7 +1,7 @@
-import logic
+import nide/pane/logic
 export logic
-import autocomplete, buffers, commands, funcprototype, logparser, nimcheck, nimfinddef, nimimports, nimindex, nimsuggest, syntaxtheme, widgetref, widgets
-import ../qtconst
+import nide/editor/autocomplete, nide/editor/buffers, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/syntaxtheme, nide/helpers/widgetref, nide/ui/widgets
+import nide/helpers/qtconst
 import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[options, os, strutils]
 

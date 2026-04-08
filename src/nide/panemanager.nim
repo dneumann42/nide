@@ -1,8 +1,8 @@
 import seaqt/[qwidget, qsplitter]
-import pane/pane, widgetref, nimsuggest
-import ../commands
+import nide/pane/pane, nide/helpers/widgetref, nide/nim/nimsuggest
+import commands
 import std/algorithm
-import qtconst
+import nide/helpers/qtconst
 
 const SplitterHandleWidth = cint 4
 

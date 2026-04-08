@@ -1,9 +1,9 @@
-import buffers, commands, filefinder, filetree, graphdialog, logparser, moduledialog, nimcheck, nimproject, nimsuggest, opacity, pane/pane, panemanager, projectdialog, projects, rgfinder, runner, sessionstate, settings, syntaxtheme, theme, themedialog, toml_serialization, toolbar, widgetref
+import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
-import qtconst
+import nide/helpers/qtconst
 
-import "../../tools/nim_graph" as nim_graph
+import tools/nim_graph as nim_graph
 
 type
   FileTreeClipboardMode = enum
