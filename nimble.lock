@@ -12,9 +12,9 @@
       }
     },
     "seaqt": {
-      "version": "#qt-6.4",
+      "version": "0.6.4.0",
       "vcsRevision": "2d95808bdd9f6dd2c212b69a57af4618da241d37",
-      "url": "https://github.com/seaqt/nim-seaqt.git",
+      "url": "https://github.com/seaqt/nim-seaqt",
       "downloadMethod": "git",
       "dependencies": [
         "nim"

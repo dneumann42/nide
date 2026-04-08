@@ -10,3 +10,4 @@ nimbledeps
 *.out
 *.flatpak
 .claude/
+.codex
