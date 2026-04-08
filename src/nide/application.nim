@@ -1088,7 +1088,9 @@ proc build*(self: Application) =
         self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
-    runCommand(QWidget(h: self.root.h, owned: false), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; nim cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
+    let nimPath = getNimPath(self.settings)
+    let nimblePath = getNimblePath(self.settings)
+    runCommand(QWidget(h: self.root.h, owned: false), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
 
   self.toolbar.onBuild do():
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
@@ -1105,7 +1107,8 @@ proc build*(self: Application) =
         self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
-    runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; nim cpp --out:./$b src/$b.nim", onBg, gotoBuild)
+    let nimPath = getNimPath(self.settings)
+    runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim", onBg, gotoBuild)
 
   self.toolbar.onGraph do():
     try:

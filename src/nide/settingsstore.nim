@@ -17,10 +17,18 @@ type
     command*: string
     key*: string
 
+  StoredNimSettings* = object
+    mode*: string
+    nimbleInstallPath*: string
+    nimbleVersion*: string
+    customNimPath*: string
+    customNimblePath*: string
+
   StoredSettings* = object
     appearance*: StoredAppearanceSettings
     restoreLastSessionOnLaunch*: bool
     keybindings*: seq[StoredKeybindingOverride]
+    nim*: StoredNimSettings
 
 const SettingsFile* = "settings.toml"
 

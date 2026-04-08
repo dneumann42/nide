@@ -3,13 +3,14 @@ import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbu
               qabstractspinbox, qsplitter, qlayout, qslider, qabstractslider,
               qgraphicsopacityeffect, qgraphicseffect,
               qtabwidget, qtablewidget, qheaderview, qpushbutton, qkeysequenceedit,
-              qkeysequence, qtableview, qabstractitemview]
-import std/[tables, algorithm, strutils]
+              qkeysequence, qtableview, qabstractitemview, qradiobutton]
+import std/[tables, algorithm, strutils, os, osproc]
 
 import theme
 import themedialog
 import opacity
 import settingsstore
+import projectdialog
 import ../commands
 import qtconst
 
@@ -23,6 +24,8 @@ const
   KeybindSetColWidth = cint 60
   KeyCaptureWidth = cint 360
   KeyCaptureHeight = cint 130
+  NimbleVersion* = "v0.22.3"
+  FieldMinWidth = cint 280
 
 type
   AppearanceSettings* = object
@@ -39,10 +42,22 @@ type
     command*: string
     key*:     string
 
+  NimEnvironmentMode* = enum
+    InstallWithNimble
+    CustomPath
+
+  NimEnvironmentSettings* = object
+    mode*: NimEnvironmentMode
+    nimbleInstallPath*: string
+    nimbleVersion*: string
+    customNimPath*: string
+    customNimblePath*: string
+
   Settings* = object
     appearance*:  AppearanceSettings
     restoreLastSessionOnLaunch*: bool
-    keybindings*: seq[KeybindingOverride]  ## user-defined overrides, e.g. {command: "editor.forwardChar", key: "Ctrl+T"}
+    keybindings*: seq[KeybindingOverride]
+    nim*: NimEnvironmentSettings  ## user-defined overrides, e.g. {command: "editor.forwardChar", key: "Ctrl+T"}
 
 proc syntaxTheme*(s: Settings): string = s.appearance.syntaxTheme
 proc `syntaxTheme=`*(s: var Settings, v: string) = s.appearance.syntaxTheme = v
@@ -74,6 +89,13 @@ proc toStored(settings: Settings): StoredSettings =
   result.appearance.opacityLevel = settings.appearance.opacityLevel
   result.restoreLastSessionOnLaunch = settings.restoreLastSessionOnLaunch
   result.keybindings = settings.keybindings.toStored()
+  case settings.nim.mode
+  of InstallWithNimble: result.nim.mode = "installWithNimble"
+  of CustomPath: result.nim.mode = "customPath"
+  result.nim.nimbleInstallPath = settings.nim.nimbleInstallPath
+  result.nim.nimbleVersion = settings.nim.nimbleVersion
+  result.nim.customNimPath = settings.nim.customNimPath
+  result.nim.customNimblePath = settings.nim.customNimblePath
 
 proc toRuntime(stored: StoredSettings): Settings =
   result = Settings()
@@ -91,6 +113,20 @@ proc toRuntime(stored: StoredSettings): Settings =
     result.appearance.opacityLevel = stored.appearance.opacityLevel
   result.restoreLastSessionOnLaunch = stored.restoreLastSessionOnLaunch
   result.keybindings = stored.keybindings.toRuntime()
+  case stored.nim.mode
+  of "installWithNimble": result.nim.mode = InstallWithNimble
+  of "customPath": result.nim.mode = CustomPath
+  else: result.nim.mode = InstallWithNimble
+  if stored.nim.nimbleInstallPath.len > 0:
+    result.nim.nimbleInstallPath = stored.nim.nimbleInstallPath
+  else:
+    result.nim.nimbleInstallPath = getHomeDir() / ".nimble" / "bin"
+  if stored.nim.nimbleVersion.len > 0:
+    result.nim.nimbleVersion = stored.nim.nimbleVersion
+  else:
+    result.nim.nimbleVersion = "2.2.6"
+  result.nim.customNimPath = stored.nim.customNimPath
+  result.nim.customNimblePath = stored.nim.customNimblePath
 
 proc toTable*(overrides: seq[KeybindingOverride]): Table[string, string] =
   for o in overrides: result[o.command] = o.key
@@ -100,6 +136,29 @@ proc toOverrides*(t: Table[string, string]): seq[KeybindingOverride] =
 
 proc load*(_: typedesc[Settings]): Settings {.raises: [].} =
   loadStoredSettings().toRuntime()
+
+proc getNimPath*(settings: Settings): string =
+  case settings.nim.mode
+  of InstallWithNimble: settings.nim.nimbleInstallPath / "nim"
+  of CustomPath: settings.nim.customNimPath
+
+proc getNimblePath*(settings: Settings): string =
+  case settings.nim.mode
+  of InstallWithNimble: settings.nim.nimbleInstallPath / "nimble"
+  of CustomPath: settings.nim.customNimblePath
+
+proc findNimble*(): string {.raises: [].} =
+  let nimbleBinDir = getHomeDir() / ".nimble" / "bin"
+  for candidate in [nimbleBinDir / "nimble", "/usr/bin/nimble", "/usr/local/bin/nimble"]:
+    if fileExists(candidate):
+      return candidate
+  try:
+    let pathExe = findExe("nimble")
+    if pathExe.len > 0:
+      return pathExe
+  except:
+    discard
+  return ""
 
 proc write*(settings: Settings) {.raises: [].} =
   writeStoredSettings(settings.toStored())
@@ -366,6 +425,228 @@ proc showSettingsDialog*(
     discard QTabWidget(h: tabsH, owned: false).addTab(
       QWidget(h: kbTabH, owned: false), "Keybindings")
 
+    # ════════════════════════════════════════════════════════════════════════
+    # Tab 3 — Nim Environment
+    # ════════════════════════════════════════════════════════════════════════
+    var nimTab = QWidget.create(QWidget(h: tabsH, owned: false))
+    nimTab.owned = false
+    let nimTabH = nimTab.h
+
+    var installWithNimbleRadio = QRadioButton.create("Install with Nimble")
+    installWithNimbleRadio.owned = false
+    var customPathRadio = QRadioButton.create("Custom Path")
+    customPathRadio.owned = false
+
+    if current.nim.mode == InstallWithNimble:
+      QAbstractButton(h: installWithNimbleRadio.h, owned: false).setChecked(true)
+    else:
+      QAbstractButton(h: customPathRadio.h, owned: false).setChecked(true)
+
+    var nimbleInstallPathEdit = QLineEdit.create()
+    nimbleInstallPathEdit.owned = false
+    nimbleInstallPathEdit.setText(current.nim.nimbleInstallPath)
+    nimbleInstallPathEdit.setPlaceholderText(getHomeDir() / ".nimble" / "bin")
+
+    var nimbleVersionCombo = QComboBox.create()
+    nimbleVersionCombo.owned = false
+    nimbleVersionCombo.setMinimumWidth(FieldMinWidth)
+    var availableVersions = getNimVersions()
+    for ver in availableVersions:
+      nimbleVersionCombo.addItem(ver)
+    var defaultVersionIdx = 0
+    for i, ver in availableVersions:
+      if ver == current.nim.nimbleVersion:
+        defaultVersionIdx = i
+        break
+    nimbleVersionCombo.setCurrentIndex(cint defaultVersionIdx)
+
+    var customNimPathEdit = QLineEdit.create()
+    customNimPathEdit.owned = false
+    customNimPathEdit.setText(current.nim.customNimPath)
+    customNimPathEdit.setPlaceholderText("e.g. /usr/bin/nim")
+
+    var customNimblePathEdit = QLineEdit.create()
+    customNimblePathEdit.owned = false
+    customNimblePathEdit.setText(current.nim.customNimblePath)
+    customNimblePathEdit.setPlaceholderText("e.g. /usr/bin/nimble")
+
+    var testButton = QPushButton.create("Test")
+    testButton.owned = false
+
+    var installButton = QPushButton.create("Install Nim")
+    installButton.owned = false
+
+    var testResultLabel = QLabel.create("")
+    testResultLabel.owned = false
+    QWidget(h: testResultLabel.h, owned: false).setMinimumHeight(cint 60)
+
+    let nimbleInstallPathEditH = nimbleInstallPathEdit.h
+    let nimbleVersionComboH = nimbleVersionCombo.h
+    let customNimPathEditH = customNimPathEdit.h
+    let customNimblePathEditH = customNimblePathEdit.h
+    let testButtonH = testButton.h
+    let installButtonH = installButton.h
+    let testResultLabelH = testResultLabel.h
+    let installWithNimbleRadioH = installWithNimbleRadio.h
+    let customPathRadioH = customPathRadio.h
+
+    proc updateNimUIVisibility() {.raises: [].} =
+      let isInstallMode = QAbstractButton(h: installWithNimbleRadioH, owned: false).isChecked()
+      QWidget(h: nimbleInstallPathEditH, owned: false).setEnabled(isInstallMode)
+      QWidget(h: nimbleVersionComboH, owned: false).setEnabled(isInstallMode)
+      QWidget(h: installButtonH, owned: false).setEnabled(isInstallMode)
+      QWidget(h: customNimPathEditH, owned: false).setEnabled(not isInstallMode)
+      QWidget(h: customNimblePathEditH, owned: false).setEnabled(not isInstallMode)
+
+    updateNimUIVisibility()
+
+    installWithNimbleRadio.onToggled do(checked: bool) {.raises: [].}:
+      if checked:
+        updateNimUIVisibility()
+
+    customPathRadio.onToggled do(checked: bool) {.raises: [].}:
+      if checked:
+        updateNimUIVisibility()
+
+    testButton.onClicked do() {.raises: [].}:
+      let isInstallMode = QAbstractButton(h: installWithNimbleRadioH, owned: false).isChecked()
+      var testNimPath: string
+      var testNimblePath: string
+
+      if isInstallMode:
+        let installPath = nimbleInstallPathEdit.text()
+        if installPath.len > 0:
+          testNimblePath = installPath / "nimble"
+          testNimPath = installPath / "nim"
+        else:
+          testNimblePath = getHomeDir() / ".nimble" / "bin" / "nimble"
+          testNimPath = getHomeDir() / ".nimble" / "bin" / "nim"
+      else:
+        testNimblePath = customNimblePathEdit.text()
+        testNimPath = customNimPathEdit.text()
+
+      var results: string
+      var hasError = false
+
+      if testNimPath.len > 0 and fileExists(testNimPath):
+        try:
+          let (nimOut, nimCode) = execCmdEx(testNimPath & " --version 2>&1")
+          if nimCode == 0:
+            results &= "nim: OK\n" & nimOut.strip()
+          else:
+            results &= "nim: FAILED\n" & nimOut.strip()
+            hasError = true
+        except:
+          results &= "nim: FAILED\n"
+          hasError = true
+      else:
+        results &= "nim: NOT FOUND\n"
+        hasError = true
+
+      if testNimblePath.len > 0 and fileExists(testNimblePath):
+        try:
+          let (nimbOut, nimbCode) = execCmdEx(testNimblePath & " --version 2>&1")
+          if nimbCode == 0:
+            results &= "nimble: OK\n" & nimbOut.strip()
+          else:
+            results &= "nimble: FAILED\n" & nimbOut.strip()
+            hasError = true
+        except:
+          results &= "nimble: FAILED\n"
+          hasError = true
+      else:
+        results &= "nimble: NOT FOUND\n"
+        hasError = true
+
+      if hasError:
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>" & results.replace("\n", "<br>") & "</span>")
+      else:
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>" & results.replace("\n", "<br>") & "</span>")
+
+    installButton.onClicked do() {.raises: [].}:
+      let installPath = nimbleInstallPathEdit.text()
+      let targetDir = if installPath.len > 0: installPath else: getHomeDir() / ".nimble" / "bin"
+      let installNimblePath = targetDir / "nimble"
+
+      if not dirExists(targetDir):
+        try:
+          createDir(targetDir)
+        except:
+          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to create directory</span>")
+          return
+
+      var nimbleExePath = findNimble()
+      if nimbleExePath.len == 0:
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ffaa00;'>Downloading nimble...</span>")
+
+        let nimbleUrl = "https://github.com/nim-lang/nimble/releases/download/" & NimbleVersion & "/nimble-" & NimbleVersion & "-"
+        var downloadUrl: string
+        when defined(windows):
+          downloadUrl = nimbleUrl & "x86_64-pc-windows.zip"
+        elif defined(macosx):
+          downloadUrl = nimbleUrl & "x86_64-unknown_darwin.tar.gz"
+        else:
+          downloadUrl = nimbleUrl & "x86_64-linux.tar.gz"
+
+        try:
+          let (output, code) = execCmdEx("curl -fsSL -o /tmp/nimble.tar.gz " & downloadUrl & " 2>&1")
+          if code != 0:
+            QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to download nimble: " & output & "</span>")
+            return
+        except:
+          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to download nimble</span>")
+          return
+
+        try:
+          let (extractOutput, extractCode) = execCmdEx("tar -xzf /tmp/nimble.tar.gz -C " & targetDir & " --strip-components=1 2>&1")
+          if extractCode != 0:
+            QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to extract nimble: " & extractOutput & "</span>")
+            return
+        except:
+          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to extract nimble</span>")
+          return
+
+        nimbleExePath = installNimblePath
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>Nimble downloaded successfully</span><br>")
+
+      let version = nimbleVersionCombo.currentText()
+      QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ffaa00;'>Installing Nim " & version & "...</span>")
+
+      try:
+        let (installOutput, installCode) = execCmdEx(nimbleExePath & " install -g nim@" & version & " 2>&1")
+        if installCode == 0:
+          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>Nim " & version & " installed successfully!</span>")
+        else:
+          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to install Nim: " & installOutput & "</span>")
+      except:
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to install Nim</span>")
+
+    var nimForm = QFormLayout.create()
+    nimForm.owned = false
+    nimForm.addRow("", QWidget(h: installWithNimbleRadio.h, owned: false))
+    nimForm.addRow("Install path", QWidget(h: nimbleInstallPathEdit.h, owned: false))
+    nimForm.addRow("Nim version", QWidget(h: nimbleVersionCombo.h, owned: false))
+    nimForm.addRow("", QWidget(h: customPathRadio.h, owned: false))
+    nimForm.addRow("Nim path", QWidget(h: customNimPathEdit.h, owned: false))
+    nimForm.addRow("Nimble path", QWidget(h: customNimblePathEdit.h, owned: false))
+
+    var nimButtonLayout = QHBoxLayout.create()
+    nimButtonLayout.owned = false
+    nimButtonLayout.addWidget(QWidget(h: testButton.h, owned: false))
+    nimButtonLayout.addWidget(QWidget(h: installButton.h, owned: false))
+    nimButtonLayout.addStretch(cint 1)
+
+    var nimLayout = QVBoxLayout.create()
+    nimLayout.owned = false
+    nimLayout.addLayout(QLayout(h: nimForm.h, owned: false))
+    nimLayout.addLayout(QLayout(h: nimButtonLayout.h, owned: false))
+    nimLayout.addWidget(QWidget(h: testResultLabel.h, owned: false), cint 1)
+    QWidget(h: nimTabH, owned: false).setLayout(
+      QLayout(h: nimLayout.h, owned: false))
+
+    discard QTabWidget(h: tabsH, owned: false).addTab(
+      QWidget(h: nimTabH, owned: false), "Nim Environment")
+
     # ── Buttons ─────────────────────────────────────────────────────────────
     var buttons = QDialogButtonBox.create2(Btn_OkCancel)
     buttons.owned = false
@@ -409,6 +690,14 @@ proc showSettingsDialog*(
       if chosen.len > 0:
         updated.appearance.syntaxTheme = chosen
       updated.keybindings = customChanges[].toOverrides()
+      if QAbstractButton(h: installWithNimbleRadio.h, owned: false).isChecked():
+        updated.nim.mode = InstallWithNimble
+      else:
+        updated.nim.mode = CustomPath
+      updated.nim.nimbleInstallPath = nimbleInstallPathEdit.text()
+      updated.nim.nimbleVersion = nimbleVersionCombo.currentText()
+      updated.nim.customNimPath = customNimPathEdit.text()
+      updated.nim.customNimblePath = customNimblePathEdit.text()
       onApply(updated)
   except:
     discard
