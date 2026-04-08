@@ -5,6 +5,76 @@ import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
 import highlight, codepreview, widgets
 import qtconst
 
+var gitignorePatterns*: seq[string] = @[]
+var gitignoreRoot*: string = ""
+
+proc loadGitignoreDir(dir: string) {.raises: [].}
+
+proc loadGitignore*(root: string) {.raises: [].} =
+  gitignoreRoot = root
+  gitignorePatterns.setLen(0)
+  for sd in [".git", "node_modules", "__pycache__", ".nimble", "bin", "build", "dist", "nimbledeps"]:
+    gitignorePatterns.add(sd & "/*")
+  try:
+    loadGitignoreDir(root)
+    for kind, dirPath in walkDir(root):
+      if kind == pcDir and not dirPath.contains("/.") and not dirPath.contains("\\."):
+        loadGitignoreDir(dirPath)
+    for dirPath in walkDirRec(root):
+      if dirPath.contains("/.") or dirPath.contains("\\."): continue
+      let parent = dirPath.parentDir
+      loadGitignoreDir(parent)
+  except: discard
+
+proc loadGitignoreDir(dir: string) {.raises: [].} =
+  let gitignorePath = dir / ".gitignore"
+  if not fileExists(gitignorePath): return
+  try:
+    let content = readFile(gitignorePath)
+    var basePrefix = dir.relativePath(gitignoreRoot)
+    if basePrefix == ".": basePrefix = ""
+    for line in content.splitLines:
+      var pattern = line.strip
+      if pattern.len == 0 or pattern.startswith("#"): continue
+      if pattern.startswith("!"):
+        continue
+      if pattern.endswith("/"):
+        pattern = pattern[0..^2] & "/*"
+      if basePrefix.len > 0:
+        pattern = basePrefix / pattern
+      gitignorePatterns.add(pattern)
+  except: discard
+
+proc matchesGitignore*(path: string): bool {.raises: [].} =
+  if gitignorePatterns.len == 0: return false
+  if gitignoreRoot.len == 0: return false
+  let relative = path.replace(gitignoreRoot & DirSep, "")
+  if relative.len == 0: return false
+  for pattern in gitignorePatterns:
+    if pattern.len == 0: continue
+    if pattern.startswith("*") and pattern.endswith("*"):
+      if pattern.len < 3: continue
+      let middle = pattern[1..^2]
+      if middle in relative: return true
+    elif pattern.startswith("*"):
+      if pattern.len < 2: continue
+      if relative.endsWith(pattern[1..^1]): return true
+    elif pattern.endswith("*"):
+      if pattern.len < 2: continue
+      let prefix = pattern[0..^2]
+      if relative.startsWith(prefix): return true
+    elif relative.startsWith(pattern & DirSep): return true
+    elif pattern == relative: return true
+    if '/' in pattern:
+      let parts = relative.split(DirSep)
+      var partial = ""
+      for i, pt in parts:
+        if partial.len > 0: partial &= DirSep
+        partial &= pt
+        if partial == pattern or partial == pattern[0..^2]:
+          return true
+  return false
+
 const
   FinderWidth = cint 1100
   FinderHeight = cint 550
@@ -26,8 +96,10 @@ proc fuzzyScore(query, target: string): int {.raises: [].} =
   if qi == query.len: qi else: -1
 
 proc findNimFiles(root: string): seq[string] {.raises: [].} =
+  loadGitignore(root)
   try:
     for path in walkDirRec(root):
+      if matchesGitignore(path): continue
       if path.endsWith(".nim") or path.endsWith(".nimble"):
         result.add(path.relativePath(root))
   except: 

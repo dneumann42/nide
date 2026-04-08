@@ -419,7 +419,7 @@ proc generateDot*(modules: seq[Module], projectName: string, config: Config): st
       
       if config.groupBy == "category" and srcCat != dstCat:
         output.add "    " & srcNode & " -> " & dstNode 
-        output.add " [label=\"import\", color=\"gray\", style=\"dashed\"];\n"
+        output.add " [color=\"gray\", style=\"dashed\"];\n"
       else:
         output.add "    " & srcNode & " -> " & dstNode & ";\n"
   
