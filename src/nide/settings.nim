@@ -511,20 +511,43 @@ proc showSettingsDialog*(
 
     testButton.onClicked do() {.raises: [].}:
       let isInstallMode = QAbstractButton(h: installWithNimbleRadioH, owned: false).isChecked()
-      var testNimPath: string
-      var testNimblePath: string
+      var configuredNimPath: string
+      var configuredNimblePath: string
 
       if isInstallMode:
         let installPath = nimbleInstallPathEdit.text()
         if installPath.len > 0:
-          testNimblePath = installPath / "nimble"
-          testNimPath = installPath / "nim"
+          configuredNimblePath = installPath / "nimble"
+          configuredNimPath = installPath / "nim"
         else:
-          testNimblePath = getHomeDir() / ".nimble" / "bin" / "nimble"
-          testNimPath = getHomeDir() / ".nimble" / "bin" / "nim"
+          configuredNimblePath = getHomeDir() / ".nimble" / "bin" / "nimble"
+          configuredNimPath = getHomeDir() / ".nimble" / "bin" / "nim"
       else:
-        testNimblePath = customNimblePathEdit.text()
-        testNimPath = customNimPathEdit.text()
+        configuredNimblePath = customNimblePathEdit.text()
+        configuredNimPath = customNimPathEdit.text()
+
+      var testNimPath = configuredNimPath
+      var testNimblePath = configuredNimblePath
+      var nimFromPath = false
+      var nimbleFromPath = false
+
+      if not (testNimPath.len > 0 and fileExists(testNimPath)):
+        try:
+          let foundNim = findExe("nim")
+          if foundNim.len > 0:
+            testNimPath = foundNim
+            nimFromPath = true
+        except:
+          discard
+
+      if not (testNimblePath.len > 0 and fileExists(testNimblePath)):
+        try:
+          let foundNimble = findExe("nimble")
+          if foundNimble.len > 0:
+            testNimblePath = foundNimble
+            nimbleFromPath = true
+        except:
+          discard
 
       var results: string
       var hasError = false
@@ -533,7 +556,8 @@ proc showSettingsDialog*(
         try:
           let (nimOut, nimCode) = execCmdEx(testNimPath & " --version 2>&1")
           if nimCode == 0:
-            results &= "nim: OK\n" & nimOut.strip()
+            let source = if nimFromPath: " (from PATH)" else: ""
+            results &= "nim: OK" & source & "\n" & nimOut.strip()
           else:
             results &= "nim: FAILED\n" & nimOut.strip()
             hasError = true
@@ -548,7 +572,8 @@ proc showSettingsDialog*(
         try:
           let (nimbOut, nimbCode) = execCmdEx(testNimblePath & " --version 2>&1")
           if nimbCode == 0:
-            results &= "nimble: OK\n" & nimbOut.strip()
+            let source = if nimbleFromPath: " (from PATH)" else: ""
+            results &= "nimble: OK" & source & "\n" & nimbOut.strip()
           else:
             results &= "nimble: FAILED\n" & nimbOut.strip()
             hasError = true
