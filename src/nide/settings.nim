@@ -357,63 +357,64 @@ proc showSettingsDialog*(
       QTableWidget(h: kbTableH, owned: false).setItem(row, cint 0, idItem)
 
       # Col 1: current binding string — read-only
-      let bindStr =
-        if customChanges[].hasKey(entry.id): customChanges[][entry.id]
-        else: keyComboToString(entry.combo)
+      var bindStr: string
+      if customChanges[].hasKey(entry.id):
+        bindStr = customChanges[][entry.id]
+      elif entry.isChord and entry.chordPrefix.len > 0:
+        bindStr = entry.chordPrefix & " " & keyComboToString(entry.combo)
+      else:
+        bindStr = keyComboToString(entry.combo)
       var bindItem = QTableWidgetItem.create(bindStr)
       bindItem.owned = false
       bindItem.setFlags(IF_SelectableEnabled)
       QTableWidget(h: kbTableH, owned: false).setItem(row, cint 1, bindItem)
 
-      # Col 2: "Set" button (single bindings only; chord bindings are fixed)
-      if not entry.isChord:
-        var setBtn = QPushButton.create("Set")
-        setBtn.owned = false
-        let setBtnH = setBtn.h
-        let cmdId   = entry.id
-        let changesRef = customChanges
-        QAbstractButton(h: setBtnH, owned: false).onClicked do() {.raises: [].}:
-          # Open a small key-capture dialog
-          var capDlg = QDialog.create(QWidget(h: dialogH, owned: false))
-          capDlg.owned = false
-          let capDlgH = capDlg.h
-          QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
-          QWidget(h: capDlgH, owned: false).resize(KeyCaptureWidth, KeyCaptureHeight)
+      # Col 2: "Set" button (all bindings)
+      var setBtn = QPushButton.create("Set")
+      setBtn.owned = false
+      let setBtnH = setBtn.h
+      let cmdId = entry.id
+      let changesRef = customChanges
+      QAbstractButton(h: setBtnH, owned: false).onClicked do() {.raises: [].}:
+        var capDlg = QDialog.create(QWidget(h: dialogH, owned: false))
+        capDlg.owned = false
+        let capDlgH = capDlg.h
+        QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
+        QWidget(h: capDlgH, owned: false).resize(KeyCaptureWidth, KeyCaptureHeight)
 
-          var capLabel = QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:")
-          capLabel.owned = false
+        var capLabel = QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:")
+        capLabel.owned = false
 
-          var keyEdit = QKeySequenceEdit.create()
-          keyEdit.owned = false
-          let keyEditH = keyEdit.h
+        var keyEdit = QKeySequenceEdit.create()
+        keyEdit.owned = false
+        let keyEditH = keyEdit.h
 
-          var capBtns = QDialogButtonBox.create2(Btn_OkCancel)
-          capBtns.owned = false
-          capBtns.onAccepted do():
-            QDialog(h: capDlgH, owned: false).accept()
-          capBtns.onRejected do():
-            QDialog(h: capDlgH, owned: false).reject()
+        var capBtns = QDialogButtonBox.create2(Btn_OkCancel)
+        capBtns.owned = false
+        capBtns.onAccepted do():
+          QDialog(h: capDlgH, owned: false).accept()
+        capBtns.onRejected do():
+          QDialog(h: capDlgH, owned: false).reject()
 
-          var capLayout = QVBoxLayout.create()
-          capLayout.owned = false
-          capLayout.addWidget(QWidget(h: capLabel.h,  owned: false))
-          capLayout.addWidget(QWidget(h: keyEditH,    owned: false))
-          capLayout.addWidget(QWidget(h: capBtns.h,   owned: false))
-          QWidget(h: capDlgH, owned: false).setLayout(
-            QLayout(h: capLayout.h, owned: false))
+        var capLayout = QVBoxLayout.create()
+        capLayout.owned = false
+        capLayout.addWidget(QWidget(h: capLabel.h,  owned: false))
+        capLayout.addWidget(QWidget(h: keyEditH,    owned: false))
+        capLayout.addWidget(QWidget(h: capBtns.h,   owned: false))
+        QWidget(h: capDlgH, owned: false).setLayout(
+          QLayout(h: capLayout.h, owned: false))
 
-          if QDialog(h: capDlgH, owned: false).exec() == 1:
-            # Take only the first key combo in case user entered multiple
-            let rawStr = QKeySequenceEdit(h: keyEditH, owned: false).keySequence().toString()
-            let newStr = rawStr.split(", ")[0]
-            if newStr.len > 0:
-              changesRef[][cmdId] = newStr
-              let bi = QTableWidget(h: kbTableH, owned: false).item(row, cint 1)
-              if bi.h != nil:
-                bi.setText(newStr)
+        if QDialog(h: capDlgH, owned: false).exec() == 1:
+          let rawStr = QKeySequenceEdit(h: keyEditH, owned: false).keySequence().toString()
+          let newStr = rawStr.split(", ")[0]
+          if newStr.len > 0:
+            changesRef[][cmdId] = newStr
+            let bi = QTableWidget(h: kbTableH, owned: false).item(row, cint 1)
+            if bi.h != nil:
+              bi.setText(newStr)
 
-        QTableWidget(h: kbTableH, owned: false).setCellWidget(
-          row, cint 2, QWidget(h: setBtnH, owned: false))
+      QTableWidget(h: kbTableH, owned: false).setCellWidget(
+        row, cint 2, QWidget(h: setBtnH, owned: false))
 
     # Keybindings tab layout
     var kbLayout = QVBoxLayout.create()

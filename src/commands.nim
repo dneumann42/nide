@@ -8,7 +8,7 @@ type
   CommandId* = string
   Command*   = proc() {.raises: [].}
 
-  BindingEntry* = tuple[id: CommandId, combo: KeyCombo, isChord: bool]
+  BindingEntry* = tuple[id: CommandId, combo: KeyCombo, isChord: bool, chordPrefix: string]
 
   CommandDispatcher* = ref object
     commands: Table[CommandId, Command]
@@ -130,12 +130,31 @@ proc keyComboToString*(c: KeyCombo): string =
     result = parts.join("+")
 
 proc stringToKeyCombo*(s: string): KeyCombo =
-  ## Parse a portable key string like "Ctrl+F" into a KeyCombo.
+  ## Parse a portable key string like "Ctrl+F" or "Ctrl+X 1" (chord) into a KeyCombo.
   if s.len == 0: return combo(0, noMod)
-  let parts = s.split('+')
+  
+  let parts = s.split(' ')
+  if parts.len == 2:
+    let prefixCombo = stringToKeyCombo(parts[0])
+    let keyCombo = stringToKeyCombo(parts[1])
+    return keyCombo
+  elif parts.len > 2:
+    var prefixStr = ""
+    var keyStr = ""
+    for i, p in parts:
+      if i < parts.len - 1:
+        if prefixStr.len > 0: prefixStr &= "+"
+        prefixStr &= p
+      else:
+        keyStr = p
+    let prefixCombo = stringToKeyCombo(prefixStr)
+    let keyCombo = stringToKeyCombo(keyStr)
+    return keyCombo
+  
+  let plainParts = s.split('+')
   var mods: cint = noMod
   var key: cint = 0
-  for part in parts:
+  for part in plainParts:
     case part
     of "Ctrl":      mods = mods or ctrlMod
     of "Alt":       mods = mods or altMod
@@ -181,11 +200,19 @@ proc applyCustomBindings*(d: CommandDispatcher, custom: Table[string, string]) =
     for k in toRemove: d.single.del(k)
     d.single[newCombo] = cmdId
 
+proc findChordPrefix*(d: CommandDispatcher, chordKey: KeyCombo): string =
+  ## Find the prefix key that triggers this chord (e.g., "Ctrl+X" for C-x 1).
+  for key, cmdId in d.single:
+    if cmdId == "editor.chordCx":
+      return keyComboToString(key)
+  return "Ctrl+X"
+
 proc defaultBindingList*(): seq[BindingEntry] =
   ## Returns all default keybindings as a list for display/editing purposes.
   let d = CommandDispatcher()
   registerDefaultBindings(d)
   for k, v in d.single:
-    result.add((id: v, combo: k, isChord: false))
+    result.add((id: v, combo: k, isChord: false, chordPrefix: ""))
   for k, v in d.chordCx:
-    result.add((id: v, combo: k, isChord: true))
+    let prefix = findChordPrefix(d, k)
+    result.add((id: v, combo: k, isChord: true, chordPrefix: prefix))
