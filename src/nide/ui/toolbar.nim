@@ -144,25 +144,19 @@ proc build*(self: Toolbar) =
   tbLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
   tbLayout.setSpacing(ToolbarSpacing)
 
-  var chipWidget = QWidget.create()
-  chipWidget.owned = false
+  var chipWidget = newWidget(QWidget.create())
   chipWidget.setStyleSheet(
     "QWidget { background: " & clChipBg & "; color: " & clChipText & "; border-radius: 4px; padding: 2px 6px; }")
 
-  var chipLayout = QHBoxLayout.create()
-  chipLayout.owned = false
-  chipLayout.setContentsMargins(cint 2, cint 0, cint 2, cint 0)
-  chipLayout.setSpacing(cint 4)
-  QWidget(h: chipWidget.h, owned: false).setLayout(chipLayout)
+  var chipLayout = hbox(margins = (cint 2, cint 0, cint 2, cint 0), spacing = cint 4)
+  chipLayout.applyTo(chipWidget)
 
-  self.projectLabel = QLabel.create("—")
-  self.projectLabel.owned = false
-  chipLayout.addWidget(QWidget(h: self.projectLabel.h, owned: false))
+  self.projectLabel = label("—")
+  chipLayout.add(self.projectLabel)
 
-  self.loaderLabel = QLabel.create("")
-  self.loaderLabel.owned = false
+  self.loaderLabel = label()
   self.loaderLabel.setPixmap(svgIcon(NimSvg, ToolbarIconSize).pixmap(ToolbarIconSize, ToolbarIconSize))
-  chipLayout.addWidget(QWidget(h: self.loaderLabel.h, owned: false))
+  chipLayout.add(self.loaderLabel)
 
   discard self.toolbar.addWidget(chipWidget)
 
@@ -178,30 +172,22 @@ proc build*(self: Toolbar) =
   self.buildNimMenu()
 
   block:
-    var spacer = QWidget.create()
-    spacer.owned = false
+    var spacer = newWidget(QWidget.create())
     spacer.setSizePolicy(SP_Expanding, SP_Preferred)
     discard self.toolbar.addWidget(spacer)
 
-  self.diagWidget = QWidget.create()
-  self.diagWidget.owned = false
-  var diagLayout = QHBoxLayout.create()
-  diagLayout.owned = false
-  diagLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-  diagLayout.setSpacing(ToolbarSpacing)
-  QWidget(h: self.diagWidget.h, owned: false).setLayout(QLayout(h: diagLayout.h, owned: false))
+  self.diagWidget = newWidget(QWidget.create())
+  var diagLayout = hbox(spacing = ToolbarSpacing)
+  diagLayout.applyTo(self.diagWidget)
 
-  self.diagHintBtn = QToolButton.create()
-  self.diagHintBtn.owned = false
-  diagLayout.addWidget(QWidget(h: self.diagHintBtn.h, owned: false))
+  self.diagHintBtn = newWidget(QToolButton.create())
+  diagLayout.add(self.diagHintBtn)
 
-  self.diagWarnBtn = QToolButton.create()
-  self.diagWarnBtn.owned = false
-  diagLayout.addWidget(QWidget(h: self.diagWarnBtn.h, owned: false))
+  self.diagWarnBtn = newWidget(QToolButton.create())
+  diagLayout.add(self.diagWarnBtn)
 
-  self.diagErrBtn = QToolButton.create()
-  self.diagErrBtn.owned = false
-  diagLayout.addWidget(QWidget(h: self.diagErrBtn.h, owned: false))
+  self.diagErrBtn = newWidget(QToolButton.create())
+  diagLayout.add(self.diagErrBtn)
 
   self.diagAction = self.toolbar.addWidget(self.diagWidget)
   self.diagAction.owned = false
@@ -235,10 +221,10 @@ proc onNewPane*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.newPaneBtn.onClicked(triggered)
 
 proc setFileTreeEnabled*(self: Toolbar, enabled: bool) =
-  QWidget(h: self.fileTreeBtn.h, owned: false).setEnabled(enabled)
+  self.fileTreeBtn.asWidget.setEnabled(enabled)
 
 proc setFileTreeIconColor*(self: Toolbar, color: string) =
-  QAbstractButton(h: self.fileTreeBtn.h, owned: false).setIcon(svgIcon(FileTreeSvg, ToolbarIconSize, color))
+  self.fileTreeBtn.asButton.setIcon(svgIcon(FileTreeSvg, ToolbarIconSize, color))
 
 proc onFileTreeToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.fileTreeBtn.onClicked(triggered)
@@ -266,30 +252,29 @@ proc updateDiagCounts*(self: Toolbar, lines: seq[LogLine]) {.raises: [].} =
     self.diagAction.setVisible(anyDiag)
 
     if hintCount > 0:
-      QToolButton(h: self.diagHintBtn.h, owned: false).setText("◆" & $hintCount)
-      QToolButton(h: self.diagHintBtn.h, owned: false).setStyleSheet("QToolButton { color: #00cccc; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; }")
-      QWidget(h: self.diagHintBtn.h, owned: false).show()
+      self.diagHintBtn.setText("◆" & $hintCount)
+      self.diagHintBtn.asWidget.setStyleSheet("QToolButton { color: #00cccc; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; }")
+      self.diagHintBtn.asWidget.show()
     else:
-      QWidget(h: self.diagHintBtn.h, owned: false).hide()
+      self.diagHintBtn.asWidget.hide()
     if warnCount > 0:
-      QToolButton(h: self.diagWarnBtn.h, owned: false).setText("⚠" & $warnCount)
-      QToolButton(h: self.diagWarnBtn.h, owned: false).setStyleSheet("QToolButton { color: " & clYellow & "; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; }")
-      QWidget(h: self.diagWarnBtn.h, owned: false).show()
+      self.diagWarnBtn.setText("⚠" & $warnCount)
+      self.diagWarnBtn.asWidget.setStyleSheet("QToolButton { color: " & clYellow & "; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; }")
+      self.diagWarnBtn.asWidget.show()
     else:
-      QWidget(h: self.diagWarnBtn.h, owned: false).hide()
+      self.diagWarnBtn.asWidget.hide()
     if errCount > 0:
-      QToolButton(h: self.diagErrBtn.h, owned: false).setText("✗" & $errCount)
-      QToolButton(h: self.diagErrBtn.h, owned: false).setStyleSheet("QToolButton { color: " & clRed & "; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; }")
-      QWidget(h: self.diagErrBtn.h, owned: false).show()
+      self.diagErrBtn.setText("✗" & $errCount)
+      self.diagErrBtn.asWidget.setStyleSheet("QToolButton { color: " & clRed & "; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; }")
+      self.diagErrBtn.asWidget.show()
     else:
-      QWidget(h: self.diagErrBtn.h, owned: false).hide()
+      self.diagErrBtn.asWidget.hide()
   except: discard
 
 proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filterLevel: LogLevel) {.raises: [].} =
   if lines.len == 0: return
   try:
-    var popover = QWidget.create()
-    popover.owned = false
+    var popover = newWidget(QWidget.create())
     popover.setWindowFlags(WF_PopupFrameless)
     popover.setObjectName("diagPopover")
     popover.setStyleSheet(
@@ -301,26 +286,18 @@ proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filt
       "QLabel { color: " & clText & "; font-family: 'Fira Code', monospace; font-size: 12px; background: transparent; }"
     )
 
-    var scroll = QScrollArea.create(popover)
-    scroll.owned = false
+    var scroll = newWidget(QScrollArea.create(popover))
     scroll.setWidgetResizable(true)
     scroll.setHorizontalScrollBarPolicy(SBP_AlwaysOff)
 
-    var listW = QWidget.create(scroll)
-    listW.owned = false
-    var listLayout = QVBoxLayout.create()
-    listLayout.owned = false
-    listLayout.setContentsMargins(cint 4, cint 4, cint 4, cint 4)
-    listLayout.setSpacing(cint 2)
-    listW.setLayout(QLayout(h: listLayout.h, owned: false))
+    var listW = newWidget(QWidget.create(scroll))
+    var listLayout = vbox(margins = (cint 4, cint 4, cint 4, cint 4), spacing = cint 2)
+    listLayout.applyTo(listW)
 
-    QScrollArea(h: scroll.h, owned: false).setWidget(QWidget(h: listW.h, owned: false))
-    var popoverLayout = QVBoxLayout.create()
-    popoverLayout.owned = false
-    popoverLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-    popoverLayout.setSpacing(cint 0)
-    popoverLayout.addWidget(QWidget(h: scroll.h, owned: false))
-    popover.setLayout(QLayout(h: popoverLayout.h, owned: false))
+    QScrollArea(h: scroll.h, owned: false).setWidget(listW)
+    var popoverLayout = vbox()
+    popoverLayout.add(scroll)
+    popoverLayout.applyTo(popover)
 
     for ll in lines:
       if ll.level != filterLevel: continue
@@ -336,38 +313,34 @@ proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filt
       let lineCol     = ll.col
       let navigateCb  = self.diagNavigateCb
 
-      var itemBtn = QPushButton.create(text)
-      itemBtn.owned = false
-      itemBtn.setFlat(true)
+      var itemBtn = button(text)
       itemBtn.setStyleSheet(
         "QPushButton { color: " & clText & "; background: transparent; border: none; text-align: left; padding: 6px 8px; font-family: 'Fira Code', monospace; font-size: 12px; }" &
         "QPushButton:hover { background: " & clSurface0 & "; }")
       itemBtn.onClicked do() {.raises: [].}:
-        QWidget(h: popover.h, owned: false).hide()
+        popover.hide()
         if navigateCb != nil:
           navigateCb(filePath, lineNum, lineCol)
-      listLayout.addWidget(QWidget(h: itemBtn.h, owned: false))
+      listLayout.add(itemBtn)
 
     if listLayout.count() == 0:
       return
 
-    let popW = QWidget(h: popover.h, owned: false)
-    popW.adjustSize()
-    let pw = popW.width()
-    let ph = popW.height()
+    popover.adjustSize()
+    let pw = popover.width()
+    let ph = popover.height()
 
     var btnPos: QPoint
     case filterLevel
-    of llHint: btnPos = QToolButton(h: self.diagHintBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-    of llWarning: btnPos = QToolButton(h: self.diagWarnBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-    of llError: btnPos = QToolButton(h: self.diagErrBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llHint: btnPos = self.diagHintBtn.mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llWarning: btnPos = self.diagWarnBtn.mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llError: btnPos = self.diagErrBtn.mapToGlobal(QPoint.create(cint 0, cint 0))
     else: btnPos = QPoint.create(cint 0, cint 0)
 
-
     var yPos = btnPos.y() + PopupYOffset
-    popW.setGeometry(btnPos.x(), yPos, pw, min(ph, MaxPopupHeight))
-    popW.raiseX()
-    popW.show()
+    popover.setGeometry(btnPos.x(), yPos, pw, min(ph, MaxPopupHeight))
+    popover.raiseX()
+    popover.show()
   except: discard
 
 proc onDiagHint*(self: Toolbar, triggered: proc() {.raises: [].}) =

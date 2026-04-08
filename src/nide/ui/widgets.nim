@@ -26,7 +26,7 @@ export uicolors
 template newWidget*(createProc: untyped): untyped =
   ## Creates a widget and automatically sets owned=false.
   ## Usage: let btn = newWidget(QPushButton.create("text"))
-  let result = createProc
+  var result = createProc
   result.owned = false
   result
 

@@ -5,6 +5,7 @@ import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemvi
 import std/[os, strutils]
 import nide/helpers/devicons
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const TreeWidth = 320
 const TreeHeight = 420
@@ -101,25 +102,18 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
 
   # Create as a top-level widget positioned manually over the content area.
   # Parent is mainWindow so it stays on top, but with Tool flag for floating behavior.
-  self.container = QWidget.create(mainWindow, WF_Tool)
-  self.container.owned = false
+  self.container = newWidget(QWidget.create(mainWindow, WF_Tool))
 
-  let layout = QVBoxLayout.create()
-  layout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-  layout.setSpacing(cint 0)
-  self.container.setLayout(layout)
+  let layout = vbox()
+  layout.applyTo(self.container)
 
   # Header label
-  var header = QLabel.create("Files")
-  header.owned = false
-  QWidget(h: header.h, owned: false).setStyleSheet(
-    "QLabel { padding: 4px 8px; font-weight: bold; }")
+  var header = label("Files", "QLabel { padding: 4px 8px; font-weight: bold; }")
   QWidget(h: header.h, owned: false).setFixedHeight(HeaderHeight)
-  layout.addWidget(QWidget(h: header.h, owned: false))
+  layout.add(header)
 
   # File system model
-  self.model = QFileSystemModel.create()
-  self.model.owned = false
+  self.model = newWidget(QFileSystemModel.create())
   self.model.setReadOnly(false)
 
   # Custom devicon provider
@@ -237,8 +231,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
     except:
       discard
 
-  self.treeView = QTreeView.create(vtbl = treeVtbl)
-  self.treeView.owned = false
+  self.treeView = newWidget(QTreeView.create(vtbl = treeVtbl))
   QWidget(h: self.treeView.h, owned: false).setSizePolicy(SP_Expanding, SP_Expanding)
   QWidget(h: self.treeView.h, owned: false).setMinimumSize(cint TreeWidth, cint TreeHeight)
   self.treeView.setModel(QAbstractItemModel(h: self.model.h, owned: false))
@@ -264,7 +257,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   hdr.setSectionResizeMode(cint 0, HR_Stretch)
   hdr.setStretchLastSection(false)
 
-  layout.addWidget(QWidget(h: self.treeView.h, owned: false))
+  layout.add(self.treeView)
 
   # Wire single-click file activation
   QAbstractItemView(h: self.treeView.h, owned: false).onActivated do(
@@ -296,7 +289,7 @@ proc toggle*(self: FileTree) {.raises: [].} =
       self.container.hide()
     else:
       self.reposition()
-      QWidget(h: self.container.h, owned: false).setFixedSize(cint TreeWidth, cint TreeHeight)
+      self.container.setFixedSize(cint TreeWidth, cint TreeHeight)
       self.container.show()
       self.reposition()
   except:
