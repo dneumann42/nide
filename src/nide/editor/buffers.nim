@@ -1,6 +1,7 @@
 import std/[os, strutils]
 import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont]
 import nide/editor/highlight
+import nide/ui/widgets
 
 type
   Buffer* = ref object
@@ -37,11 +38,9 @@ proc content*(b: Buffer): string = b.content
 
 proc document*(b: Buffer): QTextDocument =
   if b.documentH == nil:
-    var doc = QTextDocument.create()
-    doc.owned = false
+    var doc = newWidget(QTextDocument.create())
     b.documentH = doc.h
-    var layout = QPlainTextDocumentLayout.create(doc)
-    layout.owned = false
+    var layout = newWidget(QPlainTextDocumentLayout.create(doc))
     doc.setDocumentLayout(QAbstractTextDocumentLayout(h: layout.h, owned: false))
     var font = QFont.create("Fira Code")
     font.setPointSize(DefaultBufferFontSize)

@@ -1,6 +1,7 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject, qtcpsocket, qabstractsocket, qiodevice]
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const
   MaxTcpPort = 65535
@@ -181,8 +182,7 @@ proc reconnect*(client: NimSuggestClient) {.raises: [].} =
   client.state = csStarting
   try:
     let parent = QObject(h: client.parentH, owned: false)
-    var sock = QTcpSocket.create(parent)
-    sock.owned = false
+    var sock = newWidget(QTcpSocket.create(parent))
     client.socketH = sock.h
     let sockH = sock.h
     let clientRef = client
@@ -329,12 +329,10 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
 
   try:
     let parent = QObject(h: client.parentH, owned: false)
-    var sock = QTcpSocket.create(parent)
-    sock.owned = false
+    var sock = newWidget(QTcpSocket.create(parent))
     client.socketH = sock.h
 
-    var process = QProcess.create(parent)
-    process.owned = false
+    var process = newWidget(QProcess.create(parent))
     let processH = process.h
     client.processH = processH
     let clientRef = client

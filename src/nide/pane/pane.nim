@@ -310,27 +310,27 @@ proc updateDiagIcons*(pane: Pane) {.raises: [].} =
   let currentFile = pane.buffer.path
   let (hintCount, warnCount, errCount) = countDiags(pane.diagLines[], currentFile)
   try:
-    let hintW = QWidget(h: pane.hintBtn.h, owned: false)
-    let warnW = QWidget(h: pane.warnBtn.h, owned: false)
-    let errW = QWidget(h: pane.errBtn.h, owned: false)
+    let hintB = pane.hintBtn.get()
+    let warnB = pane.warnBtn.get()
+    let errB  = pane.errBtn.get()
     if hintCount > 0:
-      QPushButton(h: pane.hintBtn.h, owned: false).setText("◆" & $hintCount)
-      QPushButton(h: pane.hintBtn.h, owned: false).setStyleSheet("QPushButton { color: #00cccc; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #00eeee; }")
-      hintW.show()
+      hintB.setText("◆" & $hintCount)
+      hintB.asWidget.setStyleSheet("QPushButton { color: #00cccc; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #00eeee; }")
+      hintB.asWidget.show()
     else:
-      hintW.hide()
+      hintB.asWidget.hide()
     if warnCount > 0:
-      QPushButton(h: pane.warnBtn.h, owned: false).setText("⚠" & $warnCount)
-      QPushButton(h: pane.warnBtn.h, owned: false).setStyleSheet("QPushButton { color: #ffaa00; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #ffcc00; }")
-      warnW.show()
+      warnB.setText("⚠" & $warnCount)
+      warnB.asWidget.setStyleSheet("QPushButton { color: #ffaa00; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #ffcc00; }")
+      warnB.asWidget.show()
     else:
-      warnW.hide()
+      warnB.asWidget.hide()
     if errCount > 0:
-      QPushButton(h: pane.errBtn.h, owned: false).setText("✗" & $errCount)
-      QPushButton(h: pane.errBtn.h, owned: false).setStyleSheet("QPushButton { color: #ff5555; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #ff7777; }")
-      errW.show()
+      errB.setText("✗" & $errCount)
+      errB.asWidget.setStyleSheet("QPushButton { color: #ff5555; background: transparent; border: none; font-size: " & DiagBtnFontSize & "; } QPushButton:hover { color: #ff7777; }")
+      errB.asWidget.show()
     else:
-      errW.hide()
+      errB.asWidget.hide()
   except: discard
 
 proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
@@ -359,8 +359,7 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
 
     # Create the popup widget lazily (parented to viewport — no mapToGlobal needed)
     if pane.diagPopupH == nil:
-      var popup = QWidget.create(viewport)
-      popup.owned = false
+      var popup = newWidget(QWidget.create(viewport))
       pane.diagPopupH = popup.h
 
       QWidget(h: pane.diagPopupH, owned: false).setObjectName("diagPopup")
@@ -379,20 +378,15 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
         }
       """)
 
-      var label = QLabel.create()
-      label.owned = false
-      QLabel(h: label.h, owned: false).setWordWrap(true)
-      QLabel(h: label.h, owned: false).setTextFormat(TF_RichText)
-      QLabel(h: label.h, owned: false).setTextInteractionFlags(TIF_TextSelectableAll)
-      pane.diagLabelH = label.h
+      var diagLabel = newWidget(QLabel.create())
+      diagLabel.setWordWrap(true)
+      diagLabel.setTextFormat(TF_RichText)
+      diagLabel.setTextInteractionFlags(TIF_TextSelectableAll)
+      pane.diagLabelH = diagLabel.h
 
-      var layout = QVBoxLayout.create()
-      layout.owned = false
-      layout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-      layout.setSpacing(cint 0)
-      layout.addWidget(QWidget(h: pane.diagLabelH, owned: false))
-      QWidget(h: pane.diagPopupH, owned: false).setLayout(
-        QLayout(h: layout.h, owned: false))
+      var diagLayout = vbox()
+      diagLayout.addWidget(QWidget(h: pane.diagLabelH, owned: false))
+      QWidget(h: pane.diagPopupH, owned: false).setLayout(diagLayout.asLayout())
 
     QLabel(h: pane.diagLabelH, owned: false).setText(html)
 
@@ -647,8 +641,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
       pane.diagPopoverListH = nil
       pane.diagPopoverLayoutH = nil
 
-    var popover = QWidget.create()
-    popover.owned = false
+    var popover = newWidget(QWidget.create())
     popover.setWindowFlags(WF_PopupFrameless)
     popover.setObjectName("diagPopover")
     popover.setStyleSheet("""
@@ -683,28 +676,20 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
     """)
     pane.diagPopoverH = popover.h
 
-    var scroll = QScrollArea.create(popover)
-    scroll.owned = false
+    var scroll = newWidget(QScrollArea.create(popover))
     scroll.setWidgetResizable(true)
     scroll.setHorizontalScrollBarPolicy(SBP_AlwaysOff)
 
-    var listW = QWidget.create(scroll)
-    listW.owned = false
-    var listLayout = QVBoxLayout.create()
-    listLayout.owned = false
-    listLayout.setContentsMargins(cint 4, cint 4, cint 4, cint 4)
-    listLayout.setSpacing(cint 2)
-    listW.setLayout(QLayout(h: listLayout.h, owned: false))
+    var listW = newWidget(QWidget.create(scroll))
+    var listLayout = vbox(margins = (cint 4, cint 4, cint 4, cint 4), spacing = cint 2)
+    listLayout.applyTo(listW)
     pane.diagPopoverListH = listW.h
     pane.diagPopoverLayoutH = listLayout.h
 
-    QScrollArea(h: scroll.h, owned: false).setWidget(QWidget(h: listW.h, owned: false))
-    var popoverLayout = QVBoxLayout.create()
-    popoverLayout.owned = false
-    popoverLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-    popoverLayout.setSpacing(cint 0)
-    popoverLayout.addWidget(QWidget(h: scroll.h, owned: false))
-    popover.setLayout(QLayout(h: popoverLayout.h, owned: false))
+    scroll.setWidget(listW)
+    var popoverLayout = vbox()
+    popoverLayout.add(scroll)
+    popoverLayout.applyTo(popover)
 
     for ll in pane.diagLines[]:
       if ll.file != pane.buffer.path: continue
@@ -718,9 +703,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
       let text = label & ": " & escaped & " (line " & $ll.line & ")"
       let lineNum = ll.line
 
-      var itemBtn = QPushButton.create(text)
-      itemBtn.owned = false
-      itemBtn.setFlat(true)
+      var itemBtn = button(text)
       itemBtn.setStyleSheet(
         "QPushButton { color: #cdd6f4; background: transparent; border: none; text-align: left; padding: 6px 8px; font-family: 'Fira Code', monospace; font-size: 12px; }" &
         "QPushButton:hover { background: #313244; }")
@@ -735,7 +718,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
           ed.setTextCursor(cur)
           ed.ensureCursorVisible()
 
-      listLayout.addWidget(QWidget(h: itemBtn.h, owned: false))
+      listLayout.add(itemBtn)
 
     if listLayout.count() == 0:
       return
@@ -747,9 +730,9 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
 
     var btnPos: QPoint
     case filterLevel
-    of llHint: btnPos = QPushButton(h: pane.hintBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-    of llWarning: btnPos = QPushButton(h: pane.warnBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
-    of llError: btnPos = QPushButton(h: pane.errBtn.h, owned: false).mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llHint: btnPos = pane.hintBtn.get().mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llWarning: btnPos = pane.warnBtn.get().mapToGlobal(QPoint.create(cint 0, cint 0))
+    of llError: btnPos = pane.errBtn.get().mapToGlobal(QPoint.create(cint 0, cint 0))
     else: btnPos = QPoint.create(cint 0, cint 0)
 
     var yPos = btnPos.y() + PopoverYOffset
@@ -777,8 +760,8 @@ proc doSearchImpl(pane: Pane) {.raises: [].} =
     pane.matchPositions = @[]
     applySelections(pane)
     return
-  let caseSens = QAbstractButton(h: pane.caseCheck.h, owned: false).isChecked()
-  let useRx    = QAbstractButton(h: pane.regexCheck.h, owned: false).isChecked()
+  let caseSens = pane.caseCheck.get().asButton.isChecked()
+  let useRx    = pane.regexCheck.get().asButton.isChecked()
   let flags    = if caseSens: cint(QTextDocumentFindFlagEnum.FindCaseSensitively)
                  else: cint(0)
 
@@ -815,22 +798,17 @@ proc newPane*(
   let pane = result
 
   # --- Open Project row (shown when no project is open) ---
-  var newProjectBtn = QPushButton.create("New Project")
-  newProjectBtn.owned = false
-  var openProjectBtn = QPushButton.create("Open Project")
-  openProjectBtn.owned = false
-  var restoreSessionBtn = QPushButton.create("Restore Last Session")
-  restoreSessionBtn.owned = false
-  QWidget(h: restoreSessionBtn.h, owned: false).setEnabled(false)
+  var newProjectBtn = newWidget(QPushButton.create("New Project"))
+  var openProjectBtn = newWidget(QPushButton.create("Open Project"))
+  var restoreSessionBtn = newWidget(QPushButton.create("Restore Last Session"))
+  restoreSessionBtn.asWidget.setEnabled(false)
 
-  var recentLabel = QLabel.create("Recent Projects")
-  recentLabel.owned = false
-  QWidget(h: recentLabel.h, owned: false).hide()
+  var recentLabel = newWidget(QLabel.create("Recent Projects"))
+  recentLabel.asWidget.hide()
 
-  var recentTable = QTableWidget.create(cint 0, cint 2)
-  recentTable.owned = false
+  var recentTable = newWidget(QTableWidget.create(cint 0, cint 2))
   let recentTableH = recentTable.h
-  QWidget(h: recentTableH, owned: false).hide()
+  recentTable.asWidget.hide()
   QAbstractItemView(h: recentTableH, owned: false).setEditTriggers(cint 0)
   QAbstractItemView(h: recentTableH, owned: false).setSelectionBehavior(cint 1)
   QTableView(h: recentTableH, owned: false).setShowGrid(false)
@@ -849,69 +827,60 @@ proc newPane*(
     except: discard
 
   # Card: outline border only, palette-inherited background
-  var cardWidget = QWidget.create()
-  cardWidget.owned = false
+  var cardWidget = newWidget(QWidget.create())
   cardWidget.setObjectName("welcomeCard")
   cardWidget.setStyleSheet(
     "QWidget#welcomeCard { border: 1px solid #333333; border-radius: 4px; }")
-  QWidget(h: cardWidget.h, owned: false).setMinimumWidth(WelcomeCardMinWidth)
+  cardWidget.setMinimumWidth(WelcomeCardMinWidth)
 
-  var cardLayout = QVBoxLayout.create(); cardLayout.owned = false
-  QLayout(h: cardLayout.h, owned: false).setContentsMargins(CardMargin, CardMargin, CardMargin, CardMargin)
-  QLayout(h: cardLayout.h, owned: false).setSpacing(CardSpacing)
+  var cardLayout = vbox(margins = (CardMargin, CardMargin, CardMargin, CardMargin), spacing = CardSpacing)
 
-  var btnRow = QHBoxLayout.create(); btnRow.owned = false
-  btnRow.addWidget(QWidget(h: newProjectBtn.h, owned: false))
-  btnRow.addWidget(QWidget(h: openProjectBtn.h, owned: false))
-  btnRow.addWidget(QWidget(h: restoreSessionBtn.h, owned: false))
+  var btnRow = hbox()
+  btnRow.add(newProjectBtn)
+  btnRow.add(openProjectBtn)
+  btnRow.add(restoreSessionBtn)
   btnRow.addStretch()
 
-  cardLayout.addLayout(QLayout(h: btnRow.h, owned: false))
-  cardLayout.addWidget(QWidget(h: recentLabel.h, owned: false))
+  cardLayout.addSub(btnRow)
+  cardLayout.add(recentLabel)
   cardLayout.addWidget(QWidget(h: recentTableH, owned: false))
-  cardWidget.setLayout(QLayout(h: cardLayout.h, owned: false))
+  cardLayout.applyTo(cardWidget)
 
   # Outer centering layout
-  var openProjectLayout = QVBoxLayout.create(); openProjectLayout.owned = false
-  QLayout(h: openProjectLayout.h, owned: false).setContentsMargins(OuterMargin, OuterMargin, OuterMargin, OuterMargin)
+  var openProjectLayout = vbox(margins = (OuterMargin, OuterMargin, OuterMargin, OuterMargin))
   openProjectLayout.addStretch()
-  openProjectLayout.addWidget(QWidget(h: cardWidget.h, owned: false))
+  openProjectLayout.add(cardWidget)
   openProjectLayout.addStretch()
 
-  var openProjectRow = QWidget.create()
-  openProjectRow.owned = false
-  openProjectRow.setLayout(QLayout(h: openProjectLayout.h, owned: false))
+  var openProjectRow = newWidget(QWidget.create())
+  openProjectLayout.applyTo(openProjectRow)
 
   pane.recentProjectsList = capture(recentTable)
   pane.recentProjectsLabel = capture(recentLabel)
 
   # --- Module buttons row (shown when project is open) ---
-  var newModuleBtn = QPushButton.create("New Module")
-  newModuleBtn.owned = false
-  var openModuleBtn = QPushButton.create("Open Module")
-  openModuleBtn.owned = false
+  var newModuleBtn = newWidget(QPushButton.create("New Module"))
+  var openModuleBtn = newWidget(QPushButton.create("Open Module"))
 
-  var moduleBtnsLayout = QHBoxLayout.create(); moduleBtnsLayout.owned = false
+  var moduleBtnsLayout = hbox()
   moduleBtnsLayout.addStretch()
-  moduleBtnsLayout.addWidget(QWidget(h: newModuleBtn.h, owned: false))
-  moduleBtnsLayout.addWidget(QWidget(h: openModuleBtn.h, owned: false))
+  moduleBtnsLayout.add(newModuleBtn)
+  moduleBtnsLayout.add(openModuleBtn)
   moduleBtnsLayout.addStretch()
 
-  var moduleBtnsRow = QWidget.create()
-  moduleBtnsRow.owned = false
-  moduleBtnsRow.setLayout(QLayout(h: moduleBtnsLayout.h, owned: false))
-  QWidget(h: moduleBtnsRow.h, owned: false).hide()  # hidden until project opened
+  var moduleBtnsRow = newWidget(QWidget.create())
+  moduleBtnsLayout.applyTo(moduleBtnsRow)
+  moduleBtnsRow.hide()  # hidden until project opened
 
   # --- Outer layout for page 0 ---
-  var layout = QVBoxLayout.create(); layout.owned = false
-  layout.addStretch()
-  layout.addWidget(QWidget(h: openProjectRow.h, owned: false))
-  layout.addWidget(QWidget(h: moduleBtnsRow.h, owned: false))
-  layout.addStretch()
+  var pageLayout = vbox()
+  pageLayout.addStretch()
+  pageLayout.add(openProjectRow)
+  pageLayout.add(moduleBtnsRow)
+  pageLayout.addStretch()
 
-  var openModuleWidget = QWidget.create()
-  openModuleWidget.owned = false
-  openModuleWidget.setLayout(QLayout(h: layout.h, owned: false))
+  var openModuleWidget = newWidget(QWidget.create())
+  pageLayout.applyTo(openModuleWidget)
   openModuleWidget.setFocusPolicy(FP_ClickFocus)
 
   var gutterH: pointer = nil
@@ -1143,8 +1112,7 @@ proc newPane*(
       scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
     except: discard
 
-  var editor = QPlainTextEdit.create(vtbl = editorVtbl)
-  editor.owned = false
+  var editor = newWidget(QPlainTextEdit.create(vtbl = editorVtbl))
   editor.setFrameStyle(NoFrame)
   editor.setCenterOnScroll(true)
   editor.viewport().setMouseTracking(true)
@@ -1153,15 +1121,14 @@ proc newPane*(
   editorFont.setPointSize(14)
   editorFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
 
-  QWidget(h: editor.h, owned: false).setFont(editorFont)
+  editor.asWidget.setFont(editorFont)
 
   let editorH = editor.h
   var gutterVtbl = new QWidgetVTable
   gutterVtbl.paintEvent = proc(self: QWidget, event: QPaintEvent) {.raises: [], gcsafe.} =
     lineNumberAreaPaintEvent(QPlainTextEdit(h: editorH, owned: false), event, self)
-  var gutter = QWidget.create(QWidget(h: editor.h, owned: false), cint(0), vtbl = gutterVtbl)
-  gutter.owned = false
-  QWidget(h: gutter.h, owned: false).setStyleSheet("background: #000000; border-bottom: 1px solid #333333;")
+  var gutter = newWidget(QWidget.create(editor.asWidget, cint(0), vtbl = gutterVtbl))
+  gutter.setStyleSheet("background: #000000; border-bottom: 1px solid #333333;")
   gutterH = gutter.h
 
   editor.updateLineNumberAreaWidth()
@@ -1191,84 +1158,63 @@ proc newPane*(
     if rect.contains(ed.viewport().rect()):
       ed.updateLineNumberAreaWidth()
 
-  var stack = QStackedWidget.create()
-  stack.owned = false
-  discard stack.addWidget(QWidget(h: openModuleWidget.h, owned: false))
-  discard stack.addWidget(QWidget(h: editor.h, owned: false))
+  var stack = newWidget(QStackedWidget.create())
+  discard stack.addWidget(openModuleWidget)
+  discard stack.addWidget(editor.asWidget)
 
-  var label = QLabel.create("")
-  label.owned = false
+  var label = newWidget(QLabel.create(""))
+  var statusLabel = newWidget(QLabel.create(StatusDark))
 
-  var statusLabel = QLabel.create(StatusDark)
-  statusLabel.owned = false
+  var hintBtn = button("")
+  hintBtn.asWidget.setSizePolicy(cint 0, cint 0)
+  hintBtn.asWidget.setMinimumWidth(HeaderButtonMinWidth)
+  hintBtn.asWidget.setFixedHeight(HeaderButtonSize)
 
-  var hintBtn = QPushButton.create("")
-  hintBtn.owned = false
-  hintBtn.setFlat(true)
-  QWidget(h: hintBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
-  QWidget(h: hintBtn.h, owned: false).setMinimumWidth(HeaderButtonMinWidth)
-  QWidget(h: hintBtn.h, owned: false).setFixedHeight(HeaderButtonSize)
+  var warnBtn = button("")
+  warnBtn.asWidget.setSizePolicy(cint 0, cint 0)
+  warnBtn.asWidget.setMinimumWidth(HeaderButtonMinWidth)
+  warnBtn.asWidget.setFixedHeight(HeaderButtonSize)
 
-  var warnBtn = QPushButton.create("")
-  warnBtn.owned = false
-  warnBtn.setFlat(true)
-  QWidget(h: warnBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
-  QWidget(h: warnBtn.h, owned: false).setMinimumWidth(HeaderButtonMinWidth)
-  QWidget(h: warnBtn.h, owned: false).setFixedHeight(HeaderButtonSize)
-
-  var errBtn = QPushButton.create("")
-  errBtn.owned = false
-  errBtn.setFlat(true)
-  QWidget(h: errBtn.h, owned: false).setSizePolicy(cint 0, cint 0)
-  QWidget(h: errBtn.h, owned: false).setMinimumWidth(HeaderButtonMinWidth)
-  QWidget(h: errBtn.h, owned: false).setFixedHeight(HeaderButtonSize)
+  var errBtn = button("")
+  errBtn.asWidget.setSizePolicy(cint 0, cint 0)
+  errBtn.asWidget.setMinimumWidth(HeaderButtonMinWidth)
+  errBtn.asWidget.setFixedHeight(HeaderButtonSize)
 
   const IconSize = 10
 
-  var vSplitBtn = QPushButton.create("")
-  vSplitBtn.owned = false
-  vSplitBtn.setFlat(true)
-  QWidget(h: vSplitBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
-  QAbstractButton(h: vSplitBtn.h, owned: false).setIcon(svgIcon(VsplitSvg, cint IconSize))
-  QAbstractButton(h: vSplitBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  var vSplitBtn = button("")
+  vSplitBtn.asWidget.setFixedSize(HeaderButtonSize, HeaderButtonSize)
+  vSplitBtn.asButton.setIcon(svgIcon(VsplitSvg, cint IconSize))
+  vSplitBtn.asButton.setIconSize(QSize.create(cint IconSize, cint IconSize))
 
-  var hSplitBtn = QPushButton.create("")
-  hSplitBtn.owned = false
-  hSplitBtn.setFlat(true)
-  QWidget(h: hSplitBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
-  QAbstractButton(h: hSplitBtn.h, owned: false).setIcon(svgIcon(HsplitSvg, cint IconSize))
-  QAbstractButton(h: hSplitBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  var hSplitBtn = button("")
+  hSplitBtn.asWidget.setFixedSize(HeaderButtonSize, HeaderButtonSize)
+  hSplitBtn.asButton.setIcon(svgIcon(HsplitSvg, cint IconSize))
+  hSplitBtn.asButton.setIconSize(QSize.create(cint IconSize, cint IconSize))
 
-  var closeBtn = QPushButton.create("×")
-  closeBtn.owned = false
-  closeBtn.setFlat(true)
-  QWidget(h: closeBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
+  var closeBtn = button("×")
+  closeBtn.asWidget.setFixedSize(HeaderButtonSize, HeaderButtonSize)
 
-  var saveBtn = QPushButton.create("")
-  saveBtn.owned = false
-  saveBtn.setFlat(true)
-  QWidget(h: saveBtn.h, owned: false).setFixedSize(HeaderButtonSize, HeaderButtonSize)
-  QAbstractButton(h: saveBtn.h, owned: false).setIcon(svgIcon(SaveSvg, cint IconSize))
-  QAbstractButton(h: saveBtn.h, owned: false).setIconSize(QSize.create(cint IconSize, cint IconSize))
+  var saveBtn = button("")
+  saveBtn.asWidget.setFixedSize(HeaderButtonSize, HeaderButtonSize)
+  saveBtn.asButton.setIcon(svgIcon(SaveSvg, cint IconSize))
+  saveBtn.asButton.setIconSize(QSize.create(cint IconSize, cint IconSize))
 
-  var headerLayout = QHBoxLayout.create()
-  headerLayout.owned = false
-  QLayout(h: headerLayout.h, owned: false).setContentsMargins(cint 4, cint 2, cint 4, cint 2)
-  headerLayout.addWidget(QWidget(h: label.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: statusLabel.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: hintBtn.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: warnBtn.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: errBtn.h, owned: false), cint(0), cint(0))
+  var headerLayout = hbox(margins = (cint 4, cint 2, cint 4, cint 2))
+  headerLayout.addWidget(label.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(statusLabel.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(hintBtn.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(warnBtn.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(errBtn.asWidget, cint(0), cint(0))
   headerLayout.addStretch()
-  headerLayout.addWidget(QWidget(h: saveBtn.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: vSplitBtn.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: hSplitBtn.h, owned: false), cint(0), cint(0))
-  headerLayout.addWidget(QWidget(h: closeBtn.h, owned: false), cint(0), cint(0))
+  headerLayout.addWidget(saveBtn.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(vSplitBtn.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(hSplitBtn.asWidget, cint(0), cint(0))
+  headerLayout.addWidget(closeBtn.asWidget, cint(0), cint(0))
 
-  var headerBar = QWidget.create()
-  headerBar.owned = false
+  var headerBar = newWidget(QWidget.create())
   headerBar.setObjectName("headerBar")
-  headerBar.setLayout(QLayout(h: headerLayout.h, owned: false))
+  headerLayout.applyTo(headerBar)
 
   # --- Search bar ---
   var inputVtbl = new QLineEditVTable
@@ -1280,7 +1226,7 @@ proc newPane*(
         pane.searchBar.get().hide()
         pane.matchPositions = @[]
         applySelections(pane)
-        QWidget(h: pane.editor.h, owned: false).setFocus()
+        pane.editor.asWidget.setFocus()
       return
     let relevantMods = mods and (ctrlMod or altMod or shiftMod)
     let kc: KeyCombo = (key, relevantMods)
@@ -1298,81 +1244,62 @@ proc newPane*(
           ed.ensureCursorVisible()
         return
     QLineEditkeyPressEvent(self, e)
-  var searchInput = QLineEdit.create(vtbl = inputVtbl)
-  searchInput.owned = false
+  var searchInput = newWidget(QLineEdit.create(vtbl = inputVtbl))
   searchInput.setPlaceholderText("Search…")
 
-  var caseCheck = QCheckBox.create("Aa")
-  caseCheck.owned = false
+  var caseCheck = checkbox("Aa")
+  var regexCheck = checkbox(".*")
 
-  var regexCheck = QCheckBox.create(".*")
-  regexCheck.owned = false
+  var prevBtn = button("▲")
+  prevBtn.asWidget.setFixedSize(SearchButtonSize, SearchButtonSize)
 
-  var prevBtn = QPushButton.create("▲")
-  prevBtn.owned = false
-  prevBtn.setFlat(true)
-  QWidget(h: prevBtn.h, owned: false).setFixedSize(SearchButtonSize, SearchButtonSize)
+  var nextBtn = button("▼")
+  nextBtn.asWidget.setFixedSize(SearchButtonSize, SearchButtonSize)
 
-  var nextBtn = QPushButton.create("▼")
-  nextBtn.owned = false
-  nextBtn.setFlat(true)
-  QWidget(h: nextBtn.h, owned: false).setFixedSize(SearchButtonSize, SearchButtonSize)
+  var searchCloseBtn = button("×")
+  searchCloseBtn.asWidget.setFixedSize(SearchButtonSize, SearchButtonSize)
 
-  var searchCloseBtn = QPushButton.create("×")
-  searchCloseBtn.owned = false
-  searchCloseBtn.setFlat(true)
-  QWidget(h: searchCloseBtn.h, owned: false).setFixedSize(SearchButtonSize, SearchButtonSize)
+  var searchLayout = hbox(margins = (cint 4, cint 2, cint 4, cint 2))
+  searchLayout.addWidget(searchInput.asWidget, cint 1, cint 0)
+  searchLayout.addWidget(caseCheck.asWidget, cint 0, cint 0)
+  searchLayout.addWidget(regexCheck.asWidget, cint 0, cint 0)
+  searchLayout.addWidget(prevBtn.asWidget, cint 0, cint 0)
+  searchLayout.addWidget(nextBtn.asWidget, cint 0, cint 0)
+  searchLayout.addWidget(searchCloseBtn.asWidget, cint 0, cint 0)
 
-  var searchLayout = QHBoxLayout.create()
-  searchLayout.owned = false
-  QLayout(h: searchLayout.h, owned: false).setContentsMargins(cint 4, cint 2, cint 4, cint 2)
-  searchLayout.addWidget(QWidget(h: searchInput.h, owned: false), cint 1, cint 0)
-  searchLayout.addWidget(QWidget(h: caseCheck.h, owned: false), cint 0, cint 0)
-  searchLayout.addWidget(QWidget(h: regexCheck.h, owned: false), cint 0, cint 0)
-  searchLayout.addWidget(QWidget(h: prevBtn.h, owned: false), cint 0, cint 0)
-  searchLayout.addWidget(QWidget(h: nextBtn.h, owned: false), cint 0, cint 0)
-  searchLayout.addWidget(QWidget(h: searchCloseBtn.h, owned: false), cint 0, cint 0)
-
-  var searchBar = QWidget.create()
-  searchBar.owned = false
-  searchBar.setLayout(QLayout(h: searchLayout.h, owned: false))
-  QWidget(h: searchBar.h, owned: false).hide()
+  var searchBar = newWidget(QWidget.create())
+  searchLayout.applyTo(searchBar)
+  searchBar.hide()
 
   # Outer container: header bar + search bar + stack
-  var outerLayout = QVBoxLayout.create()
-  outerLayout.owned = false
-  QLayout(h: outerLayout.h, owned: false).setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-  QLayout(h: outerLayout.h, owned: false).setSpacing(cint 0)
-  outerLayout.addWidget(QWidget(h: headerBar.h, owned: false), cint(0), cint(0))
-  outerLayout.addWidget(QWidget(h: searchBar.h, owned: false), cint(0), cint(0))
-  outerLayout.addWidget(QWidget(h: stack.h, owned: false), cint(0), cint(0))
-  var container = QWidget.create()
-  container.owned = false
+  var outerLayout = vbox()
+  outerLayout.addWidget(headerBar, cint(0), cint(0))
+  outerLayout.addWidget(searchBar, cint(0), cint(0))
+  outerLayout.addWidget(stack.asWidget, cint(0), cint(0))
+  var container = newWidget(QWidget.create())
   container.setAutoFillBackground(true)
-  container.setLayout(QLayout(h: outerLayout.h, owned: false))
+  outerLayout.applyTo(container)
 
   result.container = container
   result.headerBar = headerBar
   # Timer that hides the diagnostic popup after a short delay, giving the user
   # time to move the mouse into the popup. Restarted if underMouse() is true.
-  var diagHideTimer = QTimer.create(QObject(h: result.container.h, owned: false))
-  diagHideTimer.owned = false
-  QTimer(h: diagHideTimer.h, owned: false).setSingleShot(true)
-  QTimer(h: diagHideTimer.h, owned: false).setInterval(DiagHideMs)
+  var diagHideTimer = newWidget(QTimer.create(QObject(h: result.container.h, owned: false)))
+  diagHideTimer.setSingleShot(true)
+  diagHideTimer.setInterval(DiagHideMs)
   result.diagHideTimerH = diagHideTimer.h
-  QTimer(h: diagHideTimer.h, owned: false).onTimeout do() {.raises: [].}:
+  diagHideTimer.onTimeout do() {.raises: [].}:
     if pane.diagPopupH != nil and
        QWidget(h: pane.diagPopupH, owned: false).isVisible() and
        QWidget(h: pane.diagPopupH, owned: false).underMouse():
       QTimer(h: pane.diagHideTimerH, owned: false).start()
     else:
       hideDiagPopup(pane)
-  var autocompleteRefreshTimer = QTimer.create(QObject(h: result.container.h, owned: false))
-  autocompleteRefreshTimer.owned = false
-  QTimer(h: autocompleteRefreshTimer.h, owned: false).setSingleShot(true)
-  QTimer(h: autocompleteRefreshTimer.h, owned: false).setInterval(AutocompleteRefreshMs)
+  var autocompleteRefreshTimer = newWidget(QTimer.create(QObject(h: result.container.h, owned: false)))
+  autocompleteRefreshTimer.setSingleShot(true)
+  autocompleteRefreshTimer.setInterval(AutocompleteRefreshMs)
   result.autocompleteRefreshTimerH = autocompleteRefreshTimer.h
-  QTimer(h: autocompleteRefreshTimer.h, owned: false).onTimeout do() {.raises: [].}:
+  autocompleteRefreshTimer.onTimeout do() {.raises: [].}:
     if pane.autocompleteMenu.isOpen() and pane.nimSuggest != nil:
       pane.triggerAutocomplete(pane.nimSuggest, atRefresh)
   result.label = label
@@ -1380,10 +1307,8 @@ proc newPane*(
   result.stack = stack
   result.openModuleWidget = openModuleWidget
   result.editor = editor
-  var emptyDoc = QTextDocument.create()
-  emptyDoc.owned = false
-  var emptyLayout = QPlainTextDocumentLayout.create(emptyDoc)
-  emptyLayout.owned = false
+  var emptyDoc = newWidget(QTextDocument.create())
+  var emptyLayout = newWidget(QPlainTextDocumentLayout.create(emptyDoc))
   emptyDoc.setDocumentLayout(QAbstractTextDocumentLayout(h: emptyLayout.h, owned: false))
   emptyDoc.setDefaultFont(editorFont)
   result.emptyDoc        = capture(emptyDoc)
@@ -1462,9 +1387,8 @@ proc newPane*(
     closeSearch(pane)
 
   # --- Ctrl+D shortcut: show diagnostics at cursor ---
-  var diagSc = QShortcut.create(QKeySequence.create("Ctrl+Shift+D"),
-                                QObject(h: pane.container.h, owned: false))
-  diagSc.owned = false
+  var diagSc = newWidget(QShortcut.create(QKeySequence.create("Ctrl+Shift+D"),
+                                          QObject(h: pane.container.h, owned: false)))
   diagSc.setContext(SC_WidgetWithChildrenShortcut)
   diagSc.onActivated do() {.raises: [].}:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -1476,18 +1400,17 @@ proc newPane*(
         QPoint.create(rect.left(), rect.top() + rect.height()))
 
 proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
-  let hbw = QWidget(h: pane.headerBar.h, owned: false)
   let iconColor = if focused: "#000000" else: "#ffffff"
   const headerIconSize = 10
   if focused:
     let (rightColor, _) = headerGradientColors(isDark)
-    hbw.setStyleSheet("#headerBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #000000, stop:0.95 " & rightColor & "); }")
+    pane.headerBar.setStyleSheet("#headerBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #000000, stop:0.95 " & rightColor & "); }")
   else:
-    hbw.setStyleSheet("#headerBar { background: #000000; }")
-  QAbstractButton(h: pane.saveBtn.get().h, owned: false).setIcon(svgIcon(SaveSvg, cint headerIconSize, iconColor))
-  QAbstractButton(h: pane.vSplitBtn.get().h, owned: false).setIcon(svgIcon(VsplitSvg, cint headerIconSize, iconColor))
-  QAbstractButton(h: pane.hSplitBtn.get().h, owned: false).setIcon(svgIcon(HsplitSvg, cint headerIconSize, iconColor))
-  QWidget(h: pane.closeBtn.get().h, owned: false).setStyleSheet("QPushButton { color: " & iconColor & "; }")
+    pane.headerBar.setStyleSheet("#headerBar { background: #000000; }")
+  pane.saveBtn.get().asButton.setIcon(svgIcon(SaveSvg, cint headerIconSize, iconColor))
+  pane.vSplitBtn.get().asButton.setIcon(svgIcon(VsplitSvg, cint headerIconSize, iconColor))
+  pane.hSplitBtn.get().asButton.setIcon(svgIcon(HsplitSvg, cint headerIconSize, iconColor))
+  pane.closeBtn.get().asWidget.setStyleSheet("QPushButton { color: " & iconColor & "; }")
 
 proc setBuffer*(pane: Pane, buf: Buffer) =
   pane.stopAutocompleteRefresh()
@@ -1533,7 +1456,7 @@ proc clearBuffer*(pane: Pane) =
   updateDiagIcons(pane)
 
 proc openModuleDialog*(pane: Pane) {.raises: [].} =
-  let fn = QFileDialog.getOpenFileName(QWidget(h: pane.container.h, owned: false))
+  let fn = QFileDialog.getOpenFileName(pane.container)
   if fn.len > 0:
     pane.eventCb(PaneEvent(pane: pane, kind: peFileSelected, path: fn))
 
@@ -1548,7 +1471,7 @@ proc triggerOpenProject*(pane: Pane) {.raises: [].} =
 
 proc triggerFind*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().show()
-  QWidget(h: pane.searchInput.h, owned: false).setFocus()
+  pane.searchInput.get().asWidget.setFocus()
   let query = pane.searchInput.get().text()
   if query.len == 0:
     pane.matchPositions = @[]
@@ -1704,14 +1627,14 @@ proc closeSearch*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().hide()
   pane.matchPositions = @[]
   applySelections(pane)
-  QWidget(h: pane.editor.h, owned: false).setFocus()
+  pane.editor.asWidget.setFocus()
 
 proc zoomIn*(pane: Pane) {.raises: [].} =
   try:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     var font = ed.document().defaultFont()
     font.setPointSize(font.pointSize() + cint 1)
-    QWidget(h: ed.h, owned: false).setFont(font)
+    ed.asWidget.setFont(font)
     ed.document().setDefaultFont(font)
     ed.updateLineNumberAreaWidth()
   except: discard
@@ -1722,7 +1645,7 @@ proc zoomOut*(pane: Pane) {.raises: [].} =
     var font = ed.document().defaultFont()
     let newSize = max(font.pointSize() - cint 1, MinFontSize)
     font.setPointSize(newSize)
-    QWidget(h: ed.h, owned: false).setFont(font)
+    ed.asWidget.setFont(font)
     ed.document().setDefaultFont(font)
     ed.updateLineNumberAreaWidth()
   except: discard
@@ -1777,24 +1700,22 @@ proc setRecentProjects*(pane: Pane, projects: seq[string]) {.raises: [].} =
     for p in projects:
       let row = tw.rowCount()
       tw.insertRow(row)
-      var nameItem = QTableWidgetItem.create(p.lastPathPart)
-      nameItem.owned = false
+      var nameItem = newWidget(QTableWidgetItem.create(p.lastPathPart))
       nameItem.setFlags(IF_SelectableEnabled)
-      var pathItem = QTableWidgetItem.create(p)
-      pathItem.owned = false
+      var pathItem = newWidget(QTableWidgetItem.create(p))
       pathItem.setFlags(IF_SelectableEnabled)
       tw.setItem(row, cint 0, nameItem)
       tw.setItem(row, cint 1, pathItem)
     let hasItems = projects.len > 0
-    QWidget(h: tw.h, owned: false).setVisible(hasItems)
-    QWidget(h: pane.recentProjectsLabel.get().h, owned: false).setVisible(hasItems)
+    tw.asWidget.setVisible(hasItems)
+    pane.recentProjectsLabel.get().asWidget.setVisible(hasItems)
   except: discard
 
 proc setRestoreLastSessionAvailable*(pane: Pane, available: bool) {.raises: [].} =
   try:
-    let btn = QWidget(h: pane.restoreSessionBtn.get().h, owned: false)
-    btn.setVisible(true)
-    btn.setEnabled(available)
+    let btn = pane.restoreSessionBtn.get()
+    btn.asWidget.setVisible(true)
+    btn.asWidget.setEnabled(available)
   except: discard
 
 proc currentCursorPosition*(pane: Pane): tuple[line, col: int] {.raises: [].} =

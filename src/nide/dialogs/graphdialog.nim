@@ -4,6 +4,7 @@ import seaqt/[qwidget, qdialog, qvboxlayout, qhboxlayout, qlayout,
               qabstractscrollarea, qabstractslider, qscrollbar,
               qmouseevent, qwheelevent, qcursor, qpoint,
               qsize]
+import nide/ui/widgets
 # Cursor shape constants (Qt::CursorShape)
 const
   OpenHandCursor   = cint(17)
@@ -36,24 +37,20 @@ proc findDot(): string =
 
 proc showError(dialogH: pointer, msg: string) {.raises: [].} =
   try:
-    var errLabel = QLabel.create(msg)
-    errLabel.owned = false
-    var closeBtn = QPushButton.create("Close")
-    closeBtn.owned = false
+    var errLabel = newWidget(QLabel.create(msg))
+    var closeBtn = newWidget(QPushButton.create("Close"))
     closeBtn.onClicked do() {.raises: [].}:
       QWidget(h: dialogH, owned: false).hide()
-    var layout = QVBoxLayout.create()
-    layout.owned = false
-    layout.addWidget(QWidget(h: errLabel.h, owned: false))
+    var layout = vbox()
+    layout.add(errLabel)
     layout.addStretch()
-    layout.addWidget(QWidget(h: closeBtn.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: layout.h, owned: false))
+    layout.add(closeBtn)
+    layout.applyTo(QWidget(h: dialogH, owned: false))
     discard QDialog(h: dialogH, owned: false).exec()
   except: discard
 
 proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
-  var dialog = QDialog.create(parent)
-  dialog.owned = false
+  var dialog = newWidget(QDialog.create(parent))
   let dialogH = dialog.h
   QWidget(h: dialogH, owned: false).setWindowTitle("Module Graph")
   QWidget(h: dialogH, owned: false).resize(GraphWidth, GraphHeight)
@@ -122,7 +119,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
           scrollStartH = sa.horizontalScrollBar().value()
           scrollStartV = sa.verticalScrollBar().value()
           let cur = QCursor.create(ClosedHandCursor)
-          QWidget(h: self.h, owned: false).setCursor(cur)
+          self.asWidget.setCursor(cur)
       except: discard
       QSvgWidgetmousePressEvent(self, e)
 
@@ -164,7 +161,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
 
           let newW = cint(float64(svgNatW) * scale)
           let newH = cint(float64(svgNatH) * scale)
-          let w = QWidget(h: self.h, owned: false)
+          let w = self.asWidget
           w.resize(newW, newH)
           w.setMinimumSize(newW, newH)
 
@@ -180,8 +177,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
           QSvgWidgetwheelEvent(self, e)
       except: discard
 
-    var svgWidget = QSvgWidget.create(vtbl = vtbl)
-    svgWidget.owned = false
+    var svgWidget = newWidget(QSvgWidget.create(vtbl = vtbl))
     svgWidgetH = svgWidget.h
 
     let svgBytes = cast[seq[byte]](svgResult)
@@ -202,27 +198,23 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
     let openCur = QCursor.create(OpenHandCursor)
     w.setCursor(openCur)
 
-    var scrollArea = QScrollArea.create()
-    scrollArea.owned = false
+    var scrollArea = newWidget(QScrollArea.create())
     scrollAreaH = scrollArea.h
     scrollArea.setWidget(QWidget(h: svgWidgetH, owned: false))
     scrollArea.setWidgetResizable(false)
 
-    var closeBtn = QPushButton.create("Close")
-    closeBtn.owned = false
+    var closeBtn = newWidget(QPushButton.create("Close"))
     closeBtn.onClicked do() {.raises: [].}:
       QWidget(h: dialogH, owned: false).hide()
 
-    var btnRow = QHBoxLayout.create()
-    btnRow.owned = false
+    var btnRow = hbox()
     btnRow.addStretch()
-    btnRow.addWidget(QWidget(h: closeBtn.h, owned: false))
+    btnRow.add(closeBtn)
 
-    var mainLayout = QVBoxLayout.create()
-    mainLayout.owned = false
-    mainLayout.addWidget(QWidget(h: scrollArea.h, owned: false))
-    mainLayout.addLayout(QLayout(h: btnRow.h, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(QLayout(h: mainLayout.h, owned: false))
+    var mainLayout = vbox()
+    mainLayout.add(scrollArea)
+    mainLayout.addLayout(btnRow.asLayout())
+    mainLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     discard QDialog(h: dialogH, owned: false).exec()
   except: discard

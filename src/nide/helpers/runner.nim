@@ -12,32 +12,21 @@ proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,
                  onGotoLocation: proc(file: string, line, col: int) {.raises: [].} = nil) {.raises: [].} =
   try:
-    var dialog = QDialog.create(parent)
-    dialog.owned = false
+    var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle(title)
     QWidget(h: dialogH, owned: false).resize(RunnerWidth, RunnerHeight)
 
-    var listWidget = QListWidget.create()
-    listWidget.owned = false
+    var listWidget = newWidget(QListWidget.create())
     var font = QFont.create("Monospace")
     font.setStyleHint(FontHint_TypeWriter)  # TypeWriter
-    QWidget(h: listWidget.h, owned: false).setFont(font)
+    listWidget.asWidget.setFont(font)
 
-    var killBtn = QPushButton.create("Kill")
-    killBtn.owned = false
-
-    var copyBtn = QPushButton.create("Copy Log")
-    copyBtn.owned = false
-
-    var copyErrBtn = QPushButton.create("Copy Error")
-    copyErrBtn.owned = false
-
-    var closeBtn = QPushButton.create("Close")
-    closeBtn.owned = false
-
-    var statusLabel = QLabel.create("Running...")
-    statusLabel.owned = false
+    var killBtn    = newWidget(QPushButton.create("Kill"))
+    var copyBtn    = newWidget(QPushButton.create("Copy Log"))
+    var copyErrBtn = newWidget(QPushButton.create("Copy Error"))
+    var closeBtn   = newWidget(QPushButton.create("Close"))
+    var statusLabel = newWidget(QLabel.create("Running..."))
 
     let btnRow = hbox()
     btnRow.add(statusLabel)
@@ -53,8 +42,7 @@ proc runCommand*(parent: QWidget, title, command: string,
     mainLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     # Process parented to dialog — Qt auto-cleans on dialog destroy
-    var process = QProcess.create(QObject(h: dialogH, owned: false))
-    process.owned = false
+    var process = newWidget(QProcess.create(QObject(h: dialogH, owned: false)))
     let processH    = process.h
     let listH       = listWidget.h
     let statusH     = statusLabel.h
@@ -82,8 +70,7 @@ proc runCommand*(parent: QWidget, title, command: string,
       try:
         let ll = parseLine(s)
         lines[].add(ll)
-        var item = QListWidgetItem.create(s)
-        item.owned = false
+        var item = newWidget(QListWidgetItem.create(s))
         case ll.level
         of llError:
           item.setForeground(QBrush.create(QColor.create("#ff5555")))

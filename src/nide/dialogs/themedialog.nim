@@ -5,6 +5,7 @@ import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
               qshortcut, qkeysequence, qobject, qcombobox]
 import nide/settings/syntaxtheme, nide/editor/highlight
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const
   PreviewFontSize = 11
@@ -70,24 +71,22 @@ proc buildThemePickerWidget*(
     let themes = availableThemes()
     result.themes = themes
 
-    result.listWidget = QListWidget.create()
-    result.listWidget.owned = false
+    result.listWidget = newWidget(QListWidget.create())
     let listH = result.listWidget.h
 
     var selectedIdx = 0
     for idx, name in themes:
-      QListWidget(h: listH, owned: false).addItem(name)
+      result.listWidget.addItem(name)
       if name == currentName:
         selectedIdx = idx
-    QListWidget(h: listH, owned: false).setCurrentRow(cint selectedIdx)
+    result.listWidget.setCurrentRow(cint selectedIdx)
 
-    result.preview = QPlainTextEdit.create()
-    result.preview.owned = false
+    result.preview = newWidget(QPlainTextEdit.create())
     result.preview.setReadOnly(true)
     var previewFont = QFont.create("Fira Code")
     previewFont.setPointSize(PreviewFontSize)
     previewFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
-    QWidget(h: result.preview.h, owned: false).setFont(previewFont)
+    result.preview.asWidget.setFont(previewFont)
     let previewH = result.preview.h
 
     let previewHl = NimHighlighter()
@@ -113,10 +112,9 @@ proc buildThemePickerWidget*(
 
     applyPreviewTheme(currentName)
 
-    result.splitter = QSplitter.create(Horizontal)   # horizontal
-    result.splitter.owned = false
-    result.splitter.addWidget(QWidget(h: listH,              owned: false))
-    result.splitter.addWidget(QWidget(h: previewH,           owned: false))
+    result.splitter = newWidget(QSplitter.create(Horizontal))   # horizontal
+    result.splitter.addWidget(QWidget(h: listH, owned: false))
+    result.splitter.addWidget(QWidget(h: previewH, owned: false))
     result.splitter.setStretchFactor(cint 0, cint 1)
     result.splitter.setStretchFactor(cint 1, cint 2)
 
@@ -128,7 +126,7 @@ proc buildThemePickerWidget*(
 proc currentThemeSelection*(picker: ThemePickerWidget): string {.raises: [].} =
   ## Return the name of the currently highlighted theme in the picker.
   try:
-    let row = QListWidget(h: picker.listWidget.h, owned: false).currentRow()
+    let row = picker.listWidget.currentRow()
     if row >= 0 and row < cint(picker.themes.len):
       return picker.themes[row]
   except: discard
@@ -141,29 +139,23 @@ proc showThemeDialog*(
   onSelected: proc(name: string) {.raises: [].}
 ) {.raises: [].} =
   try:
-    var dialog = QDialog.create(parent)
-    dialog.owned = false
+    var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Syntax Theme")
     QWidget(h: dialogH, owned: false).resize(ThemeDialogWidth, ThemeDialogHeight)
 
-    var titleLabel = QLabel.create("Select a syntax highlighting theme:")
-    titleLabel.owned = false
+    var titleLabel = newWidget(QLabel.create("Select a syntax highlighting theme:"))
 
     let picker = buildThemePickerWidget(
       QWidget(h: dialogH, owned: false), currentName)
 
-    var buttonBox = QDialogButtonBox.create(
-      Btn_OkCancel2)  # Ok | Cancel
-    buttonBox.owned = false
+    var buttonBox = newWidget(QDialogButtonBox.create(Btn_OkCancel2))  # Ok | Cancel
 
-    var outerLayout = QVBoxLayout.create()
-    outerLayout.owned = false
-    outerLayout.addWidget(QWidget(h: titleLabel.h,         owned: false), cint 0)
-    outerLayout.addWidget(QWidget(h: picker.splitter.h,    owned: false), cint 1)
-    outerLayout.addWidget(QWidget(h: buttonBox.h,          owned: false), cint 0)
-    QWidget(h: dialogH, owned: false).setLayout(
-      QLayout(h: outerLayout.h, owned: false))
+    var outerLayout = vbox()
+    outerLayout.addWidget(titleLabel.asWidget, cint 0)
+    outerLayout.addWidget(picker.splitter.asWidget, cint 1)
+    outerLayout.addWidget(buttonBox.asWidget, cint 0)
+    outerLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     buttonBox.onAccepted do() {.raises: [].}:
       let name = picker.currentThemeSelection()
@@ -175,9 +167,8 @@ proc showThemeDialog*(
       QDialog(h: dialogH, owned: false).reject()
 
     # Enter key to accept
-    var enterSc = QShortcut.create(QKeySequence.create("Return"),
-                                   QObject(h: dialogH, owned: false))
-    enterSc.owned = false
+    var enterSc = newWidget(QShortcut.create(QKeySequence.create("Return"),
+                                             QObject(h: dialogH, owned: false)))
     enterSc.setContext(SC_WindowShortcut)  # WindowShortcut
     enterSc.onActivated do() {.raises: [].}:
       let name = picker.currentThemeSelection()

@@ -13,6 +13,7 @@ import nide/settings/settingsstore
 import nide/dialogs/projectdialog
 import commands
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const
   MinFontSize = cint 6
@@ -170,15 +171,13 @@ proc showSettingsDialog*(
   onOpacityPreview: proc(enabled: bool, level: int) {.raises: [].} = nil
 ) {.raises: [].} =
   try:
-    var dialog = QDialog.create(parent)
-    dialog.owned = false
+    var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
 
     QWidget(h: dialogH, owned: false).setWindowTitle("Settings")
     QWidget(h: dialogH, owned: false).resize(cint 900, cint 600)
     # Content container — opacity effect goes on this child, not the dialog itself
-    var contentWidget = QWidget.create(QWidget(h: dialogH, owned: false))
-    contentWidget.owned = false
+    var contentWidget = newWidget(QWidget.create(QWidget(h: dialogH, owned: false)))
     let contentH = contentWidget.h
     let contentEff = setupWindowOpacity(
       QWidget(h: dialogH, owned: false),
@@ -188,59 +187,45 @@ proc showSettingsDialog*(
     let contentEffectH = contentEff.h
 
     # ── Tab widget ───────────────────────────────────────────────────────────
-    var tabs = QTabWidget.create(QWidget(h: contentH, owned: false))
-    tabs.owned = false
+    var tabs = newWidget(QTabWidget.create(QWidget(h: contentH, owned: false)))
     let tabsH = tabs.h
 
     # ════════════════════════════════════════════════════════════════════════
     # Tab 1 — Appearance
     # ════════════════════════════════════════════════════════════════════════
-    var appearTab = QWidget.create(QWidget(h: tabsH, owned: false))
-    appearTab.owned = false
+    var appearTab = newWidget(QWidget.create(QWidget(h: tabsH, owned: false)))
     let appearTabH = appearTab.h
 
     # Theme mode (Light / Dark)
-    var themeModeCombo = QComboBox.create()
-    themeModeCombo.owned = false
+    var themeModeCombo = newWidget(QComboBox.create())
     themeModeCombo.addItem("Light")
     themeModeCombo.addItem("Dark")
     themeModeCombo.setCurrentIndex(
       if current.appearance.themeMode == Dark: cint 1 else: cint 0)
 
     # Font family
-    var fontEdit = QLineEdit.create()
-    fontEdit.owned = false
+    var fontEdit = newWidget(QLineEdit.create())
     fontEdit.setText(current.appearance.font)
     fontEdit.setPlaceholderText("e.g. Fira Code, Monospace")
 
     # Font size
-    var fontSizeSpin = QSpinBox.create()
-    fontSizeSpin.owned = false
+    var fontSizeSpin = newWidget(QSpinBox.create())
     fontSizeSpin.setMinimum(MinFontSize)
     fontSizeSpin.setMaximum(MaxFontSize)
     fontSizeSpin.setValue(cint current.appearance.fontSize)
 
     # Line numbers toggle
-    var lineNumbersCheck = QCheckBox.create("Show line numbers")
-    lineNumbersCheck.owned = false
-    QAbstractButton(h: lineNumbersCheck.h, owned: false).setChecked(
-      current.appearance.lineNumbers)
+    var lineNumbersCheck = checkbox("Show line numbers", current.appearance.lineNumbers)
 
     # Opacity checkbox
-    var opacityCheck = QCheckBox.create("Enable opacity")
-    opacityCheck.owned = false
-    QAbstractButton(h: opacityCheck.h, owned: false).setChecked(
-      current.appearance.opacityEnabled)
+    var opacityCheck = checkbox("Enable opacity", current.appearance.opacityEnabled)
 
-    var restoreSessionCheck = QCheckBox.create("Automatically restore last session on launch")
-    restoreSessionCheck.owned = false
-    QAbstractButton(h: restoreSessionCheck.h, owned: false).setChecked(
-      current.restoreLastSessionOnLaunch)
+    var restoreSessionCheck = checkbox("Automatically restore last session on launch",
+                                       current.restoreLastSessionOnLaunch)
 
     # Opacity slider — Qt::Horizontal = 1
-    var opacitySlider = QSlider.create(cint 1)
-    opacitySlider.owned = false
-    QWidget(h: opacitySlider.h, owned: false).setMinimumHeight(cint 24)
+    var opacitySlider = newWidget(QSlider.create(cint 1))
+    opacitySlider.asWidget.setMinimumHeight(cint 24)
     QAbstractSlider(h: opacitySlider.h, owned: false).setMinimum(MinOpacity)
     QAbstractSlider(h: opacitySlider.h, owned: false).setMaximum(MaxOpacity)
     QAbstractSlider(h: opacitySlider.h, owned: false).setSingleStep(OpacityStep)
@@ -250,9 +235,8 @@ proc showSettingsDialog*(
       current.appearance.opacityEnabled)
 
     # Percentage label
-    var opacityLabel = QLabel.create($current.appearance.opacityLevel & "%")
-    opacityLabel.owned = false
-    QWidget(h: opacityLabel.h, owned: false).setMinimumWidth(OpacityLabelMinWidth)
+    var opacityLabel = newWidget(QLabel.create($current.appearance.opacityLevel & "%"))
+    opacityLabel.asWidget.setMinimumWidth(OpacityLabelMinWidth)
 
     # Wire checkbox → enable/disable slider + live preview
     let sliderH   = opacitySlider.h
@@ -276,39 +260,33 @@ proc showSettingsDialog*(
         previewCb(enabled, int v)
 
     # Slider row
-    var opacityRowLayout = QHBoxLayout.create()
-    opacityRowLayout.owned = false
-    opacityRowLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
-    opacityRowLayout.addWidget(QWidget(h: opacitySlider.h, owned: false), cint 1)
-    opacityRowLayout.addWidget(QWidget(h: opacityLabel.h,  owned: false), cint 0)
+    var opacityRowLayout = hbox()
+    opacityRowLayout.addWidget(opacitySlider.asWidget, cint 1)
+    opacityRowLayout.addWidget(opacityLabel.asWidget, cint 0)
 
     # Form layout
-    var form = QFormLayout.create()
-    form.owned = false
-    form.addRow("Theme mode",    QWidget(h: themeModeCombo.h,   owned: false))
-    form.addRow("Font family",   QWidget(h: fontEdit.h,         owned: false))
-    form.addRow("Font size",     QWidget(h: fontSizeSpin.h,     owned: false))
-    form.addRow("",              QWidget(h: lineNumbersCheck.h, owned: false))
-    form.addRow("",              QWidget(h: restoreSessionCheck.h, owned: false))
-    form.addRow("",              QWidget(h: opacityCheck.h,     owned: false))
-    form.addRow("Opacity level", QLayout(h: opacityRowLayout.h, owned: false))
+    var form = newWidget(QFormLayout.create())
+    form.addRow("Theme mode",    themeModeCombo.asWidget)
+    form.addRow("Font family",   fontEdit.asWidget)
+    form.addRow("Font size",     fontSizeSpin.asWidget)
+    form.addRow("",              lineNumbersCheck.asWidget)
+    form.addRow("",              restoreSessionCheck.asWidget)
+    form.addRow("",              opacityCheck.asWidget)
+    form.addRow("Opacity level", opacityRowLayout.asLayout())
 
     # Syntax theme picker
-    var syntaxLabel = QLabel.create("Syntax theme")
-    syntaxLabel.owned = false
+    var syntaxLabel = newWidget(QLabel.create("Syntax theme"))
 
     let picker = buildThemePickerWidget(
       QWidget(h: appearTabH, owned: false),
       current.appearance.syntaxTheme)
 
     # Appearance tab layout
-    var appearLayout = QVBoxLayout.create()
-    appearLayout.owned = false
-    appearLayout.addLayout(QLayout(h: form.h, owned: false))
-    appearLayout.addWidget(QWidget(h: syntaxLabel.h,     owned: false), cint 0)
-    appearLayout.addWidget(QWidget(h: picker.splitter.h, owned: false), cint 1)
-    QWidget(h: appearTabH, owned: false).setLayout(
-      QLayout(h: appearLayout.h, owned: false))
+    var appearLayout = vbox()
+    appearLayout.addLayout(form.asLayout())
+    appearLayout.addWidget(syntaxLabel.asWidget, cint 0)
+    appearLayout.addWidget(picker.splitter.asWidget, cint 1)
+    appearLayout.applyTo(QWidget(h: appearTabH, owned: false))
 
     discard QTabWidget(h: tabsH, owned: false).addTab(
       QWidget(h: appearTabH, owned: false), "Appearance")
@@ -316,16 +294,14 @@ proc showSettingsDialog*(
     # ════════════════════════════════════════════════════════════════════════
     # Tab 2 — Keybindings
     # ════════════════════════════════════════════════════════════════════════
-    var kbTab = QWidget.create(QWidget(h: tabsH, owned: false))
-    kbTab.owned = false
+    var kbTab = newWidget(QWidget.create(QWidget(h: tabsH, owned: false)))
     let kbTabH = kbTab.h
 
     # Build sorted list of all default bindings
     var allBindings = defaultBindingList()
     allBindings.sort(proc(a, b: BindingEntry): int = cmp(a.id, b.id))
 
-    var kbTable = QTableWidget.create(cint allBindings.len, cint 3)
-    kbTable.owned = false
+    var kbTable = newWidget(QTableWidget.create(cint allBindings.len, cint 3))
     let kbTableH = kbTable.h
 
     # Table configuration: no editing, select rows, no grid
@@ -341,7 +317,7 @@ proc showSettingsDialog*(
     hdr.setSectionResizeMode(cint 2, HR_Fixed)
     QHeaderView(h: hdr.h, owned: false).resizeSection(cint 2, KeybindSetColWidth)
     let vhdr = QTableView(h: kbTableH, owned: false).verticalHeader()
-    QWidget(h: vhdr.h, owned: false).setVisible(false)
+    vhdr.asWidget.setVisible(false)
 
     # Track user's custom binding changes (starts as a copy of saved customs)
     var customChanges = new(Table[string, string])
@@ -351,8 +327,7 @@ proc showSettingsDialog*(
       let row = cint i
 
       # Col 0: command id — read-only
-      var idItem = QTableWidgetItem.create(entry.id)
-      idItem.owned = false
+      var idItem = newWidget(QTableWidgetItem.create(entry.id))
       idItem.setFlags(IF_SelectableEnabled)
       QTableWidget(h: kbTableH, owned: false).setItem(row, cint 0, idItem)
 
@@ -364,45 +339,37 @@ proc showSettingsDialog*(
         bindStr = entry.chordPrefix & " " & keyComboToString(entry.combo)
       else:
         bindStr = keyComboToString(entry.combo)
-      var bindItem = QTableWidgetItem.create(bindStr)
-      bindItem.owned = false
+      var bindItem = newWidget(QTableWidgetItem.create(bindStr))
       bindItem.setFlags(IF_SelectableEnabled)
       QTableWidget(h: kbTableH, owned: false).setItem(row, cint 1, bindItem)
 
       # Col 2: "Set" button (all bindings)
-      var setBtn = QPushButton.create("Set")
-      setBtn.owned = false
+      var setBtn = newWidget(QPushButton.create("Set"))
       let setBtnH = setBtn.h
       let cmdId = entry.id
       let changesRef = customChanges
       QAbstractButton(h: setBtnH, owned: false).onClicked do() {.raises: [].}:
-        var capDlg = QDialog.create(QWidget(h: dialogH, owned: false))
-        capDlg.owned = false
+        var capDlg = newWidget(QDialog.create(QWidget(h: dialogH, owned: false)))
         let capDlgH = capDlg.h
         QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
         QWidget(h: capDlgH, owned: false).resize(KeyCaptureWidth, KeyCaptureHeight)
 
-        var capLabel = QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:")
-        capLabel.owned = false
+        var capLabel = newWidget(QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:"))
 
-        var keyEdit = QKeySequenceEdit.create()
-        keyEdit.owned = false
+        var keyEdit = newWidget(QKeySequenceEdit.create())
         let keyEditH = keyEdit.h
 
-        var capBtns = QDialogButtonBox.create2(Btn_OkCancel)
-        capBtns.owned = false
+        var capBtns = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
         capBtns.onAccepted do():
           QDialog(h: capDlgH, owned: false).accept()
         capBtns.onRejected do():
           QDialog(h: capDlgH, owned: false).reject()
 
-        var capLayout = QVBoxLayout.create()
-        capLayout.owned = false
-        capLayout.addWidget(QWidget(h: capLabel.h,  owned: false))
-        capLayout.addWidget(QWidget(h: keyEditH,    owned: false))
-        capLayout.addWidget(QWidget(h: capBtns.h,   owned: false))
-        QWidget(h: capDlgH, owned: false).setLayout(
-          QLayout(h: capLayout.h, owned: false))
+        var capLayout = vbox()
+        capLayout.add(capLabel)
+        capLayout.addWidget(QWidget(h: keyEditH, owned: false))
+        capLayout.add(capBtns)
+        capLayout.applyTo(QWidget(h: capDlgH, owned: false))
 
         if QDialog(h: capDlgH, owned: false).exec() == 1:
           let rawStr = QKeySequenceEdit(h: keyEditH, owned: false).keySequence().toString()
@@ -417,11 +384,9 @@ proc showSettingsDialog*(
         row, cint 2, QWidget(h: setBtnH, owned: false))
 
     # Keybindings tab layout
-    var kbLayout = QVBoxLayout.create()
-    kbLayout.owned = false
+    var kbLayout = vbox()
     kbLayout.addWidget(QWidget(h: kbTableH, owned: false), cint 1)
-    QWidget(h: kbTabH, owned: false).setLayout(
-      QLayout(h: kbLayout.h, owned: false))
+    kbLayout.applyTo(QWidget(h: kbTabH, owned: false))
 
     discard QTabWidget(h: tabsH, owned: false).addTab(
       QWidget(h: kbTabH, owned: false), "Keybindings")
@@ -429,27 +394,22 @@ proc showSettingsDialog*(
     # ════════════════════════════════════════════════════════════════════════
     # Tab 3 — Nim Environment
     # ════════════════════════════════════════════════════════════════════════
-    var nimTab = QWidget.create(QWidget(h: tabsH, owned: false))
-    nimTab.owned = false
+    var nimTab = newWidget(QWidget.create(QWidget(h: tabsH, owned: false)))
     let nimTabH = nimTab.h
 
-    var installWithNimbleRadio = QRadioButton.create("Install with Nimble")
-    installWithNimbleRadio.owned = false
-    var customPathRadio = QRadioButton.create("Custom Path")
-    customPathRadio.owned = false
+    var installWithNimbleRadio = newWidget(QRadioButton.create("Install with Nimble"))
+    var customPathRadio = newWidget(QRadioButton.create("Custom Path"))
 
     if current.nim.mode == InstallWithNimble:
-      QAbstractButton(h: installWithNimbleRadio.h, owned: false).setChecked(true)
+      installWithNimbleRadio.asButton.setChecked(true)
     else:
-      QAbstractButton(h: customPathRadio.h, owned: false).setChecked(true)
+      customPathRadio.asButton.setChecked(true)
 
-    var nimbleInstallPathEdit = QLineEdit.create()
-    nimbleInstallPathEdit.owned = false
+    var nimbleInstallPathEdit = newWidget(QLineEdit.create())
     nimbleInstallPathEdit.setText(current.nim.nimbleInstallPath)
     nimbleInstallPathEdit.setPlaceholderText(getHomeDir() / ".nimble" / "bin")
 
-    var nimbleVersionCombo = QComboBox.create()
-    nimbleVersionCombo.owned = false
+    var nimbleVersionCombo = newWidget(QComboBox.create())
     nimbleVersionCombo.setMinimumWidth(FieldMinWidth)
     var availableVersions = getNimVersions()
     for ver in availableVersions:
@@ -461,25 +421,20 @@ proc showSettingsDialog*(
         break
     nimbleVersionCombo.setCurrentIndex(cint defaultVersionIdx)
 
-    var customNimPathEdit = QLineEdit.create()
-    customNimPathEdit.owned = false
+    var customNimPathEdit = newWidget(QLineEdit.create())
     customNimPathEdit.setText(current.nim.customNimPath)
     customNimPathEdit.setPlaceholderText("e.g. /usr/bin/nim")
 
-    var customNimblePathEdit = QLineEdit.create()
-    customNimblePathEdit.owned = false
+    var customNimblePathEdit = newWidget(QLineEdit.create())
     customNimblePathEdit.setText(current.nim.customNimblePath)
     customNimblePathEdit.setPlaceholderText("e.g. /usr/bin/nimble")
 
-    var testButton = QPushButton.create("Test")
-    testButton.owned = false
+    var testButton = newWidget(QPushButton.create("Test"))
 
-    var installButton = QPushButton.create("Install Nim")
-    installButton.owned = false
+    var installButton = newWidget(QPushButton.create("Install Nim"))
 
-    var testResultLabel = QLabel.create("")
-    testResultLabel.owned = false
-    QWidget(h: testResultLabel.h, owned: false).setMinimumHeight(cint 60)
+    var testResultLabel = newWidget(QLabel.create(""))
+    testResultLabel.asWidget.setMinimumHeight(cint 60)
 
     let nimbleInstallPathEditH = nimbleInstallPathEdit.h
     let nimbleVersionComboH = nimbleVersionCombo.h
@@ -647,56 +602,45 @@ proc showSettingsDialog*(
       except:
         QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to install Nim</span>")
 
-    var nimForm = QFormLayout.create()
-    nimForm.owned = false
-    nimForm.addRow("", QWidget(h: installWithNimbleRadio.h, owned: false))
-    nimForm.addRow("Install path", QWidget(h: nimbleInstallPathEdit.h, owned: false))
-    nimForm.addRow("Nim version", QWidget(h: nimbleVersionCombo.h, owned: false))
-    nimForm.addRow("", QWidget(h: customPathRadio.h, owned: false))
-    nimForm.addRow("Nim path", QWidget(h: customNimPathEdit.h, owned: false))
-    nimForm.addRow("Nimble path", QWidget(h: customNimblePathEdit.h, owned: false))
+    var nimForm = newWidget(QFormLayout.create())
+    nimForm.addRow("", installWithNimbleRadio.asWidget)
+    nimForm.addRow("Install path", nimbleInstallPathEdit.asWidget)
+    nimForm.addRow("Nim version", nimbleVersionCombo.asWidget)
+    nimForm.addRow("", customPathRadio.asWidget)
+    nimForm.addRow("Nim path", customNimPathEdit.asWidget)
+    nimForm.addRow("Nimble path", customNimblePathEdit.asWidget)
 
-    var nimButtonLayout = QHBoxLayout.create()
-    nimButtonLayout.owned = false
-    nimButtonLayout.addWidget(QWidget(h: testButton.h, owned: false))
-    nimButtonLayout.addWidget(QWidget(h: installButton.h, owned: false))
+    var nimButtonLayout = hbox()
+    nimButtonLayout.add(testButton)
+    nimButtonLayout.add(installButton)
     nimButtonLayout.addStretch(cint 1)
 
-    var nimLayout = QVBoxLayout.create()
-    nimLayout.owned = false
-    nimLayout.addLayout(QLayout(h: nimForm.h, owned: false))
-    nimLayout.addLayout(QLayout(h: nimButtonLayout.h, owned: false))
-    nimLayout.addWidget(QWidget(h: testResultLabel.h, owned: false), cint 1)
-    QWidget(h: nimTabH, owned: false).setLayout(
-      QLayout(h: nimLayout.h, owned: false))
+    var nimLayout = vbox()
+    nimLayout.addLayout(nimForm.asLayout())
+    nimLayout.addLayout(nimButtonLayout.asLayout())
+    nimLayout.addWidget(testResultLabel.asWidget, cint 1)
+    nimLayout.applyTo(QWidget(h: nimTabH, owned: false))
 
     discard QTabWidget(h: tabsH, owned: false).addTab(
       QWidget(h: nimTabH, owned: false), "Nim Environment")
 
     # ── Buttons ─────────────────────────────────────────────────────────────
-    var buttons = QDialogButtonBox.create2(Btn_OkCancel)
-    buttons.owned = false
+    var buttons = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
     buttons.onAccepted do():
       QDialog(h: dialogH, owned: false).accept()
     buttons.onRejected do():
       QDialog(h: dialogH, owned: false).reject()
 
     # ── Content layout: tabs + buttons ──────────────────────────────────────
-    var mainLayout = QVBoxLayout.create()
-    mainLayout.owned = false
-    mainLayout.addWidget(QWidget(h: tabsH,    owned: false), cint 1)
-    mainLayout.addWidget(QWidget(h: buttons.h, owned: false), cint 0)
-
-    QWidget(h: contentH, owned: false).setLayout(
-      QLayout(h: mainLayout.h, owned: false))
+    var mainLayout = vbox()
+    mainLayout.addWidget(QWidget(h: tabsH, owned: false), cint 1)
+    mainLayout.add(buttons)
+    mainLayout.applyTo(QWidget(h: contentH, owned: false))
 
     # Wrap contentWidget in a dialog-level VBox so it fills the dialog
-    var dialogLayout = QVBoxLayout.create()
-    dialogLayout.owned = false
-    dialogLayout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+    var dialogLayout = vbox()
     dialogLayout.addWidget(QWidget(h: contentH, owned: false))
-    QWidget(h: dialogH, owned: false).setLayout(
-      QLayout(h: dialogLayout.h, owned: false))
+    dialogLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     if QDialog(h: dialogH, owned: false).exec() == 1:  # Accepted
       var updated = current
@@ -704,19 +648,16 @@ proc showSettingsDialog*(
         if themeModeCombo.currentIndex() == 1: Dark else: Light
       updated.appearance.font       = fontEdit.text()
       updated.appearance.fontSize   = int fontSizeSpin.value()
-      updated.appearance.lineNumbers =
-        QAbstractButton(h: lineNumbersCheck.h, owned: false).isChecked()
-      updated.restoreLastSessionOnLaunch =
-        QAbstractButton(h: restoreSessionCheck.h, owned: false).isChecked()
-      updated.appearance.opacityEnabled =
-        QAbstractButton(h: opacityCheck.h, owned: false).isChecked()
+      updated.appearance.lineNumbers = lineNumbersCheck.asButton.isChecked()
+      updated.restoreLastSessionOnLaunch = restoreSessionCheck.asButton.isChecked()
+      updated.appearance.opacityEnabled = opacityCheck.asButton.isChecked()
       updated.appearance.opacityLevel =
         int QAbstractSlider(h: opacitySlider.h, owned: false).value()
       let chosen = picker.currentThemeSelection()
       if chosen.len > 0:
         updated.appearance.syntaxTheme = chosen
       updated.keybindings = customChanges[].toOverrides()
-      if QAbstractButton(h: installWithNimbleRadio.h, owned: false).isChecked():
+      if installWithNimbleRadio.asButton.isChecked():
         updated.nim.mode = InstallWithNimble
       else:
         updated.nim.mode = CustomPath

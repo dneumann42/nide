@@ -29,36 +29,31 @@ proc showRipgrepFinder*(parent: QWidget,
   try:
     let cwd = try: getCurrentDir() except OSError: "."
 
-    var dialog = QDialog.create(parent)
-    dialog.owned = false
+    var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
     QWidget(h: dialogH, owned: false).setWindowTitle("Find in Files")
     QWidget(h: dialogH, owned: false).resize(RgFinderWidth, RgFinderHeight)
 
-    var searchBox = QLineEdit.create()
-    searchBox.owned = false
+    var searchBox = newWidget(QLineEdit.create())
 
-    var listWidget = QListWidget.create()
-    listWidget.owned = false
+    var listWidget = newWidget(QListWidget.create())
     let listH = listWidget.h
 
     let leftLayout = vbox()
     leftLayout.add(searchBox)
     leftLayout.add(listWidget)
 
-    var leftPanel = QWidget.create()
-    leftPanel.owned = false
+    var leftPanel = newWidget(QWidget.create())
     leftLayout.applyTo(leftPanel)
 
-    let (preview, previewGutterH) = setupCodePreview(QWidget(h: leftPanel.h, owned: false))
+    let (preview, previewGutterH) = setupCodePreview(leftPanel)
     let previewHl = NimHighlighter()
     previewHl.attach(preview.document())
     let previewH = preview.h
 
-    var splitter = QSplitter.create(Horizontal)
-    splitter.owned = false
-    splitter.addWidget(QWidget(h: leftPanel.h, owned: false))
-    splitter.addWidget(QWidget(h: preview.h, owned: false))
+    var splitter = newWidget(QSplitter.create(Horizontal))
+    splitter.addWidget(leftPanel)
+    splitter.addWidget(preview.asWidget)
     splitter.setStretchFactor(cint 0, cint 1)
     splitter.setStretchFactor(cint 1, cint 2)
 
@@ -69,8 +64,7 @@ proc showRipgrepFinder*(parent: QWidget,
     var currentMatches: seq[RgMatch]
     var pendingQuery = ""
 
-    var timer = QTimer.create(QObject(h: dialogH, owned: false))
-    timer.owned = false
+    var timer = newWidget(QTimer.create(QObject(h: dialogH, owned: false)))
     let timerH = timer.h
     QTimer(h: timerH, owned: false).setSingleShot(true)
     QTimer(h: timerH, owned: false).setInterval(SearchDebounceMs)
@@ -152,18 +146,16 @@ proc showRipgrepFinder*(parent: QWidget,
       QTimer(h: timerH, owned: false).start()
 
     # Ctrl+N — next result
-    var nextSc = QShortcut.create(QKeySequence.create("Ctrl+N"),
-                                  QObject(h: dialogH, owned: false))
-    nextSc.owned = false
+    var nextSc = newWidget(QShortcut.create(QKeySequence.create("Ctrl+N"),
+                                            QObject(h: dialogH, owned: false)))
     nextSc.setContext(SC_WindowShortcut)
     nextSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
       lw.setCurrentRow(min(lw.currentRow() + cint 1, lw.count() - cint 1))
 
     # Ctrl+P — previous result
-    var prevSc = QShortcut.create(QKeySequence.create("Ctrl+P"),
-                                  QObject(h: dialogH, owned: false))
-    prevSc.owned = false
+    var prevSc = newWidget(QShortcut.create(QKeySequence.create("Ctrl+P"),
+                                            QObject(h: dialogH, owned: false)))
     prevSc.setContext(SC_WindowShortcut)
     prevSc.onActivated do() {.raises: [].}:
       let lw = QListWidget(h: listH, owned: false)
@@ -177,9 +169,8 @@ proc showRipgrepFinder*(parent: QWidget,
         onSelected(absPath, m.lineNum)
 
     # Enter — activate selection
-    var enterSc = QShortcut.create(QKeySequence.create("Return"),
-                                   QObject(h: dialogH, owned: false))
-    enterSc.owned = false
+    var enterSc = newWidget(QShortcut.create(QKeySequence.create("Return"),
+                                             QObject(h: dialogH, owned: false)))
     enterSc.setContext(SC_WindowShortcut)
     enterSc.onActivated do() {.raises: [].}:
       doSelect(QListWidget(h: listH, owned: false).currentRow())

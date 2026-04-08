@@ -1,6 +1,7 @@
 import seaqt/[qwidget, qvboxlayout, qlabel, qdialog, qpainter, qrect, qcursor]
 import nide/nim/nimsuggest
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const
   ProtoMinWidth = cint 450
@@ -46,8 +47,7 @@ proc showPrototype*(parent: QWidget,
     )
     outWindow[] = w
 
-    var dialog = QDialog.create(parent)
-    dialog.owned = false
+    var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
     w.dialogH = dialogH
 
@@ -55,8 +55,7 @@ proc showPrototype*(parent: QWidget,
     dialog.setWindowFlags(WF_Tool or WF_CustomizeWindowHint)
     dialog.setWindowFlags(cint(dialog.windowFlags()) and not WF_WindowTitleHint)
 
-    var label = QLabel.create()
-    label.owned = false
+    var label = newWidget(QLabel.create())
     let labelH = label.h
     w.labelH = labelH
 
@@ -77,11 +76,9 @@ proc showPrototype*(parent: QWidget,
     label.setMinimumWidth(ProtoMinWidth)
     label.setTextFormat(TF_RichText)
 
-    var layout = QVBoxLayout.create()
-    layout.owned = false
-    layout.setContentsMargins(cint 0, cint 0, cint 0, cint 0)
+    var layout = vbox()
     layout.addWidget(QWidget(h: labelH, owned: false))
-    dialog.setLayout(QLayout(h: layout.h, owned: false))
+    layout.applyTo(dialog.asWidget)
 
     dialog.setGeometry(150, 150, 550, 120)
     dialog.show()

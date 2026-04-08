@@ -189,8 +189,7 @@ proc build*(self: Toolbar) =
   self.diagErrBtn = newWidget(QToolButton.create())
   diagLayout.add(self.diagErrBtn)
 
-  self.diagAction = self.toolbar.addWidget(self.diagWidget)
-  self.diagAction.owned = false
+  self.diagAction = newWidget(self.toolbar.addWidget(self.diagWidget))
   self.diagAction.setVisible(false)
 
   self.runBtn = makeIconButton(RunSvg, ToolbarIconSize)

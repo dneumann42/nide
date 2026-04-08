@@ -2,6 +2,7 @@ import std/os
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout,
               qdialogbuttonbox, qpushbutton, qfiledialog]
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const
   PathEditMinWidth = 150
@@ -9,48 +10,42 @@ const
 proc showNewModuleDialog*(parent: QWidget): string =
   var dialog = QDialog.create(parent)
 
-  var nameEdit = QLineEdit.create(); nameEdit.owned = false
+  var nameEdit = newWidget(QLineEdit.create())
   nameEdit.setPlaceholderText("module_name")
 
-  var
-    pathEditRow = QWidget.create()
-    pathEditRowLayout = QHBoxLayout.create()
+  var pathEditRow = newWidget(QWidget.create())
+  var pathEditRowLayout = hbox()
+  pathEditRowLayout.applyTo(pathEditRow)
 
-  pathEditRow.setLayout(QLayout(h: pathEditRowLayout.h, owned: false))
-  pathEditRowLayout.owned = false
-  pathEditRow.owned = false
-
-  var pathEdit = QLineEdit.create(); pathEdit.owned = false
+  var pathEdit = newWidget(QLineEdit.create())
   pathEdit.setMinimumWidth(PathEditMinWidth)
   let defaultPath = try: getCurrentDir() / "src" except OSError: "src"
   pathEdit.setText(defaultPath)
-  pathEditRowLayout.addWidget(QWidget(h: pathEdit.h, owned: false))
-  QLayout(h: pathEditRowLayout.h, owned: false).setContentsMargins(0, 0, 0, 0)
+  pathEditRowLayout.add(pathEdit)
 
-  var browseBtn = QPushButton.create("Browse"); browseBtn.owned = false
-  pathEditRowLayout.addWidget(QWidget(h: browseBtn.h, owned: false))
-  let dialogRef = QWidget(h: dialog.h, owned: false)
+  var browseBtn = newWidget(QPushButton.create("Browse"))
+  pathEditRowLayout.add(browseBtn)
+  let dialogRef = dialog.asWidget
   browseBtn.onClicked do():
     let dir = QFileDialog.getExistingDirectory(dialogRef)
     if dir.len > 0:
       pathEdit.setText(dir)
 
-  var form = QFormLayout.create(); form.owned = false
-  form.addRow("Name", QWidget(h: nameEdit.h, owned: false))
-  form.addRow("Path", QWidget(h: pathEditRow.h, owned: false))
+  var form = newWidget(QFormLayout.create())
+  form.addRow("Name", nameEdit.asWidget)
+  form.addRow("Path", pathEditRow.asWidget)
 
   # Ok=1024, Cancel=4194304 (QDialogButtonBox::StandardButton)
-  var buttons = QDialogButtonBox.create2(Btn_OkCancel)
-  buttons.owned = false
+  var buttons = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
   buttons.onAccepted do(): dialog.accept()
   buttons.onRejected do(): dialog.reject()
 
-  var mainLayout = QVBoxLayout.create(); mainLayout.owned = false
-  mainLayout.addLayout(QLayout(h: form.h, owned: false))
-  mainLayout.addWidget(QWidget(h: buttons.h, owned: false))
+  var mainLayout = vbox()
+  mainLayout.addLayout(form.asLayout())
+  mainLayout.add(buttons)
 
-  QWidget(h: dialog.h, owned: false).setWindowTitle("New Module")
-  QWidget(h: dialog.h, owned: false).setLayout(QLayout(h: mainLayout.h, owned: false))
+  dialog.asWidget.setWindowTitle("New Module")
+  mainLayout.applyTo(dialog.asWidget)
 
   if dialog.exec() == 1:
     let name = nameEdit.text()

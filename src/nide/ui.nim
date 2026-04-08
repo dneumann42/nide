@@ -6,6 +6,7 @@ import seaqt/[
   qmenu, qtoolbutton, qaction, qkeysequence, qfiledialog,
   qfont, qfontdatabase, qtabwidget]
 import seaqt/QtWidgets/gen_qlayout_types
+import nide/ui/widgets
 
 type
   FileMenuAction* = enum
@@ -66,9 +67,8 @@ proc buildMenu*[A: enum](
   actions: varargs[MenuAction[A]],
 ): QToolButton =
   result = QToolButton.create()
-  var widget = QMenu.create(QWidget(h: result.h, owned: false))
-  widget.owned = false
-  let menuWidget = QWidget(h: widget.h, owned: false)
+  var widget = newWidget(QMenu.create(result.asWidget))
+  let menuWidget = widget.asWidget
   for a in actions:
     if a.action == Separator:
       discard widget.addSeparator()

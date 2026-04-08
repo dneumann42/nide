@@ -2,6 +2,7 @@ import std/[os, strutils]
 import seaqt/[qprocess, qobject]
 import nide/helpers/logparser
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 proc runNimCheck*(
     parentH:  pointer,
@@ -13,8 +14,7 @@ proc runNimCheck*(
     let nimExe = findExe("nim")
     if nimExe.len == 0: return
 
-    var process = QProcess.create(QObject(h: parentH, owned: false))
-    process.owned = false
+    var process = newWidget(QProcess.create(QObject(h: parentH, owned: false)))
     let processH = process.h
     cancelH[] = processH
 

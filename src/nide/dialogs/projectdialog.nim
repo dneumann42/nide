@@ -2,6 +2,7 @@ import std/[json, os, osproc, algorithm]
 import seaqt/[qwidget, qdialog, qlineedit, qformlayout, qvboxlayout, qhboxlayout, qdialogbuttonbox, qpushbutton, qfiledialog, qcombobox, qlabel, qframe]
 import nide/project/projects
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const
   DialogMinWidth = cint 520
@@ -36,10 +37,10 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   QWidget(h: dialogH, owned: false).setMinimumWidth(DialogMinWidth)
   QWidget(h: dialogH, owned: false).setMinimumHeight(DialogMinHeight)
 
-  var nameEdit    = QLineEdit.create(); nameEdit.owned    = false
-  var versionEdit = QLineEdit.create(); versionEdit.owned = false
-  var authorEdit  = QLineEdit.create(); authorEdit.owned  = false
-  var descEdit    = QLineEdit.create(); descEdit.owned    = false
+  var nameEdit    = newWidget(QLineEdit.create())
+  var versionEdit = newWidget(QLineEdit.create())
+  var authorEdit  = newWidget(QLineEdit.create())
+  var descEdit    = newWidget(QLineEdit.create())
 
   nameEdit.setMinimumWidth(FieldMinWidth)
   versionEdit.setMinimumWidth(FieldMinWidth)
@@ -51,7 +52,7 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   authorEdit.setPlaceholderText("Your Name")
   descEdit.setPlaceholderText("A short description of your project")
 
-  var licenseCombo = QComboBox.create(); licenseCombo.owned = false
+  var licenseCombo = newWidget(QComboBox.create())
   licenseCombo.setMinimumWidth(FieldMinWidth)
   licenseCombo.addItem("MIT")
   licenseCombo.addItem("Apache-2.0")
@@ -63,28 +64,23 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
   licenseCombo.setCurrentIndex(cint 0)
 
   var nimVersions = getNimVersions()
-  var nimVersionCombo = QComboBox.create(); nimVersionCombo.owned = false
+  var nimVersionCombo = newWidget(QComboBox.create())
   nimVersionCombo.setMinimumWidth(FieldMinWidth)
   for ver in nimVersions:
     nimVersionCombo.addItem(ver)
   nimVersionCombo.setCurrentIndex(cint 0)
 
-  var
-    pathEditRow = QWidget.create()
-    pathEditRowLayout = QHBoxLayout.create()
+  var pathEditRow = newWidget(QWidget.create())
+  var pathEditRowLayout = hbox()
+  pathEditRowLayout.applyTo(pathEditRow)
 
-  pathEditRow.setLayout(QLayout(h: pathEditRowLayout.h, owned: false))
-  pathEditRowLayout.owned = false
-  pathEditRow.owned = false
-
-  var pathEdit = QLineEdit.create(); pathEdit.owned = false
+  var pathEdit = newWidget(QLineEdit.create())
   pathEdit.setMinimumWidth(PathMinWidth)
-  pathEditRowLayout.addWidget(QWidget(h: pathEdit.h, owned: false))
-  QLayout(h: pathEditRowLayout.h, owned: false).setContentsMargins(0, 0, 0, 0)
+  pathEditRowLayout.add(pathEdit)
 
-  var pathEditButton = QPushButton.create("Browse"); pathEditButton.owned = false
-  pathEditRowLayout.addWidget(QWidget(h: pathEditButton.h, owned: false))
-  let dialogRef = QWidget(h: dialog.h, owned: false)
+  var pathEditButton = newWidget(QPushButton.create("Browse"))
+  pathEditRowLayout.add(pathEditButton)
+  let dialogRef = dialog.asWidget
   pathEditButton.onClicked do():
     let dir = QFileDialog.getExistingDirectory(dialogRef)
     if dir.len > 0:
@@ -92,40 +88,35 @@ proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =
 
   pathEdit.setPlaceholderText("/path/to/projects")
 
-  var separator = QFrame.create()
-  separator.owned = false
+  var separator = newWidget(QFrame.create())
   separator.setFrameShape(QF_Box)
   separator.setFrameShadow(QF_Plain)
   separator.setStyleSheet("QFrame { background: #e0e0e0; min-height: 2px; max-height: 2px; }")
 
-  var form = QFormLayout.create(); form.owned = false
+  var form = newWidget(QFormLayout.create())
   form.setSpacing(FormSpacing)
-  form.addRow("Name",        QWidget(h: nameEdit.h,    owned: false))
-  form.addRow("Version",     QWidget(h: versionEdit.h, owned: false))
-  form.addRow("Author",      QWidget(h: authorEdit.h,  owned: false))
-  form.addRow("Description", QWidget(h: descEdit.h,    owned: false))
-  form.addRow("Nim Version", QWidget(h: nimVersionCombo.h, owned: false))
-  form.addRow("License",     QWidget(h: licenseCombo.h, owned: false))
-  form.addRow("Location",    QWidget(h: pathEditRow.h,    owned: false))
+  form.addRow("Name",        nameEdit.asWidget)
+  form.addRow("Version",     versionEdit.asWidget)
+  form.addRow("Author",      authorEdit.asWidget)
+  form.addRow("Description", descEdit.asWidget)
+  form.addRow("Nim Version", nimVersionCombo.asWidget)
+  form.addRow("License",     licenseCombo.asWidget)
+  form.addRow("Location",    pathEditRow.asWidget)
 
-  var label = QLabel.create("Create a new Nim project")
-  label.owned = false
-  QWidget(h: label.h, owned: false).setStyleSheet("QLabel { font-weight: bold; font-size: 14px; padding-bottom: 8px; }")
+  var label = newWidget(QLabel.create("Create a new Nim project"))
+  label.asWidget.setStyleSheet("QLabel { font-weight: bold; font-size: 14px; padding-bottom: 8px; }")
 
-  var buttons = QDialogButtonBox.create2(Btn_OkCancel)
-  buttons.owned = false
+  var buttons = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
   buttons.onAccepted do(): dialog.accept()
   buttons.onRejected do(): dialog.reject()
 
-  var mainLayout = QVBoxLayout.create(); mainLayout.owned = false
-  mainLayout.setSpacing(cint 8)
-  mainLayout.addWidget(QWidget(h: label.h, owned: false))
-  mainLayout.addWidget(QWidget(h: separator.h, owned: false))
-  mainLayout.addLayout(QLayout(h: form.h, owned: false))
+  var mainLayout = vbox(spacing = cint 8)
+  mainLayout.add(label)
+  mainLayout.add(separator)
+  mainLayout.addLayout(form.asLayout())
   mainLayout.addStretch(1)
-  mainLayout.addWidget(QWidget(h: buttons.h, owned: false))
-
-  QWidget(h: dialogH, owned: false).setLayout(QLayout(h: mainLayout.h, owned: false))
+  mainLayout.add(buttons)
+  mainLayout.applyTo(QWidget(h: dialogH, owned: false))
 
   if dialog.exec() == 1:
     pm.createProject(Project(

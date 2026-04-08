@@ -1,4 +1,4 @@
-import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref
+import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
 import nide/helpers/qtconst
@@ -57,7 +57,7 @@ const
   FileReadRetries = 3
 
 proc appWidget(self: Application): QWidget =
-  QWidget(h: self.root.h, owned: false)
+  self.root.asWidget
 
 proc pathExistsAny(path: string): bool =
   fileExists(path) or dirExists(path)
@@ -100,8 +100,7 @@ proc promptFileTreeText(
     title, labelText: string,
     defaultValue = "",
     okText = "OK"): string {.raises: [].} =
-  var dialog = QInputDialog.create(self.appWidget())
-  dialog.owned = false
+  var dialog = newWidget(QInputDialog.create(self.appWidget()))
   dialog.setWindowTitle(title)
   dialog.setInputMode(ID_TextInput)
   dialog.setLabelText(labelText)
@@ -466,17 +465,15 @@ proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col:
   pane.scrollToLine(line, col)
 
 proc createStatusButton*(self: Application, text: string, parentH: pointer): WidgetRef[QToolButton] =
-  var btn = QToolButton.create()
-  btn.owned = false
-  QAbstractButton(h: btn.h, owned: false).setText(text)
-  QWidget(h: btn.h, owned: false).setParent(QWidget(h: parentH, owned: false))
-  QWidget(h: btn.h, owned: false).hide()
+  var btn = newWidget(QToolButton.create())
+  btn.asButton.setText(text)
+  btn.asWidget.setParent(QWidget(h: parentH, owned: false))
+  btn.asWidget.hide()
   capture(btn)
 
 proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(target: Pane): void {.raises: [].}) =
-  var sc = QShortcut.create(QKeySequence.create(sequence),
-                            QObject(h: self.root.h, owned: false))
-  sc.owned = false
+  var sc = newWidget(QShortcut.create(QKeySequence.create(sequence),
+                                      QObject(h: self.root.h, owned: false)))
   sc.setContext(SC_WindowShortcut)
   sc.onActivated do() {.raises: [].}:
     let target = self.getTargetPane()
@@ -484,9 +481,8 @@ proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(t
       callback(target)
 
 proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc(): void {.raises: [].}) =
-  var sc = QShortcut.create(QKeySequence.create(sequence),
-                            QObject(h: self.root.h, owned: false))
-  sc.owned = false
+  var sc = newWidget(QShortcut.create(QKeySequence.create(sequence),
+                                      QObject(h: self.root.h, owned: false)))
   sc.setContext(SC_WindowShortcut)
   sc.onActivated do() {.raises: [].}:
     let target = self.getTargetPane()
@@ -559,7 +555,7 @@ proc openProject(self: Application, path: string, restoreMode = false) {.raises:
 
 proc openProject(self: Application) {.raises: [].} =
   let file = QFileDialog.getOpenFileName(
-    QWidget(h: self.root.h, owned: false), "", "", "Nimble files (*.nimble)")
+    self.appWidget(), "", "", "Nimble files (*.nimble)")
   if file.len == 0: return
   self.openProject(file)
 
@@ -667,15 +663,14 @@ proc closeBuffer*(self: Application, name: string) =
 proc build*(self: Application) =
   self.root = QMainWindow.create()
   # WA_TranslucentBackground is set by setupWindowOpacity below
-  QWidget(h: self.root.h, owned: false).setMinimumSize(MinWindowWidth, MinWindowHeight)
+  self.root.asWidget.setMinimumSize(MinWindowWidth, MinWindowHeight)
   self.toolbar.build()
   self.toolbar.setCloseProjectVisible(false)
 
   self.root.addToolBar(QToolBar(h: self.toolbar.widget().h, owned: false))
 
   # Loader timer to update spinner based on nimsuggest state
-  self.loaderTimer = QTimer.create()
-  self.loaderTimer.owned = false
+  self.loaderTimer = newWidget(QTimer.create())
   self.loaderTimer.setInterval(LoaderIntervalMs)
   let appRef = self
   self.loaderTimer.onTimeout do() {.raises: [].}:
@@ -686,8 +681,7 @@ proc build*(self: Application) =
     appRef.toolbar.setLoading(isLoading)
   self.loaderTimer.start()
 
-  self.sessionSaveTimer = QTimer.create()
-  self.sessionSaveTimer.owned = false
+  self.sessionSaveTimer = newWidget(QTimer.create())
   self.sessionSaveTimer.setInterval(SessionSaveDebounceMs)
   self.sessionSaveTimer.setSingleShot(true)
   self.sessionSaveTimer.onTimeout do() {.raises: [].}:
@@ -703,12 +697,11 @@ proc build*(self: Application) =
     if fileTreeCell[] != nil and fileTreeCell[].isVisible():
       {.cast(gcsafe).}: fileTreeCell[].reposition()
 
-  var splitter = QSplitter.create(Horizontal, vtbl = splitterVtbl)
+  var splitter = newWidget(QSplitter.create(Horizontal, vtbl = splitterVtbl))
   splitter.setHandleWidth(SplitterHandleWidth)
-  QWidget(h: splitter.h, owned: false).setAutoFillBackground(true)
-  QWidget(h: splitter.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
-  self.root.setCentralWidget(QWidget(h: splitter.h, owned: false))
-  splitter.owned = false
+  splitter.asWidget.setAutoFillBackground(true)
+  splitter.asWidget.setStyleSheet("QSplitter::handle { background: #333333; }")
+  self.root.setCentralWidget(splitter.asWidget)
 
   # File tree panel — child of main window, positioned manually over content
   self.fileTree = newFileTree(self.root)
@@ -723,8 +716,8 @@ proc build*(self: Application) =
   self.settings = Settings.load()
 
   self.opacityEffect = setupWindowOpacity(
-    QWidget(h: self.root.h, owned: false),
-    QWidget(h: splitter.h, owned: false),
+    self.appWidget(),
+    splitter.asWidget,
     self.settings.appearance.opacityEnabled,
     self.settings.appearance.opacityLevel)
 
@@ -735,16 +728,16 @@ proc build*(self: Application) =
     onFileSelected: proc(pane: Pane, path: string) {.raises: [].} =
       self.openInPane(pane, path),
     onNewModule: proc(pane: Pane) {.raises: [].} =
-      let path = showNewModuleDialog(QWidget(h: self.root.h, owned: false))
+      let path = showNewModuleDialog(self.appWidget())
       if path.len > 0:
         self.openInPane(pane, path),
     onOpenModule: proc(pane: Pane) {.raises: [].} =
-      showFileFinder(QWidget(h: self.root.h, owned: false),
+      showFileFinder(self.appWidget(),
         self.projectManager.recentFilesFor(self.currentProject),
         proc(path: string) {.raises: [].} =
           self.openInPane(pane, path)),
     onNewProject: proc(pane: Pane) {.raises: [].} =
-      showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager),
+      showNewProjectDialog(self.appWidget(), self.projectManager),
     onOpenProject: proc(pane: Pane) {.raises: [].} =
       self.openProject(),
     onOpenRecentProject: proc(pane: Pane, path: string) {.raises: [].} =
@@ -758,7 +751,7 @@ proc build*(self: Application) =
       pane.pushJumpLocation(pane.jumpHistory)
       self.navigateToLocation(pane, path, line, col),
     onFindFile: proc(pane: Pane) {.raises: [].} =
-      showFileFinder(QWidget(h: self.root.h, owned: false),
+      showFileFinder(self.appWidget(),
         self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
         self.openInPane(pane, path),
     onSwitchBuffer: proc(pane: Pane) {.raises: [].} =
@@ -771,7 +764,7 @@ proc build*(self: Application) =
           except: discard
         entries.add((display, buf.name))
       if entries.len == 0: return
-      showBufferFinder(QWidget(h: self.root.h, owned: false), entries) do(key: string) {.raises: [].}:
+      showBufferFinder(self.appWidget(), entries) do(key: string) {.raises: [].}:
         for buf in self.bufferManager:
           if buf.name == key:
             pane.setBuffer(buf)
@@ -941,7 +934,7 @@ proc build*(self: Application) =
     disp.register("editor.findFile", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
-      showFileFinder(QWidget(h: self.root.h, owned: false),
+      showFileFinder(self.appWidget(),
         self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
         self.openInPane(p, path))
 
@@ -957,7 +950,7 @@ proc build*(self: Application) =
           except: discard
         entries.add((display, buf.name))
       if entries.len == 0: return
-      showBufferFinder(QWidget(h: self.root.h, owned: false), entries) do(key: string) {.raises: [].}:
+      showBufferFinder(self.appWidget(), entries) do(key: string) {.raises: [].}:
         for buf in self.bufferManager:
           if buf.name == key:
             p.setBuffer(buf)
@@ -978,7 +971,7 @@ proc build*(self: Application) =
     disp.register("editor.ripgrepFind", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
-      showRipgrepFinder(QWidget(h: self.root.h, owned: false)) do(file: string, lineNum: int) {.raises: [].}:
+      showRipgrepFinder(self.appWidget()) do(file: string, lineNum: int) {.raises: [].}:
         self.openInPane(p, file)
         p.scrollToLine(lineNum))
 
@@ -1059,16 +1052,16 @@ proc build*(self: Application) =
   self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
   self.buildStatusBtn = self.createStatusButton("nimble build", self.root.h)
 
-  let runStatusBtn = QToolButton(h: self.runStatusBtn.h, owned: false)
+  let runStatusBtn = self.runStatusBtn.get()
   runStatusBtn.onClicked do() {.raises: [].}:
-    QWidget(h: self.runStatusBtn.h, owned: false).hide()
+    self.runStatusBtn.get().asWidget.hide()
     if self.runReopen != nil:
       self.runReopen()
       self.runReopen = nil
 
-  let buildStatusBtn = QToolButton(h: self.buildStatusBtn.h, owned: false)
+  let buildStatusBtn = self.buildStatusBtn.get()
   buildStatusBtn.onClicked do() {.raises: [].}:
-    QWidget(h: self.buildStatusBtn.h, owned: false).hide()
+    self.buildStatusBtn.get().asWidget.hide()
     if self.buildReopen != nil:
       self.buildReopen()
       self.buildReopen = nil
@@ -1076,8 +1069,8 @@ proc build*(self: Application) =
   self.toolbar.onRun do():
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
       self.runReopen = reopen
-      let rw = QWidget(h: self.root.h, owned: false)
-      let btn = QWidget(h: self.runStatusBtn.h, owned: false)
+      let rw = self.appWidget()
+      let btn = self.runStatusBtn.get().asWidget
       btn.move(rw.width() - RunStatusOffsetX, rw.height() - RunStatusOffsetY)
       btn.show()
       btn.raiseX()
@@ -1090,13 +1083,13 @@ proc build*(self: Application) =
       except: discard
     let nimPath = getNimPath(self.settings)
     let nimblePath = getNimblePath(self.settings)
-    runCommand(QWidget(h: self.root.h, owned: false), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
+    runCommand(self.appWidget(), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
 
   self.toolbar.onBuild do():
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
       self.buildReopen = reopen
-      let rw = QWidget(h: self.root.h, owned: false)
-      let btn = QWidget(h: self.buildStatusBtn.h, owned: false)
+      let rw = self.appWidget()
+      let btn = self.buildStatusBtn.get().asWidget
       btn.move(rw.width() - RunStatusOffsetX, rw.height() - BuildStatusOffsetY)
       btn.show()
       btn.raiseX()
@@ -1108,7 +1101,7 @@ proc build*(self: Application) =
         target.jumpToLine(line, col)
       except: discard
     let nimPath = getNimPath(self.settings)
-    runCommand(QWidget(h: self.root.h, owned: false), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim", onBg, gotoBuild)
+    runCommand(self.appWidget(), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim", onBg, gotoBuild)
 
   self.toolbar.onGraph do():
     try:
@@ -1126,7 +1119,7 @@ proc build*(self: Application) =
       let modules = nim_graph.scanModules(config.srcDir, config.skipPatterns)
       let projectName = nim_graph.getProjectName(config.srcDir)
       let dot = nim_graph.generateDot(modules, projectName, config)
-      showGraphDialog(QWidget(h: self.root.h, owned: false), dot)
+      showGraphDialog(self.appWidget(), dot)
     except:
       echo "=== graph error: ", getCurrentExceptionMsg()
 
@@ -1135,7 +1128,7 @@ proc build*(self: Application) =
       self.fileTree.toggle()
 
   self.toolbar.onTriggered(NewProject) do():
-    showNewProjectDialog(QWidget(h: self.root.h, owned: false), self.projectManager)
+    showNewProjectDialog(self.appWidget(), self.projectManager)
 
   self.toolbar.onTriggered(NewModule) do():
     if self.paneManager.panels.len > 0:
@@ -1147,7 +1140,7 @@ proc build*(self: Application) =
 
   self.toolbar.onTriggered(OpenFile) do():
     let file = QFileDialog.getOpenFileName(
-        QWidget(h: self.root.h, owned: false), "", "", "All files (*.*)")
+        self.appWidget(), "", "", "All files (*.*)")
     if file.len == 0: return
     let target = self.getTargetPane()
     if target == nil: return
@@ -1164,7 +1157,7 @@ proc build*(self: Application) =
 
   self.toolbar.onTriggered(SyntaxTheme) do():
     showThemeDialog(
-      QWidget(h: self.root.h, owned: false),
+      self.appWidget(),
       currentThemeName,
       proc(name: string) {.raises: [].} =
         try:
@@ -1182,7 +1175,7 @@ proc build*(self: Application) =
 
   self.toolbar.onSettings do():
     showSettingsDialog(
-      QWidget(h: self.root.h, owned: false),
+      self.appWidget(),
       self.settings,
       proc(updated: Settings) {.raises: [].} =
         self.settings = updated

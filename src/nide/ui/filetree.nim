@@ -188,8 +188,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
       let path = model.filePath(index)
       let isDir = model.isDir(index)
 
-      var menu = QMenu.create(QWidget(h: tree.h, owned: false))
-      menu.owned = false
+      var menu = newWidget(QMenu.create(QWidget(h: tree.h, owned: false)))
 
       let copyAction = menu.addAction("Copy")
       let cutAction = menu.addAction("Cut")

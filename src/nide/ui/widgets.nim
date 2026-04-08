@@ -61,25 +61,16 @@ proc svgIcon*(svg: string, size: cint, color: string): QIcon =
 # Cast helpers — eliminate QWidget(h: x.h, owned: false) noise
 # ---------------------------------------------------------------------------
 
-func asWidget*(w: QToolButton): QWidget {.inline.} =
+func asWidget*[T](w: T): QWidget {.inline.} =
+  ## Cast any Qt object to QWidget via its .h handle.
   QWidget(h: w.h, owned: false)
 
-func asWidget*(w: QPushButton): QWidget {.inline.} =
-  QWidget(h: w.h, owned: false)
-
-func asWidget*(w: QWidget): QWidget {.inline.} =
-  QWidget(h: w.h, owned: false)
-
-func asButton*(w: QToolButton): QAbstractButton {.inline.} =
+func asButton*[T](w: T): QAbstractButton {.inline.} =
+  ## Cast any Qt button type to QAbstractButton via its .h handle.
   QAbstractButton(h: w.h, owned: false)
 
-func asButton*(w: QPushButton): QAbstractButton {.inline.} =
-  QAbstractButton(h: w.h, owned: false)
-
-func asLayout*(w: QVBoxLayout): QLayout {.inline.} =
-  QLayout(h: w.h, owned: false)
-
-func asLayout*(w: QHBoxLayout): QLayout {.inline.} =
+func asLayout*[T](w: T): QLayout {.inline.} =
+  ## Cast any Qt layout type to QLayout via its .h handle.
   QLayout(h: w.h, owned: false)
 
 # ---------------------------------------------------------------------------

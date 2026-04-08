@@ -105,12 +105,11 @@ proc showCompletions*(editor: QPlainTextEdit,
 
     # Parent the popup to the viewport so it renders as an in-window overlay.
     let viewport = editor.viewport()
-    var popup = QWidget.create(viewport)
-    popup.owned = false
+    var popup = newWidget(QWidget.create(viewport))
     let popupH = popup.h
     menu.widgetH = popupH
 
-    let pw = QWidget(h: popupH, owned: false)
+    let pw = popup
     pw.setObjectName("acPopup")
     pw.setStyleSheet(
       "QWidget#acPopup {" &
@@ -133,8 +132,7 @@ proc showCompletions*(editor: QPlainTextEdit,
     )
 
     # List widget (parented to popup via layout — it owns it)
-    var listWidget = QListWidget.create()
-    listWidget.owned = false
+    var listWidget = newWidget(QListWidget.create())
     let listH = listWidget.h
     menu.listH = listH
 
@@ -150,15 +148,14 @@ proc showCompletions*(editor: QPlainTextEdit,
       let label = c.symkind & "  " & c.name &
                   (if c.signature.len > 0: "  " & c.signature else: "") &
                   location
-      var item = QListWidgetItem.create(label)
-      item.owned = false
-      QListWidget(h: listH, owned: false).addItem(item)
+      var item = newWidget(QListWidgetItem.create(label))
+      listWidget.addItem(item)
 
     QListWidget(h: listH, owned: false).setCurrentRow(cint 0)
     menu.explicitSelection = true
 
     let layout = vbox(margins = (cint 1, cint 1, cint 1, cint 1))
-    layout.add(QWidget(h: listH, owned: false))
+    layout.add(listWidget)
     layout.applyTo(pw)
 
     # Size: cap height to show at most ~10 items. Keep a safer minimum size so

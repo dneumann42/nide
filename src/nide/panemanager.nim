@@ -3,6 +3,7 @@ import nide/pane/pane, nide/helpers/widgetref, nide/nim/nimsuggest
 import commands
 import std/algorithm
 import nide/helpers/qtconst
+import nide/ui/widgets
 
 const SplitterHandleWidth = cint 4
 
@@ -85,34 +86,32 @@ proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T
   T(splitter: capture(splitter), callbacks: cbs)
 
 proc addColumn*(self: PaneManager): Pane =
-  var col = QSplitter.create(Vertical)    # vertical
+  var col = newWidget(QSplitter.create(Vertical))    # vertical
   col.setHandleWidth(SplitterHandleWidth)
-  QWidget(h: col.h, owned: false).setAutoFillBackground(true)
-  QWidget(h: col.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
-  col.owned = false
+  col.asWidget.setAutoFillBackground(true)
+  col.asWidget.setStyleSheet("QSplitter::handle { background: #333333; }")
   let colRef = capture(col)
   result = self.makePane(colRef)
   col.addWidget(result.widget())
-  self.splitter.get().addWidget(QWidget(h: col.h, owned: false))
+  self.splitter.get().addWidget(col.asWidget)
   self.panels.add(result)
   result.focus()
   self.notifyLayoutChanged()
 
 proc insertCol*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter]): Pane =
-  let colW = QWidget(h: col.h, owned: false)
+  let colW = col.get().asWidget
   let idx = self.splitter.get().indexOf(colW)
   if idx < 0: return
   let oldSizes = self.splitter.get().sizes()
   let srcW = oldSizes[idx]
-  var newCol = QSplitter.create(Vertical)   # vertical
+  var newCol = newWidget(QSplitter.create(Vertical))   # vertical
   newCol.setHandleWidth(SplitterHandleWidth)
-  QWidget(h: newCol.h, owned: false).setAutoFillBackground(true)
-  QWidget(h: newCol.h, owned: false).setStyleSheet("QSplitter::handle { background: #333333; }")
-  newCol.owned = false
+  newCol.asWidget.setAutoFillBackground(true)
+  newCol.asWidget.setStyleSheet("QSplitter::handle { background: #333333; }")
   let newColRef = capture(newCol)
   result = self.makePane(newColRef)
   newCol.addWidget(result.widget())
-  self.splitter.get().insertWidget(cint(idx + 1), QWidget(h: newCol.h, owned: false))
+  self.splitter.get().insertWidget(cint(idx + 1), newCol.asWidget)
   var newSizes = newSeq[cint](oldSizes.len + 1)
   for i in 0..<idx:               newSizes[i]     = oldSizes[i]
   newSizes[idx]                   = cint(srcW div 2)
@@ -191,7 +190,7 @@ proc visibleColumns*(self: PaneManager): seq[seq[Pane]] =
     if parent.h == nil:
       continue
     let col = QSplitter(h: parent.h, owned: false)
-    let colIdx = self.splitter.get().indexOf(QWidget(h: col.h, owned: false)).int
+    let colIdx = self.splitter.get().indexOf(col.asWidget).int
     let rowIdx = col.indexOf(pane.widget()).int
     if colIdx >= 0 and rowIdx >= 0:
       positions.add((colIdx, rowIdx, pane))
