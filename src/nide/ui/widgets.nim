@@ -7,14 +7,28 @@
 ##   - asWidget / asButton / asLayout: inline cast helpers that eliminate QWidget(h:,owned:false) noise
 ##   - vbox / hbox: layout builder procs
 ##   - add / applyTo: layout population helpers
+##   - newWidget: template for owned=false auto-set on widget creation
 
 import std/strutils
 import seaqt/[qpixmap, qpaintdevice, qpainter, qcolor, qicon, qsvgrenderer,
               qwidget, qabstractbutton, qlayout, qboxlayout,
-              qvboxlayout, qhboxlayout, qsize, qtoolbutton, qpushbutton]
+              qvboxlayout, qhboxlayout, qsize, qtoolbutton, qpushbutton,
+              qlabel, qlineedit, qcheckbox]
 import nide/helpers/uicolors
+import nide/helpers/qtconst
 
 export uicolors
+
+# ---------------------------------------------------------------------------
+# Widget creation with auto-owned=false
+# ---------------------------------------------------------------------------
+
+template newWidget*(createProc: untyped): untyped =
+  ## Creates a widget and automatically sets owned=false.
+  ## Usage: let btn = newWidget(QPushButton.create("text"))
+  let result = createProc
+  result.owned = false
+  result
 
 # ---------------------------------------------------------------------------
 # SVG icon rendering
@@ -131,3 +145,65 @@ template addSub*(layout: QVBoxLayout | QHBoxLayout, sublayout: typed) =
 template applyTo*(layout: typed, widget: QWidget) =
   ## Set this layout on a container widget.
   widget.setLayout(QLayout(h: layout.h, owned: false))
+
+# ---------------------------------------------------------------------------
+# Simple widget builders
+# ---------------------------------------------------------------------------
+
+proc label*(text: string = "", style: string = ""): QLabel =
+  ## Create a QLabel with owned=false.
+  result = QLabel.create(text)
+  result.owned = false
+  if style.len > 0:
+    QWidget(h: result.h, owned: false).setStyleSheet(style)
+
+proc button*(text: string, flat: bool = true): QPushButton =
+  ## Create a QPushButton with owned=false, optionally flat.
+  result = QPushButton.create(text)
+  result.owned = false
+  result.setFlat(flat)
+
+proc checkbox*(text: string, checked: bool = false): QCheckBox =
+  result = QCheckBox.create(text)
+  result.owned = false
+  result.setChecked(checked)
+
+proc lineEdit*(placeholder: string = "", minWidth: cint = 0): QLineEdit =
+  result = QLineEdit.create()
+  result.owned = false
+  if placeholder.len > 0:
+    result.setPlaceholderText(placeholder)
+  if minWidth > 0:
+    result.setMinimumWidth(minWidth)
+
+# ---------------------------------------------------------------------------
+# Spacers and stretch
+# ---------------------------------------------------------------------------
+
+proc stretch*(): QWidget =
+  ## Create a stretch widget (invisible spacer).
+  result = QWidget.create()
+  result.owned = false
+  result.setSizePolicy(SP_Preferred, SP_Preferred)
+
+proc hstretch*(): QWidget =
+  result = QWidget.create()
+  result.owned = false
+  result.setSizePolicy(SP_Expanding, SP_Minimum)
+
+proc vstretch*(): QWidget =
+  result = QWidget.create()
+  result.owned = false
+  result.setSizePolicy(SP_Minimum, SP_Expanding)
+
+# ---------------------------------------------------------------------------
+# Common widget configurations
+# ---------------------------------------------------------------------------
+
+template clickable*(btn: QPushButton, body: untyped) =
+  ## Attach a clicked handler to a button.
+  btn.onClicked do() {.raises: [].}: body
+
+template clickable*(btn: QCheckBox, body: untyped) =
+  btn.onToggled do(checked: bool) {.raises: [].}:
+    body(checked)

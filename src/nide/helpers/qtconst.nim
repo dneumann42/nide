@@ -14,6 +14,17 @@ const
   Key_Meta*      = cint 0x01000023
   Key_N*         = cint 0x4E
   Key_P*         = cint 0x50
+  Key_Left*      = cint 0x01000012
+  Key_Right*     = cint 0x01000014
+  Key_Up*        = cint 0x01000013
+  Key_Down*      = cint 0x01000015
+  Key_Home*      = cint 0x01000010
+  Key_End*       = cint 0x01000011
+  Key_PageUp*    = cint 0x01000016
+  Key_PageDown*  = cint 0x01000017
+  Key_Space*     = cint 0x01000032
+  Key_S*         = cint 0x53
+  Key_F*         = cint 0x46
 
 # ── Window flags / widget attributes ──────────────────────────────────────
 const
@@ -67,8 +78,18 @@ const
 
 # ── QTextCursor move operations ──────────────────────────────────────────
 const
-  TC_EndOfWord*   = cint 14
-  TC_Right*       = cint 19
+  TC_StartOfLine*   = cint 0
+  TC_EndOfLine*     = cint 1
+  TC_StartOfWord*   = cint 2
+  TC_EndOfWord*     = cint 14
+  TC_Left*          = cint 12
+  TC_Right*         = cint 13
+  TC_Up*            = cint 4
+  TC_Down*          = cint 5
+  TC_NextChar*      = cint 8
+  TC_PreviousChar* = cint 9
+  TC_NextBlock*     = cint 6
+  TC_PreviousBlock* = cint 7
 
 # ── QTextCursor move modes ───────────────────────────────────────────────
 const
@@ -92,12 +113,6 @@ const
 const
   ID_TextInput* = cint 0
 
-# ── Drag-drop ────────────────────────────────────────────────────────────
-const
-  DD_MoveAction*     = cint 2
-  DD_InternalMove*   = cint 4
-  DD_NoEditTriggers* = cint 0
-
 # ── Header resize mode ───────────────────────────────────────────────────
 const
   HR_Stretch*          = cint 1
@@ -107,10 +122,14 @@ const
 # ── Selection behavior ───────────────────────────────────────────────────
 const
   SB_SelectRows* = cint 1
+  SB_SelectItems* = cint 0
+  SB_SelectColumns* = cint 2
 
 # ── Mouse buttons ────────────────────────────────────────────────────────
 const
   MB_LeftButton*    = cint 1
+  MB_RightButton*   = cint 2
+  MB_MidButton*     = cint 4
   MB_BackButton*    = cint 8
   MB_ForwardButton* = cint 16
   ControlModifier*  = cint 67108864
@@ -119,24 +138,54 @@ const
 const
   IF_SelectableEnabled* = cint 0x21
 
+# ── Item view drag-drop mode ───────────────────────────────────────────
+const
+  DD_NoAction*          = cint 0
+  DD_CopyAction*        = cint 1
+  DD_MoveAction*        = cint 2
+  DD_LinkAction*        = cint 4
+  DD_InternalMove*      = cint 4
+  DD_IgnoreAction*      = cint 5
+  DD_NoEditTriggers*    = cint 0
+  DD_CurrentChanged*    = cint 1
+  DD_DoubleClicked*     = cint 2
+  DD_SelectedClicked*   = cint 8
+
+# ── Item view edit triggers ─────────────────────────────────────────────
+const
+  ET_NoEditTriggers*      = cint 0
+  ET_CurrentChanged*      = cint 1
+  ET_DoubleClicked*       = cint 2
+  ET_SelectedClicked*     = cint 4
+  ET_EditKeyPressed*      = cint 8
+  ET_AnyKeyPressed*       = cint 32
+  ET_AllEditTriggers*    = cint 47
+
+# ── Item view selection mode ─────────────────────────────────────────────
+const
+  SM_NoSelection*           = cint 0
+  SM_SingleSelection*        = cint 1
+  SM_MultiSelection*         = cint 2
+  SM_ExtendedSelection*      = cint 3
+  SM_ContiguousSelection*    = cint 4
+
 # ── QMessageBox buttons ─────────────────────────────────────────────────
 const
   MsgBox_Yes*     = cint 16384
   MsgBox_Cancel*  = cint 4194304
   MsgBox_Save*    = cint 2048
   MsgBox_Discard* = cint 8388608
+  MsgBox_Ok*      = cint 1024
 
 # ── QDialogButtonBox buttons ────────────────────────────────────────────
 const
   Btn_Ok*       = cint 1024
   Btn_Cancel*   = cint 4194304
   Btn_OkCancel* = cint(1024 or 4194304)
+  Btn_OkCancel2* = cint(0x00000400 or 0x00400000)
+  Btn_Close*    = cint 67108864
 
 # ── QFrame ───────────────────────────────────────────────────────────────
 const
   QF_Box*   = cint 1
   QF_Plain* = cint 1
-
-# ── QDialogButtonBox (alternate flag combinations) ──────────────────────
-const
-  Btn_OkCancel2* = cint(0x00000400 or 0x00400000)
