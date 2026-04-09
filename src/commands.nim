@@ -1,5 +1,6 @@
 import std/tables
 import std/strutils
+import std/algorithm
 import nide/settings/keybindings
 
 export KeyCombo, combo, ctrlMod, altMod, shiftMod, noMod
@@ -8,16 +9,33 @@ type
   CommandId* = string
   Command*   = proc() {.raises: [].}
 
+  CommandDescriptor* = object
+    id*: CommandId
+    label*: string
+    aliases*: seq[string]
+    visible*: bool
+
   BindingEntry* = tuple[id: CommandId, combo: KeyCombo, isChord: bool, chordPrefix: string]
 
   CommandDispatcher* = ref object
     commands: Table[CommandId, Command]
+    metadata: Table[CommandId, CommandDescriptor]
     single:   Table[KeyCombo, CommandId]
     chordCx:  Table[KeyCombo, CommandId]
     inChord*: bool
 
 proc register*(d: CommandDispatcher, id: CommandId, cmd: Command) =
   d.commands[id] = cmd
+  if not d.metadata.hasKey(id):
+    d.metadata[id] = CommandDescriptor(id: id, label: id, visible: true)
+
+proc register*(d: CommandDispatcher, desc: CommandDescriptor, cmd: Command) =
+  d.commands[desc.id] = cmd
+  d.metadata[desc.id] = desc
+
+proc register*(d: CommandDispatcher, id: CommandId, label: string, cmd: Command,
+               aliases: seq[string] = @[], visible = true) =
+  d.register(CommandDescriptor(id: id, label: label, aliases: aliases, visible: visible), cmd)
 
 proc bindKey*(d: CommandDispatcher, c: KeyCombo, id: CommandId) =
   d.single[c] = id
@@ -41,6 +59,13 @@ proc dispatch*(d: CommandDispatcher, c: KeyCombo): bool =
   let cmd = d.commands.getOrDefault(id, nil)
   if cmd != nil: cmd()
   return true
+
+proc execute*(d: CommandDispatcher, id: CommandId): bool =
+  let cmd = d.commands.getOrDefault(id, nil)
+  if cmd == nil:
+    return false
+  cmd()
+  true
 
 proc registerDefaultBindings*(d: CommandDispatcher) =
   ## Bind the default Emacs-style key combos to command IDs.
@@ -77,6 +102,7 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x5C, ctrlMod or shiftMod), "editor.splitRow")       ## Ctrl+Shift+\
   d.bindKey(combo(0x2E, ctrlMod),             "editor.gotoDefinition") ## Ctrl+.
   d.bindKey(combo(0x2C, ctrlMod),             "editor.jumpBack")       ## Ctrl+,
+  d.bindKey(combo(0x50, ctrlMod or shiftMod), "editor.commandPalette") ## Ctrl+Shift+P
   d.bindKey(combo(0x01000032, noMod),         "editor.gotoDefinition") ## F3
   d.bindKey(combo(0x20, ctrlMod),             "editor.setMark")        ## Ctrl+Space
   d.bindKey(combo(0x3B, ctrlMod),             "editor.autocomplete")   ## Ctrl+;
@@ -216,3 +242,23 @@ proc defaultBindingList*(): seq[BindingEntry] =
   for k, v in d.chordCx:
     let prefix = findChordPrefix(d, k)
     result.add((id: v, combo: k, isChord: true, chordPrefix: prefix))
+
+proc listCommands*(d: CommandDispatcher): seq[CommandDescriptor] =
+  for _, desc in d.metadata:
+    result.add(desc)
+  result.sort(proc(a, b: CommandDescriptor): int {.raises: [].} =
+    cmp(a.label.toLowerAscii(), b.label.toLowerAscii()))
+
+proc bindingStrings*(d: CommandDispatcher, id: CommandId): seq[string] =
+  for key, value in d.single:
+    if value == id:
+      let s = keyComboToString(key)
+      if s.len > 0:
+        result.add(s)
+  let prefix = findChordPrefix(d, combo(0, noMod))
+  for key, value in d.chordCx:
+    if value == id:
+      let suffix = keyComboToString(key)
+      if suffix.len > 0:
+        result.add(prefix & " " & suffix)
+  result.sort(proc(a, b: string): int {.raises: [].} = cmp(a, b))

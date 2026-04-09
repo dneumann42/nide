@@ -1,4 +1,4 @@
-import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/debuglog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/projectconfig, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/settings/toolchain, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets
+import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/debuglog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/projectconfig, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/settings/toolchain, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets, nide/ui/commandpalette
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
 import nide/helpers/qtconst
@@ -24,6 +24,7 @@ type
     root: QMainWindow
     paneManager: PaneManager
     fileTree: FileTree
+    commandPalette: CommandPalette
     theme: Theme
     currentProject: string
     projectNimbleFile: string
@@ -740,10 +741,14 @@ proc build*(self: Application) =
   var splitterVtbl = new QSplitterVTable
   var fileTreeCell: ref FileTree
   new(fileTreeCell)
+  var commandPaletteCell: ref CommandPalette
+  new(commandPaletteCell)
   splitterVtbl.resizeEvent = proc(self: QSplitter, e: QResizeEvent) {.raises: [], gcsafe.} =
     QSplitterresizeEvent(self, e)
     if fileTreeCell[] != nil and fileTreeCell[].isVisible():
       {.cast(gcsafe).}: fileTreeCell[].reposition()
+    if commandPaletteCell[] != nil and commandPaletteCell[].isOpen():
+      {.cast(gcsafe).}: commandPaletteCell[].reposition()
 
   var splitter = newWidget(QSplitter.create(Horizontal, vtbl = splitterVtbl))
   splitter.setHandleWidth(SplitterHandleWidth)
@@ -839,53 +844,58 @@ proc build*(self: Application) =
     registerDefaultBindings(disp)
     disp.applyCustomBindings(self.settings.keybindings.toTable())
     self.paneManager.dispatcher = disp
+    commandPaletteCell[] = nil
 
     proc moveTarget(op: cint) {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       discard p.moveCursor(op)
 
-    disp.register("editor.chordCx", proc() {.raises: [].} =
+    disp.register("editor.chordCx", "Prefix: C-x", proc() {.raises: [].} =
       disp.inChord = true)
 
-    disp.register("editor.setMark", proc() {.raises: [].} =
+    disp.register("editor.commandPalette", "Command Palette", proc() {.raises: [].} =
+      if self.commandPalette != nil:
+        self.commandPalette.open())
+
+    disp.register("editor.setMark", "Set Mark", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: p.activateMark())
 
-    disp.register("editor.rectangleMark", proc() {.raises: [].} =
+    disp.register("editor.rectangleMark", "Rectangle Mark", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: p.activateRectangleMark())
 
     # Cursor movement
-    disp.register("editor.forwardChar", proc() {.raises: [].} =
+    disp.register("editor.forwardChar", "Move Forward Char", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.Right)))
-    disp.register("editor.backwardChar", proc() {.raises: [].} =
+    disp.register("editor.backwardChar", "Move Backward Char", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.Left)))
-    disp.register("editor.nextLine", proc() {.raises: [].} =
+    disp.register("editor.nextLine", "Move Next Line", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.Down)))
-    disp.register("editor.prevLine", proc() {.raises: [].} =
+    disp.register("editor.prevLine", "Move Previous Line", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.Up)))
-    disp.register("editor.beginningOfLine", proc() {.raises: [].} =
+    disp.register("editor.beginningOfLine", "Move to Beginning of Line", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.StartOfLine)))
-    disp.register("editor.endOfLine", proc() {.raises: [].} =
+    disp.register("editor.endOfLine", "Move to End of Line", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.EndOfLine)))
-    disp.register("editor.forwardWord", proc() {.raises: [].} =
+    disp.register("editor.forwardWord", "Move Forward Word", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.NextWord)))
-    disp.register("editor.backwardWord", proc() {.raises: [].} =
+    disp.register("editor.backwardWord", "Move Backward Word", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.PreviousWord)))
-    disp.register("editor.beginningOfBuffer", proc() {.raises: [].} =
+    disp.register("editor.beginningOfBuffer", "Move to Beginning of Buffer", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.Start)))
-    disp.register("editor.endOfBuffer", proc() {.raises: [].} =
+    disp.register("editor.endOfBuffer", "Move to End of Buffer", proc() {.raises: [].} =
       moveTarget(cint(QTextCursorMoveOperationEnum.End)))
 
     # Scroll
-    disp.register("editor.scrollDown", proc() {.raises: [].} =
+    disp.register("editor.scrollDown", "Scroll Down", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: p.scrollDown())
-    disp.register("editor.scrollUp", proc() {.raises: [].} =
+    disp.register("editor.scrollUp", "Scroll Up", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: p.scrollUp())
 
     # Edit
-    disp.register("editor.deleteForwardChar", proc() {.raises: [].} =
+    disp.register("editor.deleteForwardChar", "Delete Forward Char", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       p.clearMarkState(clearNativeSelection = false)
@@ -894,7 +904,7 @@ proc build*(self: Application) =
       c.deleteChar()
       ed.setTextCursor(c))
 
-    disp.register("editor.killLine", proc() {.raises: [].} =
+    disp.register("editor.killLine", "Kill Line", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       p.clearMarkState()
@@ -908,13 +918,13 @@ proc build*(self: Application) =
         c.deleteChar()
       ed.setTextCursor(c))
 
-    disp.register("editor.copySelection", proc() {.raises: [].} =
+    disp.register("editor.copySelection", "Copy Selection", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       p.copyRegion()
       p.clearMarkState())
 
-    disp.register("editor.killWordForward", proc() {.raises: [].} =
+    disp.register("editor.killWordForward", "Kill Word Forward", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       p.clearMarkState()
@@ -925,7 +935,7 @@ proc build*(self: Application) =
       c.removeSelectedText()
       ed.setTextCursor(c))
 
-    disp.register("editor.killWordBackward", proc() {.raises: [].} =
+    disp.register("editor.killWordBackward", "Kill Word Backward", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       p.clearMarkState()
@@ -936,7 +946,7 @@ proc build*(self: Application) =
       c.removeSelectedText()
       ed.setTextCursor(c))
 
-    disp.register("editor.openLine", proc() {.raises: [].} =
+    disp.register("editor.openLine", "Open Line", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       if p.buffer == nil:
@@ -950,47 +960,47 @@ proc build*(self: Application) =
                              cint(QTextCursorMoveModeEnum.MoveAnchor))
       ed.setTextCursor(c))
 
-    disp.register("editor.recenter", proc() {.raises: [].} =
+    disp.register("editor.recenter", "Recenter Cursor", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: QPlainTextEdit(h: p.editor.h, owned: false).centerCursor())
 
-    disp.register("editor.killRegion", proc() {.raises: [].} =
+    disp.register("editor.killRegion", "Kill Region", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: p.killRegion())
 
-    disp.register("editor.yank", proc() {.raises: [].} =
+    disp.register("editor.yank", "Yank", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil:
         p.clearMarkState(clearNativeSelection = false)
         QPlainTextEdit(h: p.editor.h, owned: false).paste())
 
     # Buffer / window management
-    disp.register("editor.saveBuffer", proc() {.raises: [].} =
+    disp.register("editor.saveBuffer", "Save Buffer", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: p.save())
 
-    disp.register("editor.quitApplication", proc() {.raises: [].} =
+    disp.register("editor.quitApplication", "Quit Application", proc() {.raises: [].} =
       QApplication.quit())
 
-    disp.register("editor.killBuffer", proc() {.raises: [].} =
+    disp.register("editor.killBuffer", "Kill Buffer", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: self.paneManager.closePane(p))
 
-    disp.register("editor.deleteOtherWindows", proc() {.raises: [].} =
+    disp.register("editor.deleteOtherWindows", "Delete Other Windows", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: self.paneManager.closeOtherPanes(p))
 
-    disp.register("editor.splitHorizontal", proc() {.raises: [].} =
+    disp.register("editor.splitHorizontal", "Split Window Horizontally", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: discard self.paneManager.splitRow(p))
 
-    disp.register("editor.splitVertical", proc() {.raises: [].} =
+    disp.register("editor.splitVertical", "Split Window Vertically", proc() {.raises: [].} =
       let p = self.getTargetPane(); if p != nil: discard self.paneManager.splitCol(p))
 
-    disp.register("editor.findFile", proc() {.raises: [].} =
+    disp.register("editor.findFile", "Find File", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       showFileFinder(self.appWidget(),
         self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
         self.openInPane(p, path))
 
-    disp.register("editor.switchBuffer", proc() {.raises: [].} =
+    disp.register("editor.switchBuffer", "Switch Buffer", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       var entries: seq[(string, string)]
@@ -1010,68 +1020,77 @@ proc build*(self: Application) =
             break)
 
     # Search / navigation
-    disp.register("editor.findInBuffer", proc() {.raises: [].} =
+    disp.register("editor.findInBuffer", "Find in Buffer", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: p.triggerFind())
 
-    disp.register("editor.closeSearch", proc() {.raises: [].} =
+    disp.register("editor.closeSearch", "Close Search", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil:
         p.clearMarkState()
         p.closeSearch())
 
-    disp.register("editor.ripgrepFind", proc() {.raises: [].} =
+    disp.register("editor.ripgrepFind", "Find in Files", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       showRipgrepFinder(self.appWidget()) do(file: string, lineNum: int) {.raises: [].}:
         self.openInPane(p, file)
         p.scrollToLine(lineNum))
 
-    disp.register("editor.gotoDefinition", proc() {.raises: [].} =
+    disp.register("editor.gotoDefinition", "Go to Definition", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil or self.nimSuggest == nil: return
       try: p.triggerGotoDefinition(self.nimSuggest)
       except: discard)
 
-    disp.register("editor.jumpBack", proc() {.raises: [].} =
+    disp.register("editor.jumpBack", "Jump Back", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       try: p.triggerJumpBack()
       except: discard)
 
-    disp.register("editor.autocomplete", proc() {.raises: [].} =
+    disp.register("editor.autocomplete", "Autocomplete", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil or self.nimSuggest == nil: return
       try: p.triggerAutocomplete(self.nimSuggest)
       except: discard)
 
-    disp.register("editor.showPrototype", proc() {.raises: [].} =
+    disp.register("editor.showPrototype", "Show Prototype", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       try: p.triggerPrototype()
       except: discard)
 
     # Layout / view
-    disp.register("editor.addColumn", proc() {.raises: [].} =
+    disp.register("editor.addColumn", "Add Column", proc() {.raises: [].} =
       discard self.paneManager.addColumn()
       self.paneManager.equalizeSplits())
 
-    disp.register("editor.toggleFileTree", proc() {.raises: [].} =
+    disp.register("editor.toggleFileTree", "Toggle File Tree", proc() {.raises: [].} =
       if self.currentProject.len > 0: self.fileTree.toggle())
 
-    disp.register("editor.splitRow", proc() {.raises: [].} =
+    disp.register("editor.splitRow", "Split Row", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p == nil: return
       try: discard self.paneManager.splitRow(p)
       except: discard)
 
-    disp.register("editor.zoomIn", proc() {.raises: [].} =
+    disp.register("editor.zoomIn", "Zoom In", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: p.zoomIn())
 
-    disp.register("editor.zoomOut", proc() {.raises: [].} =
+    disp.register("editor.zoomOut", "Zoom Out", proc() {.raises: [].} =
       let p = self.getTargetPane()
       if p != nil: p.zoomOut())
+
+    self.commandPalette = newCommandPalette(self.appWidget(), disp,
+      proc(id: CommandId) {.raises: [].} =
+        discard disp.execute(id),
+      proc() {.raises: [].} =
+        let target = self.getTargetPane()
+        if target != nil:
+          target.editor.asWidget.setFocus())
+    commandPaletteCell[] = self.commandPalette
 
   # Wire file tree: clicking a file opens it in the active pane
   self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
@@ -1249,6 +1268,8 @@ proc build*(self: Application) =
           disp.resetBindings()
           registerDefaultBindings(disp)
           disp.applyCustomBindings(updated.keybindings.toTable())
+          if self.commandPalette != nil:
+            self.commandPalette.refreshItems()
         if self.currentProject.len > 0:
           self.restartProjectNimIntegration()
           self.runProjectCheck()

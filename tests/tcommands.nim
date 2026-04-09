@@ -2,6 +2,11 @@ import std/unittest
 import commands
 
 suite "default keybindings":
+  test "ctrl shift p opens command palette":
+    let d = CommandDispatcher()
+    registerDefaultBindings(d)
+    check d.lookupCommand(combo(0x50, ctrlMod or shiftMod)) == "editor.commandPalette"
+
   test "ctrl space sets mark":
     let d = CommandDispatcher()
     registerDefaultBindings(d)
@@ -43,3 +48,21 @@ suite "default keybindings":
     d.register("editor.jumpBack", proc() {.raises: [].} = fired = true)
     check d.dispatch(combo(0x2C, ctrlMod))
     check fired
+
+suite "command metadata":
+  test "registered commands expose metadata":
+    let d = CommandDispatcher()
+    d.register("editor.commandPalette", "Command Palette",
+      proc() {.raises: [].} = discard,
+      aliases = @["palette", "commands"])
+    let commands = d.listCommands()
+    check commands.len == 1
+    check commands[0].id == "editor.commandPalette"
+    check commands[0].label == "Command Palette"
+    check commands[0].aliases == @["palette", "commands"]
+
+  test "binding strings include single keys and chords":
+    let d = CommandDispatcher()
+    registerDefaultBindings(d)
+    check "Ctrl+Shift+P" in d.bindingStrings("editor.commandPalette")
+    check "Ctrl+X Ctrl+F" in d.bindingStrings("editor.findFile")
