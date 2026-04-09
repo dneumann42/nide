@@ -1123,6 +1123,15 @@ proc build*(self: Application) =
   self.runStatusBtn = self.createStatusButton("nimble run", self.root.h)
   self.buildStatusBtn = self.createStatusButton("nimble build", self.root.h)
 
+  proc ensureRunnableProject(action: string): bool {.raises: [].} =
+    if self.currentProject.len == 0 or self.projectNimbleFile.len == 0:
+      discard QMessageBox.information(
+        self.appWidget(),
+        action,
+        "Open a Nimble project before using toolbar " & action.toLowerAscii() & ".")
+      return false
+    true
+
   let runStatusBtn = self.runStatusBtn.get()
   runStatusBtn.onClicked do() {.raises: [].}:
     self.runStatusBtn.get().asWidget.hide()
@@ -1138,6 +1147,8 @@ proc build*(self: Application) =
       self.buildReopen = nil
 
   self.toolbar.onRun do():
+    if not ensureRunnableProject("Run"):
+      return
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
       self.runReopen = reopen
       let rw = self.appWidget()
@@ -1152,10 +1163,13 @@ proc build*(self: Application) =
         self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
-    let nimPath = self.resolvedProjectToolchain().nimCommand
-    runCommand(self.appWidget(), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
+    let toolchain = self.resolvedProjectToolchain()
+    let cmd = quoteShell(toolchain.nimbleCommand) & " run"
+    runCommand(self.appWidget(), "nimble run", cmd, onBg, gotoRun, self.currentProject)
 
   self.toolbar.onBuild do():
+    if not ensureRunnableProject("Build"):
+      return
     let onBg = proc(reopen: proc() {.raises: [].}) {.raises: [].} =
       self.buildReopen = reopen
       let rw = self.appWidget()
@@ -1170,8 +1184,9 @@ proc build*(self: Application) =
         self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
-    let nimPath = self.resolvedProjectToolchain().nimCommand
-    runCommand(self.appWidget(), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim", onBg, gotoBuild)
+    let toolchain = self.resolvedProjectToolchain()
+    let cmd = quoteShell(toolchain.nimbleCommand) & " build"
+    runCommand(self.appWidget(), "nimble build", cmd, onBg, gotoBuild, self.currentProject)
 
   self.toolbar.onGraph do():
     try:

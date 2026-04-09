@@ -10,7 +10,8 @@ const
 
 proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,
-                 onGotoLocation: proc(file: string, line, col: int) {.raises: [].} = nil) {.raises: [].} =
+                 onGotoLocation: proc(file: string, line, col: int) {.raises: [].} = nil,
+                 workingDirectory = "") {.raises: [].} =
   try:
     var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
@@ -100,7 +101,10 @@ proc runCommand*(parent: QWidget, title, command: string,
       except: discard
 
     process.setProcessChannelMode(PC_MergedChannels)   # MergedChannels
-    process.setWorkingDirectory(getCurrentDir())
+    if workingDirectory.len > 0:
+      process.setWorkingDirectory(workingDirectory)
+    else:
+      process.setWorkingDirectory(getCurrentDir())
 
     process.onReadyReadStandardOutput do() {.raises: [].}:
       try:
