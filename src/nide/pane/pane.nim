@@ -74,6 +74,8 @@ type
     jumpHistory*:  seq[JumpLocation]
     jumpFuture*:   seq[JumpLocation]
     nimSuggest*:   NimSuggestClient
+    nimCommandProvider*: proc(): string {.raises: [].}
+    nimBackendProvider*: proc(): string {.raises: [].}
     matchIndex:     int
     checkProcessH:  ref pointer
     diagLines:      ref seq[LogLine]
@@ -542,7 +544,13 @@ proc runCheck*(pane: Pane) {.raises: [].} =
   if pane.buffer == nil or pane.buffer.path.len == 0: return
   if not pane.buffer.path.endsWith(".nim"): return
   let filePath = pane.buffer.path
-  runNimCheck(pane.container.h, filePath, pane.checkProcessH,
+  let nimCommand =
+    if pane.nimCommandProvider != nil: pane.nimCommandProvider()
+    else: "nim"
+  let nimBackend =
+    if pane.nimBackendProvider != nil: pane.nimBackendProvider()
+    else: "c"
+  runNimCheck(pane.container.h, filePath, nimCommand, nimBackend, pane.checkProcessH,
     proc(lines: seq[LogLine]) {.raises: [].} =
       pane.diagLines[] = lines
       pane.diagReady = true
@@ -1871,7 +1879,13 @@ proc triggerCleanImports*(pane: Pane) {.raises: [].} =
       except: discard
       pane.checkProcessH[] = nil
     let filePath = pane.buffer.path
-    runNimCheck(pane.container.h, filePath, pane.checkProcessH,
+    let nimCommand =
+      if pane.nimCommandProvider != nil: pane.nimCommandProvider()
+      else: "nim"
+    let nimBackend =
+      if pane.nimBackendProvider != nil: pane.nimBackendProvider()
+      else: "c"
+    runNimCheck(pane.container.h, filePath, nimCommand, nimBackend, pane.checkProcessH,
       proc(lines: seq[LogLine]) {.raises: [].} =
         pane.diagLines[] = lines
         pane.diagReady = true

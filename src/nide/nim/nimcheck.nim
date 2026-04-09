@@ -1,18 +1,32 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject]
 import nide/helpers/logparser
+import nide/helpers/debuglog
 import nide/helpers/qtconst
+import nide/nim/nimproject
 import nide/ui/widgets
 
 proc runNimCheck*(
     parentH:  pointer,
     filePath: string,
+    nimCommand: string,
+    backend: string,
     cancelH:  ref pointer,
     onDone:   proc(lines: seq[LogLine]) {.raises: [].}
 ) {.raises: [].} =
   try:
-    let nimExe = findExe("nim")
+    let nimExe = if nimCommand.len > 0: nimCommand else: "nim"
     if nimExe.len == 0: return
+    let projectRoot = findProjectRoot(filePath)
+    let pathArgs = projectDependencyPathArgs(projectRoot)
+    appendDebugLog(
+      "nimcheck",
+      "start nimExe=" & nimExe &
+      " backend=" & backend &
+      " cwd=" & getCurrentDir() &
+      " projectRoot=" & projectRoot &
+      " pathArgs=" & pathArgs.join(" ") &
+      " file=" & filePath)
 
     var process = newWidget(QProcess.create(QObject(h: parentH, owned: false)))
     let processH = process.h
@@ -59,8 +73,17 @@ proc runNimCheck*(
         for rawLine in allOutput[].splitLines():
           if rawLine.len > 0:
             lines.add(parseLine(rawLine))
+        appendDebugLog(
+          "nimcheck",
+          "finished exitCode=" & $exitCode &
+          " output=" & trimForLog(allOutput[]))
         onDone(lines)
       except: discard
 
-    process.start(nimExe, @["check", filePath])
+    var args = @["check"]
+    if backend.len > 0:
+      args.add("--backend:" & backend)
+    args.add(pathArgs)
+    args.add(filePath)
+    process.start(nimExe, args)
   except: discard

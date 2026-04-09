@@ -7,6 +7,9 @@ import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbu
 import std/[tables, algorithm, strutils, os, osproc]
 
 import nide/settings/theme
+import nide/settings/nimbleinstaller
+import nide/settings/projectconfig
+import nide/settings/toolchain
 import nide/dialogs/themedialog
 import nide/ui/opacity
 import nide/settings/settingsstore
@@ -25,7 +28,6 @@ const
   KeybindSetColWidth = cint 60
   KeyCaptureWidth = cint 360
   KeyCaptureHeight = cint 130
-  NimbleVersion* = "v0.22.3"
   FieldMinWidth = cint 280
 
 type
@@ -140,17 +142,21 @@ proc load*(_: typedesc[Settings]): Settings {.raises: [].} =
 
 proc getNimPath*(settings: Settings): string =
   case settings.nim.mode
-  of InstallWithNimble: settings.nim.nimbleInstallPath / "nim"
+  of InstallWithNimble: settings.nim.nimbleInstallPath / nimExecutableName("nim")
   of CustomPath: settings.nim.customNimPath
 
 proc getNimblePath*(settings: Settings): string =
   case settings.nim.mode
-  of InstallWithNimble: settings.nim.nimbleInstallPath / "nimble"
+  of InstallWithNimble: settings.nim.nimbleInstallPath / nimExecutableName("nimble")
   of CustomPath: settings.nim.customNimblePath
 
 proc findNimble*(): string {.raises: [].} =
   let nimbleBinDir = getHomeDir() / ".nimble" / "bin"
-  for candidate in [nimbleBinDir / "nimble", "/usr/bin/nimble", "/usr/local/bin/nimble"]:
+  for candidate in [
+    nimbleBinDir / nimExecutableName("nimble"),
+    "/usr/bin" / nimExecutableName("nimble"),
+    "/usr/local/bin" / nimExecutableName("nimble")
+  ]:
     if fileExists(candidate):
       return candidate
   try:
@@ -167,7 +173,9 @@ proc write*(settings: Settings) {.raises: [].} =
 proc showSettingsDialog*(
   parent:           QWidget,
   current:          Settings,
-  onApply:          proc(s: Settings) {.raises: [].},
+  currentProjectRoot: string,
+  currentProjectConfig: ProjectConfig,
+  onApply:          proc(s: Settings, projectConfig: ProjectConfig) {.raises: [].},
   onOpacityPreview: proc(enabled: bool, level: int) {.raises: [].} = nil
 ) {.raises: [].} =
   try:
@@ -431,6 +439,7 @@ proc showSettingsDialog*(
 
     var testButton = newWidget(QPushButton.create("Test"))
 
+    var installNimbleButton = newWidget(QPushButton.create("Install Nimble"))
     var installButton = newWidget(QPushButton.create("Install Nim"))
 
     var testResultLabel = newWidget(QLabel.create(""))
@@ -441,6 +450,7 @@ proc showSettingsDialog*(
     let customNimPathEditH = customNimPathEdit.h
     let customNimblePathEditH = customNimblePathEdit.h
     let testButtonH = testButton.h
+    let installNimbleButtonH = installNimbleButton.h
     let installButtonH = installButton.h
     let testResultLabelH = testResultLabel.h
     let installWithNimbleRadioH = installWithNimbleRadio.h
@@ -450,6 +460,7 @@ proc showSettingsDialog*(
       let isInstallMode = QAbstractButton(h: installWithNimbleRadioH, owned: false).isChecked()
       QWidget(h: nimbleInstallPathEditH, owned: false).setEnabled(isInstallMode)
       QWidget(h: nimbleVersionComboH, owned: false).setEnabled(isInstallMode)
+      QWidget(h: installNimbleButtonH, owned: false).setEnabled(isInstallMode)
       QWidget(h: installButtonH, owned: false).setEnabled(isInstallMode)
       QWidget(h: customNimPathEditH, owned: false).setEnabled(not isInstallMode)
       QWidget(h: customNimblePathEditH, owned: false).setEnabled(not isInstallMode)
@@ -472,11 +483,11 @@ proc showSettingsDialog*(
       if isInstallMode:
         let installPath = nimbleInstallPathEdit.text()
         if installPath.len > 0:
-          configuredNimblePath = installPath / "nimble"
-          configuredNimPath = installPath / "nim"
+          configuredNimblePath = installPath / nimExecutableName("nimble")
+          configuredNimPath = installPath / nimExecutableName("nim")
         else:
-          configuredNimblePath = getHomeDir() / ".nimble" / "bin" / "nimble"
-          configuredNimPath = getHomeDir() / ".nimble" / "bin" / "nim"
+          configuredNimblePath = defaultNimbleInstallDir() / nimExecutableName("nimble")
+          configuredNimPath = defaultNimbleInstallDir() / nimExecutableName("nim")
       else:
         configuredNimblePath = customNimblePathEdit.text()
         configuredNimPath = customNimPathEdit.text()
@@ -544,51 +555,23 @@ proc showSettingsDialog*(
       else:
         QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>" & results.replace("\n", "<br>") & "</span>")
 
+    installNimbleButton.onClicked do() {.raises: [].}:
+      QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ffaa00;'>Installing latest Nimble...</span>")
+      let installResult = installLatestNimble(nimbleInstallPathEdit.text())
+      if installResult.ok:
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>" & installResult.message & "</span>")
+      else:
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>" & installResult.message & "</span>")
+
     installButton.onClicked do() {.raises: [].}:
-      let installPath = nimbleInstallPathEdit.text()
-      let targetDir = if installPath.len > 0: installPath else: getHomeDir() / ".nimble" / "bin"
-      let installNimblePath = targetDir / "nimble"
-
-      if not dirExists(targetDir):
-        try:
-          createDir(targetDir)
-        except:
-          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to create directory</span>")
-          return
-
       var nimbleExePath = findNimble()
       if nimbleExePath.len == 0:
-        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ffaa00;'>Downloading nimble...</span>")
-
-        let nimbleUrl = "https://github.com/nim-lang/nimble/releases/download/" & NimbleVersion & "/nimble-" & NimbleVersion & "-"
-        var downloadUrl: string
-        when defined(windows):
-          downloadUrl = nimbleUrl & "x86_64-pc-windows.zip"
-        elif defined(macosx):
-          downloadUrl = nimbleUrl & "x86_64-unknown_darwin.tar.gz"
-        else:
-          downloadUrl = nimbleUrl & "x86_64-linux.tar.gz"
-
-        try:
-          let (output, code) = execCmdEx("curl -fsSL -o /tmp/nimble.tar.gz " & downloadUrl & " 2>&1")
-          if code != 0:
-            QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to download nimble: " & output & "</span>")
-            return
-        except:
-          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to download nimble</span>")
+        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ffaa00;'>Installing latest Nimble...</span>")
+        let installResult = installLatestNimble(nimbleInstallPathEdit.text())
+        if not installResult.ok:
+          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>" & installResult.message & "</span>")
           return
-
-        try:
-          let (extractOutput, extractCode) = execCmdEx("tar -xzf /tmp/nimble.tar.gz -C " & targetDir & " --strip-components=1 2>&1")
-          if extractCode != 0:
-            QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to extract nimble: " & extractOutput & "</span>")
-            return
-        except:
-          QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to extract nimble</span>")
-          return
-
-        nimbleExePath = installNimblePath
-        QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>Nimble downloaded successfully</span><br>")
+        nimbleExePath = installResult.nimblePath
 
       let version = nimbleVersionCombo.currentText()
       QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ffaa00;'>Installing Nim " & version & "...</span>")
@@ -612,6 +595,7 @@ proc showSettingsDialog*(
 
     var nimButtonLayout = hbox()
     nimButtonLayout.add(testButton)
+    nimButtonLayout.add(installNimbleButton)
     nimButtonLayout.add(installButton)
     nimButtonLayout.addStretch(cint 1)
 
@@ -623,6 +607,113 @@ proc showSettingsDialog*(
 
     discard QTabWidget(h: tabsH, owned: false).addTab(
       QWidget(h: nimTabH, owned: false), "Nim Environment")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # Tab 4 — Project
+    # ════════════════════════════════════════════════════════════════════════
+    var projectTab = newWidget(QWidget.create(QWidget(h: tabsH, owned: false)))
+    let projectTabH = projectTab.h
+
+    let hasOpenProject = currentProjectRoot.len > 0
+    let configPath =
+      if hasOpenProject: projectConfigFilePath(currentProjectRoot)
+      else: ".nide.json"
+
+    var projectRootLabel = newWidget(QLabel.create(
+      if hasOpenProject: currentProjectRoot else: "No project open"))
+    projectRootLabel.setWordWrap(true)
+
+    var projectConfigPathLabel = newWidget(QLabel.create(configPath))
+    projectConfigPathLabel.setWordWrap(true)
+
+    var useSystemNimCheck = checkbox(
+      "Use system Nim for this project",
+      currentProjectConfig.useSystemNim)
+
+    let resolvedProjectToolchain = resolveProjectToolchain(
+      getNimPath(current),
+      getNimblePath(current),
+      currentProjectRoot,
+      currentProjectConfig
+    )
+
+    var resolvedSourceLabel = newWidget(QLabel.create(
+      if hasOpenProject and currentProjectConfig.useSystemNim:
+        "Using " & resolvedProjectToolchain.source
+      elif hasOpenProject:
+        "Using global settings"
+      else:
+        "No project open"
+    ))
+    resolvedSourceLabel.setWordWrap(true)
+
+    var resolvedNimLabel = newWidget(QLabel.create(
+      if resolvedProjectToolchain.nimCommand.len > 0:
+        resolvedProjectToolchain.nimCommand
+      else:
+        "Not resolved"
+    ))
+    resolvedNimLabel.setWordWrap(true)
+
+    var resolvedNimbleLabel = newWidget(QLabel.create(
+      if resolvedProjectToolchain.nimbleCommand.len > 0:
+        resolvedProjectToolchain.nimbleCommand
+      else:
+        "Not resolved"
+    ))
+    resolvedNimbleLabel.setWordWrap(true)
+
+    var resolvedNimSuggestLabel = newWidget(QLabel.create(
+      if resolvedProjectToolchain.nimsuggestCommand.len > 0:
+        resolvedProjectToolchain.nimsuggestCommand
+      else:
+        "Not resolved"
+    ))
+    resolvedNimSuggestLabel.setWordWrap(true)
+
+    var projectNimPathEdit = newWidget(QLineEdit.create())
+    projectNimPathEdit.setText(currentProjectConfig.nimPath)
+    projectNimPathEdit.setPlaceholderText("e.g. /nix/store/.../bin/nim")
+
+    var projectNimblePathEdit = newWidget(QLineEdit.create())
+    projectNimblePathEdit.setText(currentProjectConfig.nimblePath)
+    projectNimblePathEdit.setPlaceholderText("e.g. /nix/store/.../bin/nimble")
+
+    let useSystemNimCheckH = useSystemNimCheck.h
+    let projectNimPathEditH = projectNimPathEdit.h
+    let projectNimblePathEditH = projectNimblePathEdit.h
+
+    proc updateProjectUIVisibility() {.raises: [].} =
+      QWidget(h: useSystemNimCheckH, owned: false).setEnabled(hasOpenProject)
+      let enableOverrides =
+        hasOpenProject and QAbstractButton(h: useSystemNimCheckH, owned: false).isChecked()
+      QWidget(h: projectNimPathEditH, owned: false).setEnabled(enableOverrides)
+      QWidget(h: projectNimblePathEditH, owned: false).setEnabled(enableOverrides)
+
+    updateProjectUIVisibility()
+
+    useSystemNimCheck.onStateChanged do(state: cint) {.raises: [].}:
+      discard state
+      updateProjectUIVisibility()
+
+    var projectForm = newWidget(QFormLayout.create())
+    projectForm.addRow("Project root", projectRootLabel.asWidget)
+    projectForm.addRow("Config file", projectConfigPathLabel.asWidget)
+    projectForm.addRow("", useSystemNimCheck.asWidget)
+    projectForm.addRow("Nim path", projectNimPathEdit.asWidget)
+    projectForm.addRow("Nimble path", projectNimblePathEdit.asWidget)
+    projectForm.addRow("Resolved from", resolvedSourceLabel.asWidget)
+    projectForm.addRow("Effective nim", resolvedNimLabel.asWidget)
+    projectForm.addRow("Effective nimble", resolvedNimbleLabel.asWidget)
+    projectForm.addRow("Effective nimsuggest", resolvedNimSuggestLabel.asWidget)
+
+    var projectLayout = vbox()
+    projectLayout.addLayout(projectForm.asLayout())
+    projectLayout.addStretch(cint 1)
+    projectLayout.applyTo(QWidget(h: projectTabH, owned: false))
+
+    discard QTabWidget(h: tabsH, owned: false).addTab(
+      QWidget(h: projectTabH, owned: false), "Project")
 
     # ── Buttons ─────────────────────────────────────────────────────────────
     var buttons = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
@@ -665,6 +756,11 @@ proc showSettingsDialog*(
       updated.nim.nimbleVersion = nimbleVersionCombo.currentText()
       updated.nim.customNimPath = customNimPathEdit.text()
       updated.nim.customNimblePath = customNimblePathEdit.text()
-      onApply(updated)
+      var updatedProjectConfig = currentProjectConfig
+      if hasOpenProject:
+        updatedProjectConfig.useSystemNim = useSystemNimCheck.asButton.isChecked()
+        updatedProjectConfig.nimPath = projectNimPathEdit.text()
+        updatedProjectConfig.nimblePath = projectNimblePathEdit.text()
+      onApply(updated, updatedProjectConfig)
   except:
     discard

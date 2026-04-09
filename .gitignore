@@ -11,3 +11,4 @@ nimbledeps
 *.flatpak
 .claude/
 .codex
+*.log

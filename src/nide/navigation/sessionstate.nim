@@ -26,6 +26,9 @@ proc lastSessionFilePath*(): string =
 proc legacyLastSessionFilePath(): string =
   nideDirPath() / "last_session"
 
+proc hasLastSession*(): bool =
+  fileExists(lastSessionFilePath()) or fileExists(legacyLastSessionFilePath())
+
 proc isMeaningful*(session: LastSession): bool =
   if session.projectNimbleFile.len > 0:
     return true

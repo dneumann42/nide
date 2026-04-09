@@ -1,4 +1,4 @@
-import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets
+import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/debuglog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/projectconfig, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/settings/toolchain, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
 import nide/helpers/qtconst
@@ -34,6 +34,8 @@ type
     opacityEffect: QGraphicsOpacityEffect
     nimSuggest: NimSuggestClient
     settings: Settings
+    projectConfig: ProjectConfig
+    currentProjectBackend: string
     fileWatcher: QFileSystemWatcher
     loaderTimer: QTimer
     projectDiagLines: ref seq[LogLine]
@@ -392,7 +394,7 @@ proc openFile(self: Application, path: string): Buffer =
       self.projectManager.recordOpenedFile(self.currentProject, result.path)
 
 proc updateRestoreSessionAvailability(self: Application) {.raises: [].} =
-  let available = loadLastSession().isSome()
+  let available = hasLastSession()
   if self.paneManager == nil:
     return
   for panel in self.paneManager.panels:
@@ -509,6 +511,45 @@ proc updateRecentProjects(self: Application) {.raises: [].} =
   for panel in self.paneManager.panels:
     panel.setRecentProjects(self.projectManager.recentProjects)
 
+proc resolvedProjectToolchain(self: Application): ResolvedToolchain =
+  resolveProjectToolchain(
+    getNimPath(self.settings),
+    getNimblePath(self.settings),
+    self.currentProject,
+    self.projectConfig
+  )
+
+proc restartProjectNimIntegration(self: Application) {.raises: [].} =
+  if self.projectNimbleFile.len == 0:
+    return
+
+  if self.nimSuggest != nil:
+    self.nimSuggest.kill()
+
+  var entryFile = findProjectMain(self.projectNimbleFile)
+  if entryFile.len == 0:
+    entryFile = findNimbleEntry(self.projectNimbleFile)
+
+  let toolchain = self.resolvedProjectToolchain()
+  appendDebugLog(
+    "application",
+    "restartProjectNimIntegration backend=" & self.currentProjectBackend &
+    " nim=" & toolchain.nimCommand &
+    " nimble=" & toolchain.nimbleCommand &
+    " nimsuggest=" & toolchain.nimsuggestCommand &
+    " source=" & toolchain.source,
+    self.currentProject)
+  self.nimSuggest = NimSuggestClient.new(
+    self.root.h,
+    entryFile,
+    toolchain.nimsuggestCommand,
+    self.currentProjectBackend,
+    debug = false)
+  startNimSuggest(self.nimSuggest)
+  self.paneManager.nimSuggest = self.nimSuggest
+  for panel in self.paneManager.panels:
+    panel.nimSuggest = self.nimSuggest
+
 proc runProjectCheck*(self: Application) {.raises: [].} =
   if self.projectNimbleFile.len == 0: return
   let mainFile = findProjectMain(self.projectNimbleFile)
@@ -517,15 +558,27 @@ proc runProjectCheck*(self: Application) {.raises: [].} =
     try: QProcess(h: self.projectCheckProcessH[], owned: false).kill()
     except: discard
     self.projectCheckProcessH[] = nil
-  runNimCheck(self.root.h, mainFile, self.projectCheckProcessH,
+  let toolchain = self.resolvedProjectToolchain()
+  runNimCheck(self.root.h, mainFile, toolchain.nimCommand, self.currentProjectBackend, self.projectCheckProcessH,
     proc(lines: seq[LogLine]) {.raises: [].} =
       self.projectDiagLines[] = lines
       self.toolbar.updateDiagCounts(lines))
 
 proc openProject(self: Application, path: string, restoreMode = false) {.raises: [].} =
   let dir = path.parentDir()
+  clearDebugLog(dir)
   self.currentProject = dir
   self.projectNimbleFile = path
+  self.currentProjectBackend = projectBackend(path)
+  self.projectConfig = loadProjectConfig(dir)
+  appendDebugLog(
+    "application",
+    "openProject nimble=" & path &
+    " backend=" & self.currentProjectBackend &
+    " useSystemNim=" & $self.projectConfig.useSystemNim &
+    " projectNimPath=" & self.projectConfig.nimPath &
+    " projectNimblePath=" & self.projectConfig.nimblePath,
+    dir)
   for panel in self.paneManager.panels:
     panel.clearBuffer()
   self.paneManager.setProjectOpen(true)
@@ -536,17 +589,7 @@ proc openProject(self: Application, path: string, restoreMode = false) {.raises:
   self.fileTree.setRoot(dir)
   self.toolbar.setFileTreeEnabled(true)
   self.toolbar.setFileTreeIconColor("#ffffff")
-  # Start nimsuggest for this project
-  if self.nimSuggest != nil:
-    self.nimSuggest.kill()
-  var entryFile = findProjectMain(path)
-  if entryFile.len == 0:
-    entryFile = findNimbleEntry(path)
-  self.nimSuggest = NimSuggestClient.new(self.root.h, entryFile, debug = true)
-  startNimSuggest(self.nimSuggest)
-  self.paneManager.nimSuggest = self.nimSuggest
-  for panel in self.paneManager.panels:
-    panel.nimSuggest = self.nimSuggest
+  self.restartProjectNimIntegration()
   if not restoreMode:
     self.paneManager.panels[0].triggerOpenModule()
   self.toolbar.setCloseProjectVisible(true)
@@ -562,6 +605,8 @@ proc openProject(self: Application) {.raises: [].} =
 proc closeProject*(self: Application) {.raises: [].} =
   self.currentProject = ""
   self.projectNimbleFile = ""
+  self.currentProjectBackend = ""
+  self.projectConfig = ProjectConfig()
   for panel in self.paneManager.panels:
     panel.clearBuffer()
   self.paneManager.setProjectOpen(false)
@@ -573,6 +618,9 @@ proc closeProject*(self: Application) {.raises: [].} =
   if self.nimSuggest != nil:
     self.nimSuggest.kill()
     self.nimSuggest = nil
+  self.paneManager.nimSuggest = nil
+  for panel in self.paneManager.panels:
+    panel.nimSuggest = nil
   self.toolbar.setCloseProjectVisible(false)
   self.projectDiagLines[] = @[]
   self.toolbar.updateDiagCounts(@[])
@@ -778,7 +826,11 @@ proc build*(self: Application) =
       discard pane
       self.requestSessionSave(),
     onLayoutChanged: proc() {.raises: [].} =
-      self.requestSessionSave()
+      self.requestSessionSave(),
+    resolveNimCommand: proc(): string {.raises: [].} =
+      self.resolvedProjectToolchain().nimCommand,
+    resolveNimBackend: proc(): string {.raises: [].} =
+      if self.currentProjectBackend.len > 0: self.currentProjectBackend else: "c"
     ))
 
   # Command dispatcher — register all editor commands and bind default keys
@@ -1081,8 +1133,7 @@ proc build*(self: Application) =
         self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
-    let nimPath = getNimPath(self.settings)
-    let nimblePath = getNimblePath(self.settings)
+    let nimPath = self.resolvedProjectToolchain().nimCommand
     runCommand(self.appWidget(), "nimble run", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim && ./$b", onBg, gotoRun)
 
   self.toolbar.onBuild do():
@@ -1100,7 +1151,7 @@ proc build*(self: Application) =
         self.openInPane(target, file)
         target.jumpToLine(line, col)
       except: discard
-    let nimPath = getNimPath(self.settings)
+    let nimPath = self.resolvedProjectToolchain().nimCommand
     runCommand(self.appWidget(), "nimble build", "n=$(ls *.nimble | head -1); b=${n%.nimble}; " & nimPath & " cpp --out:./$b src/$b.nim", onBg, gotoBuild)
 
   self.toolbar.onGraph do():
@@ -1177,9 +1228,14 @@ proc build*(self: Application) =
     showSettingsDialog(
       self.appWidget(),
       self.settings,
-      proc(updated: Settings) {.raises: [].} =
+      self.currentProject,
+      self.projectConfig,
+      proc(updated: Settings, projectConfig: ProjectConfig) {.raises: [].} =
         self.settings = updated
         self.settings.write()
+        if self.currentProject.len > 0:
+          self.projectConfig = projectConfig
+          saveProjectConfig(self.currentProject, self.projectConfig)
         applyTheme(updated.appearance.themeMode)
         setCurrentTheme(updated.appearance.syntaxTheme)
         self.bufferManager.rehighlightAll()
@@ -1192,7 +1248,11 @@ proc build*(self: Application) =
         if disp != nil:
           disp.resetBindings()
           registerDefaultBindings(disp)
-          disp.applyCustomBindings(updated.keybindings.toTable()),
+          disp.applyCustomBindings(updated.keybindings.toTable())
+        if self.currentProject.len > 0:
+          self.restartProjectNimIntegration()
+          self.runProjectCheck()
+      ,
       proc(enabled: bool, level: int) {.raises: [].} =
         self.opacityEffect.applyOpacity(enabled, level)
     )

@@ -140,6 +140,42 @@ bin     = @["missing"]
       let found = findProjectMain(path)
       check found == ""
 
+  test "backend field defaults to c when missing":
+    withTempNimble("""
+version = "1.0"
+""", "") do (path: string):
+      check projectBackend(path) == "c"
+
+  test "backend field is parsed from nimble file":
+    withTempNimble("""
+version = "1.0"
+backend = "cpp"
+""", "") do (path: string):
+      check projectBackend(path) == "cpp"
+
+  test "project dependency paths expand from nimbledeps":
+    let tmp = getTempDir() / "testnimpaths_" & $getCurrentProcessId()
+    createDir(tmp)
+    createDir(tmp / "nimbledeps")
+    writeFile(tmp / "config.nims", "# stub")
+    writeFile(tmp / "nimbledeps" / "nimble.paths.nims", """
+switch("path", thisDir() & "/pkgs2/foo-1.0.0")
+switch("path", thisDir() & "/pkgs2/bar-2.0.0")
+""".strip())
+    try:
+      let paths = projectDependencyPaths(tmp)
+      check paths == @[
+        tmp / "nimbledeps" / "pkgs2" / "foo-1.0.0",
+        tmp / "nimbledeps" / "pkgs2" / "bar-2.0.0"
+      ]
+      let args = projectDependencyPathArgs(tmp)
+      check args == @[
+        "--path:" & tmp / "nimbledeps" / "pkgs2" / "foo-1.0.0",
+        "--path:" & tmp / "nimbledeps" / "pkgs2" / "bar-2.0.0"
+      ]
+    finally:
+      removeDir(tmp)
+
   test "finds the actual nide project entry point":
     # Verify against the real nide.nimble so we catch regressions immediately.
     let nimblePath = currentSourcePath().parentDir().parentDir() / "nide.nimble"

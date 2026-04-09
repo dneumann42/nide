@@ -23,6 +23,8 @@ type
     onRestoreLastSession*: proc(pane: Pane) {.raises: [].}
     onPaneStateChanged*: proc(pane: Pane) {.raises: [].}
     onLayoutChanged*: proc() {.raises: [].}
+    resolveNimCommand*: proc(): string {.raises: [].}
+    resolveNimBackend*: proc(): string {.raises: [].}
 
   PaneManager* = ref object
     panels*: seq[Pane]
@@ -79,6 +81,8 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
   if self.hasProject:
     result.setProjectOpen(true)
   result.nimSuggest = self.nimSuggest
+  result.nimCommandProvider = self.callbacks.resolveNimCommand
+  result.nimBackendProvider = self.callbacks.resolveNimBackend
   result.dispatcher = self.dispatcher
   result.setupSmoothScrolling()
 

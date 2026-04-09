@@ -1,6 +1,8 @@
 import std/[os, strutils]
 import seaqt/[qprocess, qobject, qtcpsocket, qabstractsocket, qiodevice]
+import nide/helpers/debuglog
 import nide/helpers/qtconst
+import nide/nim/nimproject
 import nide/ui/widgets
 
 const
@@ -31,6 +33,8 @@ type
   NimSuggestClient* = ref object
     parentH*:      pointer
     projectFile*:  string
+    executable*:   string
+    backend*:      string
     port*:         int
     processH*:     pointer
     socketH*:      pointer
@@ -98,6 +102,7 @@ proc drainPending(client: NimSuggestClient, msg: string) {.raises: [].} =
     try: pq.onError(msg) except: discard
 
 proc log(client: NimSuggestClient, msg: string) {.raises: [].} =
+  appendDebugLog("nimsuggest", msg)
   if client.debug:
     echo "[nimsuggest] " & msg
 
@@ -246,6 +251,7 @@ proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
     if bytes.len > 0:
       var s = newString(bytes.len)
       for i in 0..<bytes.len: s[i] = char(bytes[i])
+      client.log("startup stdout: " & trimForLog(s, 1000))
       client.portBuf &= s
     let nl = client.portBuf.find('\n')
     if nl < 0: return
@@ -336,6 +342,9 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
     let processH = process.h
     client.processH = processH
     let clientRef = client
+    process.setWorkingDirectory(getCurrentDir())
+    let projectRoot = findProjectRoot(client.projectFile)
+    let pathArgs = projectDependencyPathArgs(projectRoot)
 
     process.onReadyReadStandardOutput do() {.raises: [].}:
       clientRef.onProcessPortOutput()
@@ -346,10 +355,19 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
         clientRef.onSocketDead("process exited (code " & $exitCode & ")")
 
     let pid = try: $getCurrentProcessId() except: "0"
-    process.start("nimsuggest",
-      @["--autobind",
-        "--clientProcessId:" & pid,
-        client.projectFile])
+    let executable =
+      if client.executable.len > 0: client.executable else: "nimsuggest"
+    var args = @["--autobind",
+                  "--clientProcessId:" & pid]
+    if client.backend.len > 0:
+      args.add("--backend:" & client.backend)
+    args.add(pathArgs)
+    args.add(client.projectFile)
+    client.log("launch executable=" & executable &
+      " cwd=" & getCurrentDir() &
+      " projectRoot=" & projectRoot &
+      " args=" & args.join(" "))
+    process.start(executable, args)
   except:
     client.state = csDead
     let errMsg = "Failed to start: " & getCurrentExceptionMsg()
@@ -363,8 +381,10 @@ proc restart*(client: NimSuggestClient) {.raises: [].} =
 proc new*(T: typedesc[NimSuggestClient],
           parentH: pointer,
           projectFile: string,
+          executable = "nimsuggest",
+          backend = "",
           debug: bool = false): NimSuggestClient {.raises: [].} =
-  T(parentH: parentH, projectFile: projectFile, state: csIdle, debug: debug)
+  T(parentH: parentH, projectFile: projectFile, executable: executable, backend: backend, state: csIdle, debug: debug)
 
 proc querySug*(client: NimSuggestClient,
                filePath: string,
