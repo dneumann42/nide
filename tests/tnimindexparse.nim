@@ -1,5 +1,5 @@
 import std/unittest
-import nimindexparse
+import nide/nim/nimindexparse
 
 suite "nimindexparse":
   test "parse simple symbol entry":

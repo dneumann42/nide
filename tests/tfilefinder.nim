@@ -1,6 +1,6 @@
 import std/[os, unittest]
 
-import nide/filefinder
+import nide/project/filefinder
 
 const TestRoot = "/tmp/nide-test-gitignore"
 

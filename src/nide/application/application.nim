@@ -1,4 +1,4 @@
-import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/debuglog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/projectconfig, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/settings/toolchain, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets, nide/ui/commandpalette
+import nide/editor/buffers, commands, nide/project/filefinder, nide/ui/filetree, nide/dialogs/graphdialog, nide/helpers/debuglog, nide/helpers/logparser, nide/dialogs/moduledialog, nide/nim/nimcheck, nide/nim/nimproject, nide/nim/nimsuggest, nide/ui/opacity, nide/pane/pane, nide/panemanager, nide/dialogs/projectdialog, nide/project/projects, nide/navigation/rgfinder, nide/helpers/runner, nide/navigation/sessionstate, nide/settings/projectconfig, nide/settings/settings, nide/settings/syntaxtheme, nide/settings/theme, nide/settings/toolchain, nide/dialogs/themedialog, toml_serialization, nide/ui/toolbar, nide/helpers/widgetref, nide/ui/widgets, nide/ui/commandpalette, nide/helpers/fspaths, nide/application/sessionops
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
 import nide/helpers/qtconst
@@ -61,36 +61,6 @@ const
 
 proc appWidget(self: Application): QWidget =
   self.root.asWidget
-
-proc pathExistsAny(path: string): bool =
-  fileExists(path) or dirExists(path)
-
-proc normalizedFsPath(path: string): string =
-  try:
-    result = normalizePathEnd(normalizedPath(absolutePath(path)), false)
-  except CatchableError:
-    result = normalizePathEnd(normalizedPath(path), false)
-  when defined(windows):
-    result = result.toLowerAscii()
-
-proc isSameOrChildPath(path, root: string): bool =
-  let normalizedPath = normalizedFsPath(path)
-  let normalizedRoot = normalizedFsPath(root)
-  var prefix = normalizedRoot
-  prefix.add(DirSep)
-  normalizedPath == normalizedRoot or normalizedPath.startsWith(prefix)
-
-proc remapPath(oldPath, oldRoot, newRoot: string): string {.raises: [].} =
-  let normalizedOldPath = normalizedFsPath(oldPath)
-  let normalizedOldRoot = normalizedFsPath(oldRoot)
-  let normalizedNewRoot = normalizedFsPath(newRoot)
-  if normalizedOldPath == normalizedOldRoot:
-    normalizedNewRoot
-  else:
-    try:
-      normalizedNewRoot / relativePath(normalizedOldPath, normalizedOldRoot)
-    except Exception:
-      normalizedNewRoot / oldPath.lastPathPart()
 
 proc showFileTreeError(self: Application, title, message: string) {.raises: [].} =
   discard QMessageBox.critical(self.appWidget(), title, message)
@@ -401,33 +371,10 @@ proc updateRestoreSessionAvailability(self: Application) {.raises: [].} =
   for panel in self.paneManager.panels:
     panel.setRestoreLastSessionAvailable(available)
 
-proc buildLastSession(self: Application): LastSession =
-  let columns = self.paneManager.visibleColumns()
-  result.projectNimbleFile = self.projectNimbleFile
-  for colIdx, panes in columns:
-    var savedColumn = SavedColumnSession()
-    for rowIdx, pane in panes:
-      let cursor = pane.currentCursorPosition()
-      let scroll = pane.currentScrollPosition()
-      savedColumn.panes.add(SavedPaneSession(
-        filePath: if pane.buffer != nil: pane.buffer.path else: "",
-        cursorLine: cursor.line,
-        cursorColumn: cursor.col,
-        verticalScroll: scroll.vertical,
-        horizontalScroll: scroll.horizontal
-      ))
-      if pane == self.paneManager.lastFocusedPane:
-        result.activeColumnIndex = colIdx
-        result.activePaneIndex = rowIdx
-    result.columns.add(savedColumn)
-  if self.paneManager.lastFocusedPane == nil and result.columns.len > 0 and result.columns[0].panes.len > 0:
-    result.activeColumnIndex = 0
-    result.activePaneIndex = 0
-
 proc saveLastSessionNow(self: Application) {.raises: [].} =
   if self.restoringSession or not self.sessionPersistenceReady or self.paneManager == nil:
     return
-  saveLastSession(self.buildLastSession())
+  saveLastSession(buildLastSession(self.paneManager, self.projectNimbleFile))
   self.updateRestoreSessionAvailability()
 
 proc requestSessionSave(self: Application) {.raises: [].} =
@@ -658,21 +605,7 @@ proc restoreLastSession(self: Application) {.raises: [].} =
       if self.paneManager.panels.len > 0:
         firstPane = self.paneManager.panels[0]
 
-    var paneGrid: seq[seq[Pane]] = @[@[firstPane]]
-    while paneGrid[0].len < layout[0].panes.len:
-      let newPane = self.paneManager.splitRow(paneGrid[0][^1])
-      if newPane == nil:
-        break
-      paneGrid[0].add(newPane)
-
-    for colIdx in 1..<layout.len:
-      let newColPane = self.paneManager.addColumn()
-      paneGrid.add(@[newColPane])
-      while paneGrid[colIdx].len < layout[colIdx].panes.len:
-        let newPane = self.paneManager.splitRow(paneGrid[colIdx][^1])
-        if newPane == nil:
-          break
-        paneGrid[colIdx].add(newPane)
+    let paneGrid = restoreSessionLayout(self.paneManager, layout, firstPane)
 
     for colIdx, savedColumn in layout:
       if colIdx >= paneGrid.len:
@@ -688,15 +621,12 @@ proc restoreLastSession(self: Application) {.raises: [].} =
         else:
           pane.clearBuffer()
 
-    var focusPane: Pane
-    if session.activeColumnIndex >= 0 and session.activeColumnIndex < paneGrid.len:
-      let col = paneGrid[session.activeColumnIndex]
-      if session.activePaneIndex >= 0 and session.activePaneIndex < col.len:
-        focusPane = col[session.activePaneIndex]
-    if focusPane == nil and paneGrid.len > 0 and paneGrid[0].len > 0:
-      focusPane = paneGrid[0][0]
-    if focusPane != nil:
-      focusPane.focus()
+    let focusPane = resolveFocusPane(
+      paneGrid,
+      session.activeColumnIndex,
+      session.activePaneIndex)
+    if focusPane.isSome():
+      focusPane.get().focus()
   finally:
     self.restoringSession = false
 

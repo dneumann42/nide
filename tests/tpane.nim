@@ -1,6 +1,6 @@
 import std/[unittest, options]
-import pane/logic
-import logparser
+import nide/pane/logic
+import nide/helpers/logparser
 
 # Helpers to build LogLine fixtures (same pattern as tnimimports.nim)
 proc errLine(file: string, line = 1): LogLine =

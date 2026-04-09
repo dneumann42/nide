@@ -3,6 +3,8 @@ import std/[options, os]
 
 import toml_serialization
 
+import nide/helpers/tomlstore
+
 type
   SavedPaneSession* = object
     filePath*: string
@@ -45,22 +47,13 @@ proc loadLastSession*(): Option[LastSession] =
     if not fileExists(legacyPath):
       return none(LastSession)
     path = legacyPath
-  try:
-    let session = Toml.loadFile(path, LastSession)
-    if session.isMeaningful():
-      some(session)
-    else:
-      none(LastSession)
-  except CatchableError as e:
-    echo "Failed to load last session: ", e.msg
+  let session = loadTomlFile(path, LastSession, "last session")
+  if session.isMeaningful():
+    some(session)
+  else:
     none(LastSession)
 
 proc saveLastSession*(session: LastSession) =
   if not session.isMeaningful():
     return
-  try:
-    if not dirExists(nideDirPath()):
-      createDir(nideDirPath())
-    Toml.saveFile(lastSessionFilePath(), session)
-  except CatchableError as e:
-    echo "Failed to save last session: ", e.msg
+  discard saveTomlFile(lastSessionFilePath(), session, "last session")

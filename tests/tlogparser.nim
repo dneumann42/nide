@@ -1,5 +1,5 @@
 import std/unittest
-import logparser
+import nide/helpers/logparser
 
 suite "parseLine":
   test "error line":

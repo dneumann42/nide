@@ -2,6 +2,9 @@ import std/os
 
 import toml_serialization
 
+import nide/helpers/appdirs
+import nide/helpers/tomlstore
+
 type
   StoredAppearanceSettings* = object
     themeMode*: string
@@ -33,22 +36,11 @@ type
 const SettingsFile* = "settings.toml"
 
 proc settingsFilePath*(): string =
-  getConfigDir() / "nide" / SettingsFile
+  nideConfigDirPath() / SettingsFile
 
 proc loadStoredSettings*(): StoredSettings {.raises: [].} =
-  try:
-    if not dirExists(getConfigDir() / "nide"):
-      createDir(getConfigDir() / "nide")
-    let path = settingsFilePath()
-    if fileExists(path):
-      result = Toml.loadFile(path, StoredSettings)
-  except:
-    echo getCurrentExceptionMsg()
+  discard ensureDirExists(nideConfigDirPath())
+  result = loadTomlFile(settingsFilePath(), StoredSettings, "settings")
 
 proc writeStoredSettings*(settings: StoredSettings) {.raises: [].} =
-  try:
-    if not dirExists(getConfigDir() / "nide"):
-      createDir(getConfigDir() / "nide")
-    Toml.saveFile(settingsFilePath(), settings)
-  except:
-    echo getCurrentExceptionMsg()
+  discard saveTomlFile(settingsFilePath(), settings, "settings")

@@ -1,6 +1,7 @@
 import std/[options, os, unittest]
 
-import nide/[projects, sessionstate]
+import nide/project/projects
+import nide/navigation/sessionstate
 import toml_serialization
 
 const TestHome = "/tmp/nide-test-home"

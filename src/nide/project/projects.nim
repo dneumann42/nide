@@ -1,6 +1,9 @@
-import std/[options, os, dirs, strformat, sequtils]
+import std/[options, os, strformat, sequtils]
 
 import toml_serialization
+
+import nide/helpers/appdirs
+import nide/helpers/tomlstore
 
  # derive vcs from directory
 type
@@ -20,7 +23,7 @@ type
     projectFiles*: seq[ProjectRecentFiles]
 
 proc nideDirPath*(): string =
-  getHomeDir() / ".local" / "nide"
+  nideDataDirPath()
 
 proc hasNoProjects*(pm: ProjectManager): bool =
   pm.projects.len() == 0
@@ -40,16 +43,10 @@ proc load*(self: var ProjectManager) =
   if not projectsFileExists():
     let pm = ProjectManager()
     pm.write()
-  try:
-    self = Toml.loadFile(nideDirPath() / "projects.toml", ProjectManager)
-  except CatchableError as e:
-    echo "Failed to load projects: ", e.msg
+  self = loadTomlFile(nideDirPath() / "projects.toml", ProjectManager, "projects")
 
 proc write*(self: ProjectManager) =
-  try:
-    Toml.saveFile(nideDirPath() / "projects.toml", self)
-  except CatchableError as e:
-    echo "Failed to save projects: ", e.msg
+  discard saveTomlFile(nideDirPath() / "projects.toml", self, "projects")
 
 proc createProject*(self: var ProjectManager, project: Project, noWrite = false) =
   let projectDir = project.path / project.name
@@ -110,10 +107,5 @@ proc recentFilesFor*(self: ProjectManager, projectPath: string): seq[string] =
       return prf.files
 
 proc init*(T: typedesc[ProjectManager]): T {.raises: [].} =
-  let nidePath = nideDirPath()
-  try:
-    if not dirExists(nidePath):
-      createDir(nidePath)
-  except OSError, IOError:
-    echo getCurrentExceptionMsg() 
+  discard ensureDirExists(nideDirPath())
   result = T()

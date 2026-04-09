@@ -1,6 +1,6 @@
 import std/[os, unittest]
 
-import nide/settingsstore
+import nide/settings/settingsstore
 
 const TestHome = "/tmp/nide-settings-test-home"
 

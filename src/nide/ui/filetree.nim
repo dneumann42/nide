@@ -4,6 +4,7 @@ import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemvi
                qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl]
 import std/[os, strutils]
 import nide/helpers/devicons
+import nide/helpers/fspaths
 import nide/helpers/qtconst
 import nide/ui/widgets
 
@@ -30,24 +31,6 @@ type
     canPaste*:        proc(): bool {.raises: [].}
     onMenuAction*:    proc(action: FileTreeMenuAction, path: string, isDir: bool) {.raises: [].}
     onMoveRequested*: proc(sourcePath: string, targetDir: string): bool {.raises: [].}
-
-proc pathExistsAny(path: string): bool =
-  fileExists(path) or dirExists(path)
-
-proc normalizedFsPath(path: string): string =
-  try:
-    result = normalizePathEnd(normalizedPath(absolutePath(path)), false)
-  except CatchableError:
-    result = normalizePathEnd(normalizedPath(path), false)
-  when defined(windows):
-    result = result.toLowerAscii()
-
-proc isSameOrChildPath(path, root: string): bool =
-  let normalizedPath = normalizedFsPath(path)
-  let normalizedRoot = normalizedFsPath(root)
-  var prefix = normalizedRoot
-  prefix.add(DirSep)
-  normalizedPath == normalizedRoot or normalizedPath.startsWith(prefix)
 
 proc draggedLocalPaths(event: QDropEvent, rootPath: string): seq[string] {.raises: [].} =
   if rootPath.len == 0:
