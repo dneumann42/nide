@@ -109,17 +109,33 @@ proc makeIconPushButton*(svg: string, iconSize: cint, widgetSize: cint = 18): QP
 # Layout builders
 # ---------------------------------------------------------------------------
 
-proc vbox*(margins: tuple[l, t, r, b: cint] = (cint 0, cint 0, cint 0, cint 0),
-           spacing: cint = cint 0): QVBoxLayout =
+proc vbox*(margins: tuple[l, t, r, b: int] = (0, 0, 0, 0),
+           spacing: int = 0): QVBoxLayout =
   ## Create a QVBoxLayout with owned=false, margins, and spacing pre-set.
+  result = QVBoxLayout.create()
+  result.owned = false
+  result.setContentsMargins(
+    cast[cint](margins.l), cast[cint](margins.t), cast[cint](margins.r), cast[cint](margins.b))
+  result.setSpacing(cast[cint](spacing))
+
+proc vbox*(margins: tuple[l, t, r, b: cint],
+           spacing: cint = cint 0): QVBoxLayout =
   result = QVBoxLayout.create()
   result.owned = false
   result.setContentsMargins(margins.l, margins.t, margins.r, margins.b)
   result.setSpacing(spacing)
 
-proc hbox*(margins: tuple[l, t, r, b: cint] = (cint 0, cint 0, cint 0, cint 0),
-           spacing: cint = cint 0): QHBoxLayout =
+proc hbox*(margins: tuple[l, t, r, b: int] = (0, 0, 0, 0),
+           spacing: int = 0): QHBoxLayout =
   ## Create a QHBoxLayout with owned=false, margins, and spacing pre-set.
+  result = QHBoxLayout.create()
+  result.owned = false
+  result.setContentsMargins(
+    cast[cint](margins.l), cast[cint](margins.t), cast[cint](margins.r), cast[cint](margins.b))
+  result.setSpacing(cast[cint](spacing))
+
+proc hbox*(margins: tuple[l, t, r, b: cint],
+           spacing: cint = cint 0): QHBoxLayout =
   result = QHBoxLayout.create()
   result.owned = false
   result.setContentsMargins(margins.l, margins.t, margins.r, margins.b)

@@ -29,6 +29,8 @@ const
   KeyCaptureWidth = cint 360
   KeyCaptureHeight = cint 130
   FieldMinWidth = cint 280
+  FormSpacing = cint 12
+  TabMargin = cint 12
 
 type
   AppearanceSettings* = object
@@ -274,6 +276,7 @@ proc showSettingsDialog*(
 
     # Form layout
     var form = newWidget(QFormLayout.create())
+    form.setSpacing(FormSpacing)
     form.addRow("Theme mode",    themeModeCombo.asWidget)
     form.addRow("Font family",   fontEdit.asWidget)
     form.addRow("Font size",     fontSizeSpin.asWidget)
@@ -290,7 +293,7 @@ proc showSettingsDialog*(
       current.appearance.syntaxTheme)
 
     # Appearance tab layout
-    var appearLayout = vbox()
+    var appearLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
     appearLayout.addLayout(form.asLayout())
     appearLayout.addWidget(syntaxLabel.asWidget, cint 0)
     appearLayout.addWidget(picker.splitter.asWidget, cint 1)
@@ -373,7 +376,7 @@ proc showSettingsDialog*(
         capBtns.onRejected do():
           QDialog(h: capDlgH, owned: false).reject()
 
-        var capLayout = vbox()
+        var capLayout = vbox((cint 8, cint 8, cint 8, cint 8))
         capLayout.add(capLabel)
         capLayout.addWidget(QWidget(h: keyEditH, owned: false))
         capLayout.add(capBtns)
@@ -392,7 +395,7 @@ proc showSettingsDialog*(
         row, cint 2, QWidget(h: setBtnH, owned: false))
 
     # Keybindings tab layout
-    var kbLayout = vbox()
+    var kbLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
     kbLayout.addWidget(QWidget(h: kbTableH, owned: false), cint 1)
     kbLayout.applyTo(QWidget(h: kbTabH, owned: false))
 
@@ -586,6 +589,7 @@ proc showSettingsDialog*(
         QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to install Nim</span>")
 
     var nimForm = newWidget(QFormLayout.create())
+    nimForm.setSpacing(FormSpacing)
     nimForm.addRow("", installWithNimbleRadio.asWidget)
     nimForm.addRow("Install path", nimbleInstallPathEdit.asWidget)
     nimForm.addRow("Nim version", nimbleVersionCombo.asWidget)
@@ -599,7 +603,7 @@ proc showSettingsDialog*(
     nimButtonLayout.add(installButton)
     nimButtonLayout.addStretch(cint 1)
 
-    var nimLayout = vbox()
+    var nimLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
     nimLayout.addLayout(nimForm.asLayout())
     nimLayout.addLayout(nimButtonLayout.asLayout())
     nimLayout.addWidget(testResultLabel.asWidget, cint 1)
@@ -697,6 +701,7 @@ proc showSettingsDialog*(
       updateProjectUIVisibility()
 
     var projectForm = newWidget(QFormLayout.create())
+    projectForm.setSpacing(FormSpacing)
     projectForm.addRow("Project root", projectRootLabel.asWidget)
     projectForm.addRow("Config file", projectConfigPathLabel.asWidget)
     projectForm.addRow("", useSystemNimCheck.asWidget)
@@ -707,7 +712,7 @@ proc showSettingsDialog*(
     projectForm.addRow("Effective nimble", resolvedNimbleLabel.asWidget)
     projectForm.addRow("Effective nimsuggest", resolvedNimSuggestLabel.asWidget)
 
-    var projectLayout = vbox()
+    var projectLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
     projectLayout.addLayout(projectForm.asLayout())
     projectLayout.addStretch(cint 1)
     projectLayout.applyTo(QWidget(h: projectTabH, owned: false))
@@ -723,13 +728,13 @@ proc showSettingsDialog*(
       QDialog(h: dialogH, owned: false).reject()
 
     # ── Content layout: tabs + buttons ──────────────────────────────────────
-    var mainLayout = vbox()
+    var mainLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
     mainLayout.addWidget(QWidget(h: tabsH, owned: false), cint 1)
     mainLayout.add(buttons)
     mainLayout.applyTo(QWidget(h: contentH, owned: false))
 
     # Wrap contentWidget in a dialog-level VBox so it fills the dialog
-    var dialogLayout = vbox()
+    var dialogLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
     dialogLayout.addWidget(QWidget(h: contentH, owned: false))
     dialogLayout.applyTo(QWidget(h: dialogH, owned: false))
 
