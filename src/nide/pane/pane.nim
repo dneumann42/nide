@@ -55,6 +55,7 @@ type
     emptyDoc: WidgetRef[QTextDocument]
     changed*: bool
     buffer*: Buffer
+    editorWheelScrollSpeed*: float64
     eventCb: proc(ev: PaneEvent) {.raises: [].}
     moduleBtnsRow: WidgetRef[QWidget]
     openProjectRow: WidgetRef[QWidget]
@@ -109,6 +110,7 @@ type
 
 proc scrollUp*(pane: Pane) {.raises: [].}
 proc scrollDown*(pane: Pane) {.raises: [].}
+proc setEditorWheelScrollSpeed*(pane: Pane, speed: int) {.raises: [].}
 proc applySelections*(pane: Pane) {.raises: [].}
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
 proc closeSearch*(pane: Pane) {.raises: [].}
@@ -153,7 +155,7 @@ const
   ScrollStepPx = 10.0
   ScrollAnimMs = cint 80
   WheelAngleDivisor = 120.0
-  WheelPixelStep = 20.0
+  DefaultWheelPixelStep = 10.0
   PopoverYOffset = cint 24
   MaxPopoverHeight = cint 400
 
@@ -809,6 +811,7 @@ proc newPane*(
   onEvent: proc(ev: PaneEvent) {.raises: [].}
 ): Pane =
   result = Pane()
+  result.editorWheelScrollSpeed = DefaultWheelPixelStep
   new(result.checkProcessH); result.checkProcessH[] = nil
   new(result.diagLines);     result.diagLines[]     = @[]
   let pane = result
@@ -1118,7 +1121,7 @@ proc newPane*(
         dy = float64(-e.pixelDelta().y)
       else:
         # angleDelta: 120 units per notch on a standard mouse wheel
-        dy = float64(-e.angleDelta().y) / WheelAngleDivisor * WheelPixelStep
+        dy = float64(-e.angleDelta().y) / WheelAngleDivisor * pane.editorWheelScrollSpeed
       let newY = min(max(curY + dy, 0.0), maxY)
       scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
     except: discard
@@ -1677,6 +1680,9 @@ proc scrollUp*(pane: Pane) {.raises: [].} =
     let newY = max(curY - ScrollStepPx, 0.0)
     scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
   except: discard
+
+proc setEditorWheelScrollSpeed*(pane: Pane, speed: int) {.raises: [].} =
+  pane.editorWheelScrollSpeed = max(float64(speed), 1.0)
 
 proc scrollDown*(pane: Pane) {.raises: [].} =
   try:

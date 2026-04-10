@@ -34,3 +34,11 @@ suite "settings":
 
     let loaded = loadStoredSettings()
     check loaded.restoreLastSessionOnLaunch
+
+  test "editor wheel scroll speed round trips through settings file":
+    var original = StoredSettings()
+    original.appearance.editorWheelScrollSpeed = 10
+    writeStoredSettings(original)
+
+    let loaded = loadStoredSettings()
+    check loaded.appearance.editorWheelScrollSpeed == 10

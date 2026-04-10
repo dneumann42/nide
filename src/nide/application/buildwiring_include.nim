@@ -103,6 +103,8 @@ proc setupPaneManager(self: Application, splitter: QSplitter) =
     resolveNimBackend: proc(): string {.raises: [].} =
       if self.currentProjectBackend.len > 0: self.currentProjectBackend else: "c"
   ))
+  self.paneManager.setEditorWheelScrollSpeed(
+    self.settings.appearance.editorWheelScrollSpeed)
 
 proc setupCommandDispatcher(self: Application) =
   let disp = CommandDispatcher()
@@ -486,7 +488,8 @@ proc wireToolbar(self: Application) =
         discard
     let toolchain = self.resolvedProjectToolchain()
     let cmd = quoteShell(toolchain.nimbleCommand) & " run"
-    runCommand(self.appWidget(), "nimble run", cmd, onBg, gotoRun, self.currentProject)
+    runCommand(self.appWidget(), "nimble run", cmd, onBg, gotoRun,
+      self.currentProject, allowInput = true)
 
   self.toolbar.onBuild do():
     if not ensureRunnableProject("Build"):
@@ -605,6 +608,8 @@ proc wireToolbar(self: Application) =
         self.bufferManager.rehighlightAll()
         for pane in self.paneManager.panels:
           pane.applyEditorTheme()
+        self.paneManager.setEditorWheelScrollSpeed(
+          updated.appearance.editorWheelScrollSpeed)
         self.opacityEffect.applyOpacity(
           updated.appearance.opacityEnabled,
           updated.appearance.opacityLevel)

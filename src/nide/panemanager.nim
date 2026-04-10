@@ -34,6 +34,7 @@ type
     hasProject: bool
     nimSuggest*: NimSuggestClient
     dispatcher*: CommandDispatcher
+    editorWheelScrollSpeed*: int
 
 proc closePane*(self: PaneManager, pane: Pane, notify = true) {.raises: [].}
 proc closeOtherPanes*(self: PaneManager, keepPane: Pane) {.raises: [].}
@@ -45,6 +46,11 @@ proc focusNextPane*(self: PaneManager, pane: Pane): bool {.raises: [].}
 proc notifyLayoutChanged(self: PaneManager) =
   if self.callbacks.onLayoutChanged != nil:
     self.callbacks.onLayoutChanged()
+
+proc setEditorWheelScrollSpeed*(self: PaneManager, speed: int) {.raises: [].} =
+  self.editorWheelScrollSpeed = speed
+  for pane in self.panels:
+    pane.setEditorWheelScrollSpeed(speed)
 
 proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
   result = newPane(proc(ev: PaneEvent) {.raises: [].} =
@@ -86,10 +92,11 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
   result.nimCommandProvider = self.callbacks.resolveNimCommand
   result.nimBackendProvider = self.callbacks.resolveNimBackend
   result.dispatcher = self.dispatcher
+  result.setEditorWheelScrollSpeed(self.editorWheelScrollSpeed)
   result.setupSmoothScrolling()
 
 proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T =
-  T(splitter: capture(splitter), callbacks: cbs)
+  T(splitter: capture(splitter), callbacks: cbs, editorWheelScrollSpeed: 10)
 
 proc addColumn*(self: PaneManager): Pane =
   var col = newWidget(QSplitter.create(Vertical))    # vertical

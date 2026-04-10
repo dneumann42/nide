@@ -1,5 +1,5 @@
 import nide/helpers/logparser, nide/ui/widgets
-import seaqt/[qboxlayout, qbrush, qclipboard, qcolor, qdialog, qfont, qguiapplication, qlabel, qlistwidget, qlistwidgetitem, qobject, qprocess, qpushbutton, qwidget]
+import seaqt/[qboxlayout, qbrush, qclipboard, qcolor, qdialog, qfont, qguiapplication, qlabel, qlineedit, qlistwidget, qlistwidgetitem, qobject, qprocess, qpushbutton, qwidget]
 import std/[os, posix]
 import nide/helpers/qtconst
 
@@ -11,7 +11,8 @@ const
 proc runCommand*(parent: QWidget, title, command: string,
                  onBackground: proc(reopen: proc() {.raises: [].}) {.raises: [].} = nil,
                  onGotoLocation: proc(file: string, line, col: int) {.raises: [].} = nil,
-                 workingDirectory = "") {.raises: [].} =
+                 workingDirectory = "",
+                 allowInput = false) {.raises: [].} =
   try:
     var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
@@ -27,7 +28,11 @@ proc runCommand*(parent: QWidget, title, command: string,
     var copyBtn    = newWidget(QPushButton.create("Copy Log"))
     var copyErrBtn = newWidget(QPushButton.create("Copy Error"))
     var closeBtn   = newWidget(QPushButton.create("Close"))
+    var inputEdit  = newWidget(QLineEdit.create())
+    var sendBtn    = newWidget(QPushButton.create("Send"))
     var statusLabel = newWidget(QLabel.create("Running..."))
+    inputEdit.setPlaceholderText("Send input line...")
+    sendBtn.asWidget.setEnabled(allowInput)
 
     let btnRow = hbox()
     btnRow.add(statusLabel)
@@ -39,6 +44,11 @@ proc runCommand*(parent: QWidget, title, command: string,
 
     let mainLayout = vbox()
     mainLayout.add(listWidget)
+    if allowInput:
+      let inputRow = hbox()
+      inputRow.add(inputEdit)
+      inputRow.add(sendBtn)
+      mainLayout.addSub(inputRow)
     mainLayout.addSub(btnRow)
     mainLayout.applyTo(QWidget(h: dialogH, owned: false))
 
@@ -49,6 +59,8 @@ proc runCommand*(parent: QWidget, title, command: string,
     let statusH     = statusLabel.h
     let killBtnH    = killBtn.h
     let copyErrBtnH = copyErrBtn.h
+    let inputEditH  = inputEdit.h
+    let sendBtnH    = sendBtn.h
 
     # "Copy Errors" hidden until at least one error/warning appears
     QWidget(h: copyErrBtnH, owned: false).hide()
@@ -85,6 +97,12 @@ proc runCommand*(parent: QWidget, title, command: string,
           discard
         QListWidget(h: listH, owned: false).addItem(item)
         QListWidget(h: listH, owned: false).scrollToBottom()
+      except: discard
+
+    proc focusInput() {.raises: [].} =
+      try:
+        if allowInput:
+          QWidget(h: inputEditH, owned: false).setFocus()
       except: discard
 
     proc processBytes(data: openArray[char]) {.raises: [].} =
@@ -128,6 +146,21 @@ proc runCommand*(parent: QWidget, title, command: string,
         QLabel(h: statusH, owned: false).setText(
           "Finished (exit code: " & $exitCode & ")")
         QWidget(h: killBtnH, owned: false).setEnabled(false)
+        if allowInput:
+          QWidget(h: inputEditH, owned: false).setEnabled(false)
+          QWidget(h: sendBtnH, owned: false).setEnabled(false)
+      except: discard
+
+    proc submitInput() {.raises: [].} =
+      try:
+        if not allowInput or not running[]:
+          return
+        let line = QLineEdit(h: inputEditH, owned: false).text()
+        let payload = line & "\n"
+        discard QProcess(h: processH, owned: false).write(payload.cstring, clonglong(payload.len))
+        addLogLine("> " & line)
+        QLineEdit(h: inputEditH, owned: false).clear()
+        focusInput()
       except: discard
 
     listWidget.onItemClicked do(item: QListWidgetItem) {.raises: [].}:
@@ -168,14 +201,24 @@ proc runCommand*(parent: QWidget, title, command: string,
       if running[] and onBackground != nil:
         let reopenProc = proc() {.raises: [].} =
           QWidget(h: dialogH, owned: false).show()
+          focusInput()
         onBackground(reopenProc)
 
     dialog.onRejected do() {.raises: [].}:
       if running[] and onBackground != nil:
         let reopenProc = proc() {.raises: [].} =
           QWidget(h: dialogH, owned: false).show()
+          focusInput()
         onBackground(reopenProc)
+
+    if allowInput:
+      inputEdit.onReturnPressed do() {.raises: [].}:
+        submitInput()
+
+      sendBtn.onClicked do() {.raises: [].}:
+        submitInput()
 
     process.start("bash", @["-c", command])
     QWidget(h: dialogH, owned: false).show()
+    focusInput()
   except: discard

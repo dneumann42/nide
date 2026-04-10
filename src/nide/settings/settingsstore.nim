@@ -12,6 +12,7 @@ type
     lineNumbers*: bool
     font*: string
     fontSize*: int
+    editorWheelScrollSpeed*: int
     syntaxTheme*: string
     opacityEnabled*: bool
     opacityLevel*: int

@@ -1,7 +1,7 @@
 # begin Nimble config (version 2)
 --noNimblePath
-when withDir(thisDir(), system.fileExists("nimbledeps/nimble.paths.nims")):
-  include "nimbledeps/nimble.paths.nims"
+when withDir(thisDir(), system.fileExists("nimble.paths")):
+  include "nimble.paths"
 # end Nimble config
 
 switch("path", thisDir() & "/src")

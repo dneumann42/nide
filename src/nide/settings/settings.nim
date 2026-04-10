@@ -21,6 +21,8 @@ import nide/ui/widgets
 const
   MinFontSize = cint 6
   MaxFontSize = cint 72
+  MinEditorWheelScrollSpeed = cint 4
+  MaxEditorWheelScrollSpeed = cint 40
   MinOpacity = cint 20
   MaxOpacity = cint 100
   OpacityStep = cint 5
@@ -39,6 +41,7 @@ type
     lineNumbers*: bool
     font* = "Fira Code"
     fontSize* = 14
+    editorWheelScrollSpeed* = 10
     syntaxTheme* = "Monokai"
     opacityEnabled*: bool
     opacityLevel*:   int = 85
@@ -89,6 +92,7 @@ proc toStored(settings: Settings): StoredSettings =
   result.appearance.lineNumbers = settings.appearance.lineNumbers
   result.appearance.font = settings.appearance.font
   result.appearance.fontSize = settings.appearance.fontSize
+  result.appearance.editorWheelScrollSpeed = settings.appearance.editorWheelScrollSpeed
   result.appearance.syntaxTheme = settings.appearance.syntaxTheme
   result.appearance.opacityEnabled = settings.appearance.opacityEnabled
   result.appearance.opacityLevel = settings.appearance.opacityLevel
@@ -111,6 +115,8 @@ proc toRuntime(stored: StoredSettings): Settings =
     result.appearance.font = stored.appearance.font
   if stored.appearance.fontSize > 0:
     result.appearance.fontSize = stored.appearance.fontSize
+  if stored.appearance.editorWheelScrollSpeed > 0:
+    result.appearance.editorWheelScrollSpeed = stored.appearance.editorWheelScrollSpeed
   if stored.appearance.syntaxTheme.len > 0:
     result.appearance.syntaxTheme = stored.appearance.syntaxTheme
   result.appearance.opacityEnabled = stored.appearance.opacityEnabled
@@ -224,6 +230,12 @@ proc showSettingsDialog*(
     fontSizeSpin.setMaximum(MaxFontSize)
     fontSizeSpin.setValue(cint current.appearance.fontSize)
 
+    # Editor wheel scroll speed
+    var editorWheelScrollSpeedSpin = newWidget(QSpinBox.create())
+    editorWheelScrollSpeedSpin.setMinimum(MinEditorWheelScrollSpeed)
+    editorWheelScrollSpeedSpin.setMaximum(MaxEditorWheelScrollSpeed)
+    editorWheelScrollSpeedSpin.setValue(cint current.appearance.editorWheelScrollSpeed)
+
     # Line numbers toggle
     var lineNumbersCheck = checkbox("Show line numbers", current.appearance.lineNumbers)
 
@@ -280,6 +292,7 @@ proc showSettingsDialog*(
     form.addRow("Theme mode",    themeModeCombo.asWidget)
     form.addRow("Font family",   fontEdit.asWidget)
     form.addRow("Font size",     fontSizeSpin.asWidget)
+    form.addRow("Wheel scroll speed", editorWheelScrollSpeedSpin.asWidget)
     form.addRow("",              lineNumbersCheck.asWidget)
     form.addRow("",              restoreSessionCheck.asWidget)
     form.addRow("",              opacityCheck.asWidget)
@@ -744,6 +757,8 @@ proc showSettingsDialog*(
         if themeModeCombo.currentIndex() == 1: Dark else: Light
       updated.appearance.font       = fontEdit.text()
       updated.appearance.fontSize   = int fontSizeSpin.value()
+      updated.appearance.editorWheelScrollSpeed =
+        int editorWheelScrollSpeedSpin.value()
       updated.appearance.lineNumbers = lineNumbersCheck.asButton.isChecked()
       updated.restoreLastSessionOnLaunch = restoreSessionCheck.asButton.isChecked()
       updated.appearance.opacityEnabled = opacityCheck.asButton.isChecked()
