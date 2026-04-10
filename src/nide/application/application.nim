@@ -1,7 +1,8 @@
 import commands, toml_serialization
+import nide/application/application_types
+export application_types
 import nide/panemanager
 import nide/application/sessionops
-import nide/dialogs/[graphdialog, moduledialog, projectdialog, themedialog]
 import nide/editor/buffers
 import nide/helpers/[debuglog, fspaths, logparser, qtconst, runner, widgetref]
 import nide/navigation/[rgfinder, sessionstate]
@@ -12,77 +13,16 @@ import nide/settings/[projectconfig, settings, syntaxtheme, theme, toolchain]
 import nide/ui/[commandpalette, filetree, opacity, toolbar, widgets]
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
-import tools/nim_graph
 
-
-type
-  FileTreeClipboardMode = enum
-    ftcNone, ftcCopy, ftcCut
-
-  PaneKeyBinding* = object
-    sequence: string
-    callback*: proc(target: Pane) {.raises: [].}
-
-  GlobalKeyBinding* = object
-    sequence: string
-    callback*: proc() {.raises: [].}
-
-  Application* = ref object
-    bufferManager: BufferManager
-    toolbar: Toolbar
-    projectManager: ProjectManager
-    root: QMainWindow
-    paneManager: PaneManager
-    fileTree: FileTree
-    commandPalette: CommandPalette
-    theme: Theme
-    currentProject: string
-    projectNimbleFile: string
-    runStatusBtn:  WidgetRef[QToolButton]
-    buildStatusBtn: WidgetRef[QToolButton]
-    runReopen:  proc() {.raises: [].}
-    buildReopen: proc() {.raises: [].}
-    opacityEffect: QGraphicsOpacityEffect
-    nimSuggest: NimSuggestClient
-    settings: Settings
-    projectConfig: ProjectConfig
-    currentProjectBackend: string
-    fileWatcher: QFileSystemWatcher
-    loaderTimer: QTimer
-    projectDiagLines: ref seq[LogLine]
-    projectCheckProcessH: ref pointer
-    fileTreeClipboardPath: string
-    fileTreeClipboardMode: FileTreeClipboardMode
-    sessionSaveTimer: QTimer
-    sessionPersistenceReady: bool
-    restoringSession: bool
-
-const
-  MinWindowWidth = cint 800
-  MinWindowHeight = cint 480
-  LoaderIntervalMs = cint 200
-  SessionSaveDebounceMs = cint 200
-  SplitterHandleWidth = cint 4
-  RunStatusOffsetX = cint 110
-  RunStatusOffsetY = cint 40
-  BuildStatusOffsetY = cint 80
-  FileWatcherRetryMs = 50
-  FileReadRetries = 3
-
-proc appWidget(self: Application): QWidget =
-  self.root.asWidget
-
-include filetreeops_include
-
-proc getTargetPane*(self: Application): Pane =
+proc getTargetPane*(self: Application): Pane {.raises: [].} =
   result = self.paneManager.lastFocusedPane
   if result == nil and self.paneManager.panels.len > 0:
     result = self.paneManager.panels[0]
 
-proc getOrCreateTargetPane*(self: Application): Pane =
+proc getOrCreateTargetPane*(self: Application): Pane {.raises: [].} =
   self.getTargetPane()
 
-proc openFile(self: Application, path: string): Buffer =
+proc openFile*(self: Application, path: string): Buffer {.raises: [].} =
   result = self.bufferManager.openFile(path)
   when defined(debugFileWatcher):
     echo "[FileWatcher] openFile: ", path
@@ -93,20 +33,20 @@ proc openFile(self: Application, path: string): Buffer =
     if self.currentProject.len > 0:
       self.projectManager.recordOpenedFile(self.currentProject, result.path)
 
-proc updateRestoreSessionAvailability(self: Application) {.raises: [].} =
+proc updateRestoreSessionAvailability*(self: Application) {.raises: [].} =
   let available = hasLastSession()
   if self.paneManager == nil:
     return
   for panel in self.paneManager.panels:
     panel.setRestoreLastSessionAvailable(available)
 
-proc saveLastSessionNow(self: Application) {.raises: [].} =
+proc saveLastSessionNow*(self: Application) {.raises: [].} =
   if self.restoringSession or not self.sessionPersistenceReady or self.paneManager == nil:
     return
   saveLastSession(buildLastSession(self.paneManager, self.projectNimbleFile))
   self.updateRestoreSessionAvailability()
 
-proc requestSessionSave(self: Application) {.raises: [].} =
+proc requestSessionSave*(self: Application) {.raises: [].} =
   if self.restoringSession or not self.sessionPersistenceReady:
     return
   if self.sessionSaveTimer.h == nil:
@@ -114,7 +54,7 @@ proc requestSessionSave(self: Application) {.raises: [].} =
   else:
     self.sessionSaveTimer.start()
 
-proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} =
+proc pushJumpLocation*(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
     try:
       let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -123,9 +63,9 @@ proc pushJumpLocation(pane: Pane, target: var seq[JumpLocation]) {.raises: [].} 
         file: pane.buffer.path,
         line: cur.blockNumber() + 1,
         col:  cur.columnNumber()))
-    except: discard
+    except CatchableError: discard
 
-proc openInPane(self: Application, pane: Pane, path: string) {.raises: [].} =
+proc openInPane*(self: Application, pane: Pane, path: string) {.raises: [].} =
   try:
     let buf = self.openFile(path)
     pane.setBuffer(buf)
@@ -136,14 +76,14 @@ proc openInPane(self: Application, pane: Pane, path: string) {.raises: [].} =
       if prefill.len > 0:
         pane.prefillDiags(prefill)
     self.requestSessionSave()
-  except: discard
+  except CatchableError: discard
 
 proc navigateToLocation*(self: Application, pane: Pane, path: string, line, col: int) {.raises: [].} =
   if path.len > 0:
     self.openInPane(pane, path)
   pane.scrollToLine(line, col)
 
-proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(target: Pane): void {.raises: [].}) =
+proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(target: Pane): void {.raises: [].}) {.raises: [].} =
   var sc = newWidget(QShortcut.create(QKeySequence.create(sequence),
                                       QObject(h: self.root.h, owned: false)))
   sc.setContext(SC_WindowShortcut)
@@ -152,7 +92,7 @@ proc registerPaneShortcut*(self: Application, sequence: string, callback: proc(t
     if target != nil and not (target.dispatcher != nil and target.dispatcher.inChord):
       callback(target)
 
-proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc(): void {.raises: [].}) =
+proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc(): void {.raises: [].}) {.raises: [].} =
   var sc = newWidget(QShortcut.create(QKeySequence.create(sequence),
                                       QObject(h: self.root.h, owned: false)))
   sc.setContext(SC_WindowShortcut)
@@ -161,7 +101,7 @@ proc registerGlobalShortcut*(self: Application, sequence: string, callback: proc
     if target != nil and target.dispatcher != nil and target.dispatcher.inChord: return
     callback()
 
-proc buffers*(app: Application): lent BufferManager =
+proc buffers*(app: Application): lent BufferManager {.raises: [].} =
   result = app.bufferManager
 
 proc new*(T: typedesc[Application]): T =
@@ -177,11 +117,11 @@ proc new*(T: typedesc[Application]): T =
   new(result.projectCheckProcessH)
   result.projectCheckProcessH[] = nil
 
-proc updateRecentProjects(self: Application) {.raises: [].} =
+proc updateRecentProjects*(self: Application) {.raises: [].} =
   for panel in self.paneManager.panels:
     panel.setRecentProjects(self.projectManager.recentProjects)
 
-proc resolvedProjectToolchain(self: Application): ResolvedToolchain =
+proc resolvedProjectToolchain*(self: Application): ResolvedToolchain {.raises: [].} =
   resolveProjectToolchain(
     getNimPath(self.settings),
     getNimblePath(self.settings),
@@ -189,7 +129,7 @@ proc resolvedProjectToolchain(self: Application): ResolvedToolchain =
     self.projectConfig
   )
 
-proc restartProjectNimIntegration(self: Application) {.raises: [].} =
+proc restartProjectNimIntegration*(self: Application) {.raises: [].} =
   if self.projectNimbleFile.len == 0:
     return
 
@@ -201,14 +141,11 @@ proc restartProjectNimIntegration(self: Application) {.raises: [].} =
     entryFile = findNimbleEntry(self.projectNimbleFile)
 
   let toolchain = self.resolvedProjectToolchain()
-  appendDebugLog(
-    "application",
-    "restartProjectNimIntegration backend=" & self.currentProjectBackend &
-    " nim=" & toolchain.nimCommand &
-    " nimble=" & toolchain.nimbleCommand &
-    " nimsuggest=" & toolchain.nimsuggestCommand &
-    " source=" & toolchain.source,
-    self.currentProject)
+  logDebug("application: restartProjectNimIntegration backend=", self.currentProjectBackend,
+    " nim=", toolchain.nimCommand,
+    " nimble=", toolchain.nimbleCommand,
+    " nimsuggest=", toolchain.nimsuggestCommand,
+    " source=", toolchain.source)
   self.nimSuggest = NimSuggestClient.new(
     self.root.h,
     entryFile,
@@ -226,7 +163,7 @@ proc runProjectCheck*(self: Application) {.raises: [].} =
   if mainFile.len == 0: return
   if self.projectCheckProcessH[] != nil:
     try: QProcess(h: self.projectCheckProcessH[], owned: false).kill()
-    except: discard
+    except CatchableError: discard
     self.projectCheckProcessH[] = nil
   let toolchain = self.resolvedProjectToolchain()
   runNimCheck(self.root.h, mainFile, toolchain.nimCommand, self.currentProjectBackend, self.projectCheckProcessH,
@@ -234,21 +171,17 @@ proc runProjectCheck*(self: Application) {.raises: [].} =
       self.projectDiagLines[] = lines
       self.toolbar.updateDiagCounts(lines))
 
-proc openProject(self: Application, path: string, restoreMode = false) {.raises: [].} =
+proc openProject*(self: Application, path: string, restoreMode = false) {.raises: [].} =
   let dir = path.parentDir()
-  clearDebugLog(dir)
   self.currentProject = dir
   self.projectNimbleFile = path
   self.currentProjectBackend = projectBackend(path)
   self.projectConfig = loadProjectConfig(dir)
-  appendDebugLog(
-    "application",
-    "openProject nimble=" & path &
-    " backend=" & self.currentProjectBackend &
-    " useSystemNim=" & $self.projectConfig.useSystemNim &
-    " projectNimPath=" & self.projectConfig.nimPath &
-    " projectNimblePath=" & self.projectConfig.nimblePath,
-    dir)
+  logDebug("application: openProject nimble=", path,
+    " backend=", self.currentProjectBackend,
+    " useSystemNim=", self.projectConfig.useSystemNim,
+    " projectNimPath=", self.projectConfig.nimPath,
+    " projectNimblePath=", self.projectConfig.nimblePath)
   for panel in self.paneManager.panels:
     panel.clearBuffer()
   self.paneManager.setProjectOpen(true)
@@ -266,7 +199,7 @@ proc openProject(self: Application, path: string, restoreMode = false) {.raises:
   self.runProjectCheck()
   self.requestSessionSave()
 
-proc openProject(self: Application) {.raises: [].} =
+proc openProject*(self: Application) {.raises: [].} =
   let file = QFileDialog.getOpenFileName(
     self.appWidget(), "", "", "Nimble files (*.nimble)")
   if file.len == 0: return
@@ -296,7 +229,7 @@ proc closeProject*(self: Application) {.raises: [].} =
   self.toolbar.updateDiagCounts(@[])
   self.requestSessionSave()
 
-proc prepareForSessionRestore(self: Application): Pane =
+proc prepareForSessionRestore*(self: Application): Pane =
   if self.currentProject.len > 0:
     self.closeProject()
   if self.paneManager.panels.len == 0:
@@ -306,7 +239,7 @@ proc prepareForSessionRestore(self: Application): Pane =
   self.paneManager.closeOtherPanes(result)
   result.clearBuffer()
 
-proc restoreLastSession(self: Application) {.raises: [].} =
+proc restoreLastSession*(self: Application) {.raises: [].} =
   let loaded = loadLastSession()
   if loaded.isNone():
     self.updateRestoreSessionAvailability()
@@ -354,14 +287,14 @@ proc restoreLastSession(self: Application) {.raises: [].} =
 
   self.saveLastSessionNow()
 
-proc closeBuffer*(self: Application, name: string) =
+proc closeBuffer*(self: Application, name: string) {.raises: [].} =
   for panel in self.paneManager.panels:
     if panel.buffer != nil and panel.buffer.name == name:
       panel.clearBuffer()
   self.bufferManager.close(name)
   self.requestSessionSave()
 
-include buildwiring_include
+import nide/application/filetreeops
 
 proc show*(self: Application) =
   self.root.show()

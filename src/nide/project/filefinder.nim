@@ -24,7 +24,7 @@ proc loadGitignore*(root: string) {.raises: [].} =
       if dirPath.contains("/.") or dirPath.contains("\\."): continue
       let parent = dirPath.parentDir
       loadGitignoreDir(parent)
-  except: discard
+  except CatchableError: discard
 
 proc loadGitignoreDir(dir: string) {.raises: [].} =
   let gitignorePath = dir / ".gitignore"
@@ -43,7 +43,7 @@ proc loadGitignoreDir(dir: string) {.raises: [].} =
       if basePrefix.len > 0:
         pattern = basePrefix / pattern
       gitignorePatterns.add(pattern)
-  except: discard
+  except CatchableError: discard
 
 proc matchesGitignore*(path: string): bool {.raises: [].} =
   if gitignorePatterns.len == 0: return false
@@ -102,7 +102,7 @@ proc findNimFiles(root: string): seq[string] {.raises: [].} =
       if matchesGitignore(path): continue
       if path.endsWith(".nim") or path.endsWith(".nimble"):
         result.add(path.relativePath(root))
-  except: 
+  except CatchableError:
     discard
 
 proc showFileFinder*(parent: QWidget,
@@ -144,7 +144,7 @@ proc showFileFinder*(parent: QWidget,
             let path = recentFiles[row]
             QDialog(h: dialogH, owned: false).accept()
             onFileSelected(path)
-        except: discard
+        except CatchableError: discard
 
     var leftPanel = newWidget(QWidget.create())
     leftLayout.applyTo(leftPanel)
@@ -181,7 +181,7 @@ proc showFileFinder*(parent: QWidget,
           lw.addItem(path)
         if lw.count() > 0:
           lw.setCurrentRow(cint 0)
-      except: discard
+      except CatchableError: discard
 
     populate("")
 
@@ -191,7 +191,7 @@ proc showFileFinder*(parent: QWidget,
           let path = root / QListWidget(h: listH, owned: false).item(row).text()
           let content = readFile(path)
           QPlainTextEdit(h: previewH, owned: false).setPlainText(content)
-        except:
+        except CatchableError:
           QPlainTextEdit(h: previewH, owned: false).setPlainText("(could not read file)")
 
     searchBox.onTextChanged do(text: openArray[char]) {.raises: [].}:
@@ -234,7 +234,7 @@ proc showFileFinder*(parent: QWidget,
       onFileSelected(path)
 
     discard QDialog(h: dialogH, owned: false).exec()
-  except: discard
+  except CatchableError: discard
 
 proc showBufferFinder*(parent: QWidget,
                        entries: seq[(string, string)],
@@ -274,7 +274,7 @@ proc showBufferFinder*(parent: QWidget,
           filteredKeys.add(key)
         if lw.count() > 0:
           lw.setCurrentRow(cint 0)
-      except: discard
+      except CatchableError: discard
 
     populate("")
 
@@ -320,7 +320,7 @@ proc showBufferFinder*(parent: QWidget,
           let key = filteredKeys[row]
           QDialog(h: dialogH, owned: false).accept()
           onSelected(key)
-      except: discard
+      except CatchableError: discard
 
     discard QDialog(h: dialogH, owned: false).exec()
-  except: discard
+  except CatchableError: discard

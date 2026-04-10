@@ -19,14 +19,12 @@ proc runNimCheck*(
     if nimExe.len == 0: return
     let projectRoot = findProjectRoot(filePath)
     let pathArgs = projectDependencyPathArgs(projectRoot)
-    appendDebugLog(
-      "nimcheck",
-      "start nimExe=" & nimExe &
-      " backend=" & backend &
-      " cwd=" & getCurrentDir() &
-      " projectRoot=" & projectRoot &
-      " pathArgs=" & pathArgs.join(" ") &
-      " file=" & filePath)
+    logDebug("nimcheck: start nimExe=", nimExe,
+      " backend=", backend,
+      " cwd=", getCurrentDir(),
+      " projectRoot=", projectRoot,
+      " pathArgs=", pathArgs.join(" "),
+      " file=", filePath)
 
     var process = newWidget(QProcess.create(QObject(h: parentH, owned: false)))
     let processH = process.h
@@ -48,7 +46,7 @@ proc runNimCheck*(
           var s = newString(bytes.len)
           for i in 0..<bytes.len: s[i] = char(bytes[i])
           allOutput[] &= s
-      except: discard
+      except CatchableError: discard
 
     process.onErrorOccurred do(err: cint) {.raises: [].}:
       # Only clear cancelH if we're still the current process. When kill() is
@@ -73,12 +71,10 @@ proc runNimCheck*(
         for rawLine in allOutput[].splitLines():
           if rawLine.len > 0:
             lines.add(parseLine(rawLine))
-        appendDebugLog(
-          "nimcheck",
-          "finished exitCode=" & $exitCode &
-          " output=" & trimForLog(allOutput[]))
+        logDebug("nimcheck: finished exitCode=", exitCode,
+          " output=", trimForLog(allOutput[]))
         onDone(lines)
-      except: discard
+      except CatchableError: discard
 
     var args = @["check"]
     if backend.len > 0:
@@ -86,4 +82,4 @@ proc runNimCheck*(
     args.add(pathArgs)
     args.add(filePath)
     process.start(nimExe, args)
-  except: discard
+  except CatchableError: discard

@@ -2,8 +2,7 @@ import std/[options, os, strformat, sequtils]
 
 import toml_serialization
 
-import nide/helpers/appdirs
-import nide/helpers/tomlstore
+import nide/helpers/[appdirs, debuglog, tomlstore]
 
  # derive vcs from directory
 type
@@ -70,9 +69,9 @@ requires "nim >= {project.nimVersion}"
     writeFile(projectDir / project.name & ".nimble", nimbleContents)
     writeFile(projectDir / "src" / project.name & ".nim", "")
   except OSError as e:
-    echo "Failed to create project files: ", e.msg
+    logError("projects: Failed to create project files: ", e.msg)
   except IOError as e:
-    echo "Failed to create project files: ", e.msg
+    logError("projects: Failed to create project files: ", e.msg)
 
   if not noWrite:
     self.write()

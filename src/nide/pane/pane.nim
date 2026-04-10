@@ -1,7 +1,7 @@
 import nide/pane/logic
 export logic
 import nide/editor/autocomplete, nide/editor/buffers, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/syntaxtheme, nide/helpers/widgetref, nide/ui/widgets
-import nide/helpers/qtconst
+import nide/helpers/[debuglog, qtconst]
 import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[options, os, strutils]
 
@@ -170,13 +170,13 @@ proc currentPointPos(pane: Pane): cint =
 proc stopAutocompleteRefresh(pane: Pane) {.raises: [].} =
   if pane.autocompleteRefreshTimerH != nil:
     try: QTimer(h: pane.autocompleteRefreshTimerH, owned: false).stop()
-    except: discard
+    except CatchableError: discard
 
 proc scheduleAutocompleteRefresh(pane: Pane) {.raises: [].} =
   if pane.autocompleteRefreshTimerH == nil:
     return
   try: QTimer(h: pane.autocompleteRefreshTimerH, owned: false).start()
-  except: discard
+  except CatchableError: discard
 
 proc dirtyNimSuggestPath(filePath: string): string =
   let tempDir = getTempDir() / "nide-nimsuggest"
@@ -199,7 +199,7 @@ proc writeDirtyNimSuggestFile(pane: Pane): string {.raises: [].} =
     let dirtyPath = tempDir / dirtyNimSuggestPath(pane.buffer.path)
     writeFile(dirtyPath, ed.toPlainText())
     return dirtyPath
-  except:
+  except CatchableError:
     return ""
 
 proc syncTransientSelection(pane: Pane) {.raises: [].} =
@@ -294,10 +294,10 @@ proc killRegion*(pane: Pane) {.raises: [].} =
 proc hideDiagPopup(pane: Pane) {.raises: [].} =
   if pane.diagHideTimerH != nil:
     try: QTimer(h: pane.diagHideTimerH, owned: false).stop()
-    except: discard
+    except CatchableError: discard
   if pane.diagPopupH != nil:
     try: QWidget(h: pane.diagPopupH, owned: false).hide()
-    except: discard
+    except CatchableError: discard
   pane.diagShownLine = 0
   pane.diagShownCol  = 0
 
@@ -307,7 +307,7 @@ proc scheduleDiagHide(pane: Pane) {.raises: [].} =
     let t = QTimer(h: pane.diagHideTimerH, owned: false)
     t.stop()
     t.start()
-  except: discard
+  except CatchableError: discard
 
 proc updateDiagIcons*(pane: Pane) {.raises: [].} =
   if pane.diagLines == nil or pane.buffer == nil: return
@@ -335,7 +335,7 @@ proc updateDiagIcons*(pane: Pane) {.raises: [].} =
       errB.asWidget.show()
     else:
       errB.asWidget.hide()
-  except: discard
+  except CatchableError: discard
 
 proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
                    mousePos: QPoint) {.raises: [].} =
@@ -411,7 +411,7 @@ proc showDiagPopup(pane: Pane, ed: QPlainTextEdit, diags: seq[LogLine],
     pw.show()
     pane.diagShownLine = diags[0].line
     pane.diagShownCol  = diags[0].col
-  except: discard
+  except CatchableError: discard
 
 
 proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
@@ -431,7 +431,7 @@ proc diagAtPos(pane: Pane, pos: cint): seq[LogLine] {.raises: [].} =
       let endPos = cur.position()
       if pos >= start and pos < endPos:
         result.add(ll)
-  except: discard
+  except CatchableError: discard
 
 proc applySelections*(pane: Pane) {.raises: [].} =
   try:
@@ -515,7 +515,8 @@ proc applySelections*(pane: Pane) {.raises: [].} =
     ed.setExtraSelections(sels)
     ed.setTextCursor(savedCursor)
     ed.verticalScrollBar().setValue(savedScroll)
-  except: discard
+  except CatchableError:
+    logError("pane: applySelections error: ", getCurrentExceptionMsg())
 
 proc updateBracketMatch(pane: Pane) {.raises: [].} =
   try:
@@ -536,12 +537,12 @@ proc updateBracketMatch(pane: Pane) {.raises: [].} =
         pane.bracketMatchPositions = @[(cint(p1), cint(p1 + 1)),
                                         (cint(p2), cint(p2 + 1))]
     applySelections(pane)
-  except: discard
+  except CatchableError: discard
 
 proc runCheck*(pane: Pane) {.raises: [].} =
   if pane.checkProcessH[] != nil:
     try: QProcess(h: pane.checkProcessH[], owned: false).kill()
-    except: discard
+    except CatchableError: discard
     pane.checkProcessH[] = nil
   if pane.buffer == nil or pane.buffer.path.len == 0: return
   if not pane.buffer.path.endsWith(".nim"): return
@@ -585,8 +586,8 @@ proc save*(pane: Pane) {.raises: [].} =
           pane.buffer.document().setPlainText(content)
           pane.buffer.document().setModified(false)
           pane.buffer.externallyModified = false
-        except:
-          discard
+        except CatchableError:
+          logError("pane: reload file error: ", getCurrentExceptionMsg())
         return
       pane.buffer.externallyModified = false
     try:
@@ -596,8 +597,8 @@ proc save*(pane: Pane) {.raises: [].} =
       runCheck(pane)
       ed.document().setModified(false)
       ed.verticalScrollBar().setValue(savedScroll)
-    except:
-      discard
+    except CatchableError:
+      logError("pane: save error: ", getCurrentExceptionMsg())
 
 proc lineNumberAreaWidth*(editor: QPlainTextEdit): cint =
   let digits = max(1, ($editor.blockCount()).len)
@@ -633,12 +634,12 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
       painter.drawText(0, top, w - 4, lineH, AlignRightVCenter, numStr)
       blk = blk.next()
     discard painter.endX()
-  except: discard
+  except CatchableError: discard
 
 proc hideDiagPopover(pane: Pane) {.raises: [].} =
   if pane.diagPopoverH != nil:
     try: QWidget(h: pane.diagPopoverH, owned: false).hide()
-    except: discard
+    except CatchableError: discard
 
 proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
   if pane.diagLines == nil or pane.diagLines[].len == 0: return
@@ -646,7 +647,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
     if pane.diagPopoverH != nil:
       try:
         QWidget(h: pane.diagPopoverH, owned: false).delete()
-      except: discard
+      except CatchableError: discard
       pane.diagPopoverH = nil
       pane.diagPopoverListH = nil
       pane.diagPopoverLayoutH = nil
@@ -750,7 +751,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
     popW.setGeometry(btnPos.x(), yPos, pw, min(ph, MaxPopoverHeight))
     popW.raiseX()
     popW.show()
-  except: discard
+  except CatchableError: discard
 
 proc moveToCurrent(pane: Pane) {.raises: [].} =
   if pane.matchPositions.len == 0: return
@@ -843,7 +844,7 @@ proc newPane*(
       if row >= 0 and row < cint(pane.recentProjectPaths.len):
         pane.eventCb(PaneEvent(pane: pane, kind: peOpenRecentProject,
                                projectPath: pane.recentProjectPaths[row]))
-    except: discard
+    except CatchableError: discard
 
   # Card: outline border only, palette-inherited background
   var cardWidget = newWidget(QWidget.create())
@@ -919,7 +920,7 @@ proc newPane*(
       # Cancel any pending hide and show/keep the popup.
       if pane.diagHideTimerH != nil:
         try: QTimer(h: pane.diagHideTimerH, owned: false).stop()
-        except: discard
+        except CatchableError: discard
       {.cast(gcsafe).}: showDiagPopup(pane, self, diags, e.pos())
     else:
       # Schedule a delayed hide so the user has time to move the mouse into
@@ -1124,7 +1125,7 @@ proc newPane*(
         dy = float64(-e.angleDelta().y) / WheelAngleDivisor * pane.editorWheelScrollSpeed
       let newY = min(max(curY + dy, 0.0), maxY)
       scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
-    except: discard
+    except CatchableError: discard
 
   var editor = newWidget(QPlainTextEdit.create(vtbl = editorVtbl))
   editor.setFrameStyle(NoFrame)
@@ -1437,7 +1438,7 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   pane.stopAutocompleteRefresh()
   var displayName = buf.name
   try: displayName = relativePath(buf.name, getCurrentDir())
-  except: discard
+  except CatchableError: discard
   pane.label.setText(displayName)
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   ed.setDocument(buf.document())
@@ -1533,7 +1534,7 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
         defCol: def.col
       )),
     proc(msg: string) {.raises: [].} =
-      echo "Goto definition error: " & msg
+      logError("pane: goto definition error: ", msg)
   )
 
 proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient,
@@ -1617,7 +1618,7 @@ proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient,
         addr(paneRef.autocompleteMenu)
       ),
     proc(msg: string) {.raises: [].} =
-      echo "[autocomplete] Error callback: " & msg
+      logError("pane: autocomplete error: ", msg)
   )
 
 proc triggerJumpBack*(pane: Pane) {.raises: [].} =
@@ -1658,7 +1659,7 @@ proc zoomIn*(pane: Pane) {.raises: [].} =
     ed.asWidget.setFont(font)
     ed.document().setDefaultFont(font)
     ed.updateLineNumberAreaWidth()
-  except: discard
+  except CatchableError: discard
 
 proc zoomOut*(pane: Pane) {.raises: [].} =
   try:
@@ -1669,7 +1670,7 @@ proc zoomOut*(pane: Pane) {.raises: [].} =
     ed.asWidget.setFont(font)
     ed.document().setDefaultFont(font)
     ed.updateLineNumberAreaWidth()
-  except: discard
+  except CatchableError: discard
 
 proc scrollUp*(pane: Pane) {.raises: [].} =
   try:
@@ -1679,7 +1680,7 @@ proc scrollUp*(pane: Pane) {.raises: [].} =
     let curY = scroller.finalPosition().y
     let newY = max(curY - ScrollStepPx, 0.0)
     scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
-  except: discard
+  except CatchableError: discard
 
 proc setEditorWheelScrollSpeed*(pane: Pane, speed: int) {.raises: [].} =
   pane.editorWheelScrollSpeed = max(float64(speed), 1.0)
@@ -1693,7 +1694,7 @@ proc scrollDown*(pane: Pane) {.raises: [].} =
     let maxY = float(ed.verticalScrollBar().maximum())
     let newY = min(curY + ScrollStepPx, maxY)
     scroller.scrollTo(QPointF.create(0.0, newY), ScrollAnimMs)
-  except: discard
+  except CatchableError: discard
 
 proc setupSmoothScrolling*(pane: Pane) {.raises: [].} =
   try:
@@ -1710,7 +1711,7 @@ proc setupSmoothScrolling*(pane: Pane) {.raises: [].} =
       cint(QScrollerPropertiesScrollMetricEnum.HorizontalOvershootPolicy),
       QVariant.create(cint(QScrollerPropertiesOvershootPolicyEnum.OvershootAlwaysOff)))
     scroller.setScrollerProperties(props)
-  except: discard
+  except CatchableError: discard
 
 proc setProjectOpen*(pane: Pane, open: bool) =
   pane.moduleBtnsRow.get().setVisible(open)
@@ -1733,14 +1734,14 @@ proc setRecentProjects*(pane: Pane, projects: seq[string]) {.raises: [].} =
     let hasItems = projects.len > 0
     tw.asWidget.setVisible(hasItems)
     pane.recentProjectsLabel.get().asWidget.setVisible(hasItems)
-  except: discard
+  except CatchableError: discard
 
 proc setRestoreLastSessionAvailable*(pane: Pane, available: bool) {.raises: [].} =
   try:
     let btn = pane.restoreSessionBtn.get()
     btn.asWidget.setVisible(true)
     btn.asWidget.setEnabled(available)
-  except: discard
+  except CatchableError: discard
 
 proc currentCursorPosition*(pane: Pane): tuple[line, col: int] {.raises: [].} =
   if pane.buffer == nil:
@@ -1749,14 +1750,14 @@ proc currentCursorPosition*(pane: Pane): tuple[line, col: int] {.raises: [].} =
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     let cur = ed.textCursor()
     (cur.blockNumber() + 1, cur.columnNumber())
-  except:
+  except CatchableError:
     (1, 0)
 
 proc currentScrollPosition*(pane: Pane): tuple[vertical, horizontal: int] {.raises: [].} =
   try:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     (ed.verticalScrollBar().value().int, ed.horizontalScrollBar().value().int)
-  except:
+  except CatchableError:
     (0, 0)
 
 proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raises: [].} =
@@ -1779,7 +1780,7 @@ proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raise
     ed.setTextCursor(cur)
     ed.verticalScrollBar().setValue(cint min(max(vertical, 0), ed.verticalScrollBar().maximum().int))
     ed.horizontalScrollBar().setValue(cint min(max(horizontal, 0), ed.horizontalScrollBar().maximum().int))
-  except:
+  except CatchableError:
     discard
 
 proc focus*(pane: Pane) {.raises: [].} =
@@ -1800,7 +1801,7 @@ proc applyEditorTheme*(pane: Pane) {.raises: [].} =
     # Force gutter repaint
     ed.updateLineNumberAreaWidth()
     ed.viewport().update()
-  except: discard
+  except CatchableError: discard
 
 proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
   if pane.buffer == nil: return
@@ -1882,7 +1883,8 @@ proc doCleanImports(pane: Pane) {.raises: [].} =
     cur.setPosition(min(savedPos, cint(newSource.len)))
     ed.setTextCursor(cur)
     ed.verticalScrollBar().setValue(savedScroll)
-  except: discard
+  except:  # reorganizeImports uses Nim compiler lexer which raises Exception
+    logError("pane: doCleanImports error: ", getCurrentExceptionMsg())
 
 proc triggerCleanImports*(pane: Pane) {.raises: [].} =
   if pane.buffer == nil or pane.buffer.path.len == 0: return
@@ -1892,7 +1894,7 @@ proc triggerCleanImports*(pane: Pane) {.raises: [].} =
   else:
     if pane.checkProcessH[] != nil:
       try: QProcess(h: pane.checkProcessH[], owned: false).kill()
-      except: discard
+      except CatchableError: discard
       pane.checkProcessH[] = nil
     let filePath = pane.buffer.path
     let nimCommand =

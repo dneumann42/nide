@@ -4,6 +4,7 @@ import seaqt/[qwidget, qdialog, qvboxlayout, qhboxlayout, qlayout,
               qabstractscrollarea, qabstractslider, qscrollbar,
               qmouseevent, qwheelevent, qcursor, qpoint,
               qsize]
+import nide/helpers/debuglog
 import nide/ui/widgets
 # Cursor shape constants (Qt::CursorShape)
 const
@@ -47,7 +48,7 @@ proc showError(dialogH: pointer, msg: string) {.raises: [].} =
     layout.add(closeBtn)
     layout.applyTo(QWidget(h: dialogH, owned: false))
     discard QDialog(h: dialogH, owned: false).exec()
-  except: discard
+  except CatchableError: discard
 
 proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
   var dialog = newWidget(QDialog.create(parent))
@@ -60,9 +61,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
     showError(dialogH, "graphviz not found.\nExpected dot at /usr/sbin/dot, /usr/bin/dot, or /usr/local/bin/dot.")
     return
 
-  echo "=== dot input ==="
-  echo dotSource
-  echo "=== end dot input ==="
+  logDebug("graphdialog: dot input: ", dotSource)
 
   var svgResult = ""
   try:
@@ -71,14 +70,12 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
     p.inputStream.close()
     svgResult = p.outputStream.readAll()
     p.close()
-  except:
-    echo "=== dot exception: ", getCurrentExceptionMsg()
+  except CatchableError:
+    logError("graphdialog: dot exception: ", getCurrentExceptionMsg())
     showError(dialogH, "dot failed: " & getCurrentExceptionMsg())
     return
 
-  echo "=== dot output (first 500) ==="
-  echo svgResult[0..min(499, svgResult.high)]
-  echo "=== end dot output ==="
+  logDebug("graphdialog: dot output (first 500): ", svgResult[0..min(499, svgResult.high)])
 
   if svgResult.len == 0 or svgResult[0..4] != "<?xml":
     let preview = if svgResult.len > 0: svgResult[0..min(300, svgResult.high)] else: "(empty)"
@@ -120,7 +117,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
           scrollStartV = sa.verticalScrollBar().value()
           let cur = QCursor.create(ClosedHandCursor)
           self.asWidget.setCursor(cur)
-      except: discard
+      except CatchableError: discard
       QSvgWidgetmousePressEvent(self, e)
 
     vtbl[].mouseReleaseEvent = proc(self: QSvgWidget, e: QMouseEvent) {.raises: [], gcsafe.} =
@@ -128,7 +125,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
         dragging = false
         let cur = QCursor.create(OpenHandCursor)
         QWidget(h: self.h, owned: false).setCursor(cur)
-      except: discard
+      except CatchableError: discard
       QSvgWidgetmouseReleaseEvent(self, e)
 
     vtbl[].mouseMoveEvent = proc(self: QSvgWidget, e: QMouseEvent) {.raises: [], gcsafe.} =
@@ -141,7 +138,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
           let vbar = sa.verticalScrollBar()
           hbar.setValue(scrollStartH + dx)
           vbar.setValue(scrollStartV + dy)
-      except: discard
+      except CatchableError: discard
 
     vtbl[].wheelEvent = proc(self: QSvgWidget, e: QWheelEvent) {.raises: [], gcsafe.} =
       try:
@@ -175,7 +172,7 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
         else:
           # Plain scroll: pass to base
           QSvgWidgetwheelEvent(self, e)
-      except: discard
+      except CatchableError: discard
 
     var svgWidget = newWidget(QSvgWidget.create(vtbl = vtbl))
     svgWidgetH = svgWidget.h
@@ -217,4 +214,4 @@ proc showGraphDialog*(parent: QWidget, dotSource: string) {.raises: [].} =
     mainLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     discard QDialog(h: dialogH, owned: false).exec()
-  except: discard
+  except CatchableError: discard

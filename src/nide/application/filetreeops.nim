@@ -1,3 +1,12 @@
+import std/[os, strutils]
+import seaqt/[qfilesystemwatcher, qinputdialog, qmessagebox, qwidget]
+import nide/application/application_types
+import nide/editor/buffers
+import nide/helpers/[fspaths, qtconst]
+import nide/pane/pane
+import nide/panemanager
+import nide/ui/[filetree, widgets]
+
 proc showFileTreeError(self: Application, title, message: string) {.raises: [].} =
   discard QMessageBox.critical(self.appWidget(), title, message)
 
@@ -27,14 +36,14 @@ proc validateFileTreeName(name: string): string =
   if '/' in name or '\\' in name:
     return "Name must not contain path separators."
 
-proc clearFileTreeClipboard(self: Application) =
+proc clearFileTreeClipboard*(self: Application) =
   self.fileTreeClipboardPath = ""
   self.fileTreeClipboardMode = ftcNone
 
-proc canPasteInFileTree(self: Application): bool =
+proc canPasteInFileTree*(self: Application): bool =
   self.fileTreeClipboardMode != ftcNone and self.fileTreeClipboardPath.len > 0
 
-proc refreshFileTree(self: Application) {.raises: [].} =
+proc refreshFileTree*(self: Application) {.raises: [].} =
   if self.currentProject.len > 0:
     self.fileTree.setRoot(self.currentProject)
 
@@ -56,7 +65,7 @@ proc clearClipboardIfDeleted(self: Application, deletedPath: string, isDir: bool
   elif normalizedFsPath(self.fileTreeClipboardPath) == normalizedFsPath(deletedPath):
     self.clearFileTreeClipboard()
 
-proc syncOpenBuffersAfterRename(self: Application, oldPath, newPath: string, isDir: bool) {.raises: [].} =
+proc syncOpenBuffersAfterRename*(self: Application, oldPath, newPath: string, isDir: bool) {.raises: [].} =
   var changedBuffers: seq[Buffer]
   for buf in self.bufferManager.items:
     let shouldUpdate =
@@ -82,7 +91,7 @@ proc syncOpenBuffersAfterRename(self: Application, oldPath, newPath: string, isD
         panel.setBuffer(buf)
         break
 
-proc syncOpenBuffersAfterDelete(self: Application, deletedPath: string, isDir: bool) {.raises: [].} =
+proc syncOpenBuffersAfterDelete*(self: Application, deletedPath: string, isDir: bool) {.raises: [].} =
   var deletedBuffers: seq[Buffer]
   for buf in self.bufferManager.items:
     let shouldDelete =
@@ -105,15 +114,15 @@ proc syncOpenBuffersAfterDelete(self: Application, deletedPath: string, isDir: b
   else:
     self.bufferManager.closePath(deletedPath)
 
-proc copyFileTreeItem(self: Application, path: string) =
+proc copyFileTreeItem*(self: Application, path: string) =
   self.fileTreeClipboardPath = path
   self.fileTreeClipboardMode = ftcCopy
 
-proc cutFileTreeItem(self: Application, path: string) =
+proc cutFileTreeItem*(self: Application, path: string) =
   self.fileTreeClipboardPath = path
   self.fileTreeClipboardMode = ftcCut
 
-proc moveFileTreeItem(self: Application, sourcePath, destinationDir: string): bool {.raises: [].} =
+proc moveFileTreeItem*(self: Application, sourcePath, destinationDir: string): bool {.raises: [].} =
   if not pathExistsAny(sourcePath):
     self.showFileTreeError("Move Failed", "The source item no longer exists.")
     return
@@ -146,7 +155,7 @@ proc moveFileTreeItem(self: Application, sourcePath, destinationDir: string): bo
   except Exception as exc:
     self.showFileTreeError("Move Failed", exc.msg)
 
-proc pasteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
+proc pasteFileTreeItem*(self: Application, path: string, isDir: bool) {.raises: [].} =
   if not self.canPasteInFileTree():
     self.showFileTreeInfo("Paste", "Nothing to paste.")
     return
@@ -187,7 +196,7 @@ proc pasteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [
   except Exception as exc:
     self.showFileTreeError("Paste Failed", exc.msg)
 
-proc renameFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
+proc renameFileTreeItem*(self: Application, path: string, isDir: bool) {.raises: [].} =
   let currentName = path.lastPathPart()
   let newName = self.promptFileTreeText("Rename", "New name", currentName, "Rename")
   if newName.len == 0:
@@ -216,7 +225,7 @@ proc renameFileTreeItem(self: Application, path: string, isDir: bool) {.raises: 
   except Exception as exc:
     self.showFileTreeError("Rename Failed", exc.msg)
 
-proc deleteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: [].} =
+proc deleteFileTreeItem*(self: Application, path: string, isDir: bool) {.raises: [].} =
   let parent = self.appWidget()
   let itemType = if isDir: "folder" else: "file"
   let clicked = QMessageBox.warning(
@@ -239,7 +248,7 @@ proc deleteFileTreeItem(self: Application, path: string, isDir: bool) {.raises: 
   except Exception as exc:
     self.showFileTreeError("Delete Failed", exc.msg)
 
-proc createFileTreeFile(self: Application, dir: string) {.raises: [].} =
+proc createFileTreeFile*(self: Application, dir: string) {.raises: [].} =
   let name = self.promptFileTreeText("New File", "File name", "", "Create")
   if name.len == 0:
     return
@@ -260,7 +269,7 @@ proc createFileTreeFile(self: Application, dir: string) {.raises: [].} =
   except Exception as exc:
     self.showFileTreeError("Create File Failed", exc.msg)
 
-proc createFileTreeFolder(self: Application, dir: string) {.raises: [].} =
+proc createFileTreeFolder*(self: Application, dir: string) {.raises: [].} =
   let name = self.promptFileTreeText("New Folder", "Folder name", "", "Create")
   if name.len == 0:
     return

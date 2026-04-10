@@ -1,4 +1,5 @@
 import std/[httpclient, os, times]
+import nide/helpers/debuglog
 
 const
   IndexUrl* = "https://nim-lang.org/docs/theindex.html"
@@ -22,14 +23,14 @@ proc cacheNeedsRefresh*(path: string): bool =
 
 proc downloadIndex*(): string {.raises: [].} =
   try:
-    echo "[nimindexfetch] Downloading index from: " & IndexUrl
+    logInfo("nimindexfetch: Downloading index from: ", IndexUrl)
     let client = newHttpClient()
     defer: client.close()
     let content = client.getContent(IndexUrl)
-    echo "[nimindexfetch] Downloaded " & $content.len & " bytes"
+    logInfo("nimindexfetch: Downloaded ", content.len, " bytes")
     return content
-  except:
-    echo "[nimindexfetch] Download error: " & getCurrentExceptionMsg()
+  except:  # newHttpClient raises Exception via SSL init
+    logError("nimindexfetch: Download error: ", getCurrentExceptionMsg())
     return ""
 
 proc saveIndexToCache*(content: string): bool {.raises: [].} =
@@ -39,20 +40,20 @@ proc saveIndexToCache*(content: string): bool {.raises: [].} =
     if not dirExists(cacheDir):
       createDir(cacheDir)
     writeFile(cachePath, content)
-    echo "[nimindexfetch] Saved index to: " & cachePath
+    logInfo("nimindexfetch: Saved index to: ", cachePath)
     return true
-  except:
-    echo "[nimindexfetch] Save error: " & getCurrentExceptionMsg()
+  except CatchableError:
+    logError("nimindexfetch: Save error: ", getCurrentExceptionMsg())
     return false
 
 proc loadIndexFromCache*(): string {.raises: [].} =
   try:
     let cachePath = getCachePath()
     if fileExists(cachePath):
-      echo "[nimindexfetch] Loading index from cache: " & cachePath
+      logInfo("nimindexfetch: Loading index from cache: ", cachePath)
       return readFile(cachePath)
-  except:
-    echo "[nimindexfetch] Load error: " & getCurrentExceptionMsg()
+  except CatchableError:
+    logError("nimindexfetch: Load error: ", getCurrentExceptionMsg())
   return ""
 
 proc getIndexContent*(): string {.raises: [].} =
@@ -60,17 +61,17 @@ proc getIndexContent*(): string {.raises: [].} =
   var needsRefresh = true
   try:
     needsRefresh = cacheNeedsRefresh(cachePath)
-  except:
+  except CatchableError:
     needsRefresh = true
-  
+
   if needsRefresh:
-    echo "[nimindexfetch] Cache stale or missing, downloading fresh index"
+    logInfo("nimindexfetch: Cache stale or missing, downloading fresh index")
     let content = downloadIndex()
     if content.len > 0:
       discard saveIndexToCache(content)
       return content
     else:
-      echo "[nimindexfetch] Download failed, trying cache"
+      logWarn("nimindexfetch: Download failed, trying cache")
       return loadIndexFromCache()
   else:
     return loadIndexFromCache()

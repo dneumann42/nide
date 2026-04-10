@@ -98,7 +98,7 @@ proc findNerdFont() {.raises: [].} =
       if "Nerd Font" in fam:
         nerdFontFamily = fam
         return
-  except:
+  except CatchableError:
     discard
 
 proc glyphToIcon(glyph: string, color: string): QIcon {.raises: [].} =
@@ -128,7 +128,7 @@ method icon*(self: DevIconProvider, info: QFileInfo): QIcon =
       if fname in extIcons:
         let (glyph, color) = extIcons[fname]
         return glyphToIcon(glyph, color)
-  except:
+  except CatchableError:
     discard
   QAbstractFileIconProvidericon(self[], info)
 

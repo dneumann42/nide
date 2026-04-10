@@ -1,3 +1,21 @@
+import commands
+import nide/application/application_types
+import nide/application/application
+import nide/application/filetreeops
+import nide/dialogs/[graphdialog, moduledialog, projectdialog, themedialog]
+import nide/editor/buffers
+import nide/helpers/[debuglog, fspaths, logparser, qtconst, runner, widgetref]
+import nide/navigation/[rgfinder, sessionstate]
+import nide/nim/[nimcheck, nimproject, nimsuggest]
+import nide/pane/pane
+import nide/panemanager
+import nide/project/[filefinder, projects]
+import nide/settings/[projectconfig, settings, syntaxtheme, theme, toolchain]
+import nide/ui/[commandpalette, filetree, opacity, toolbar, widgets]
+import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
+import std/[options, os, strutils]
+import tools/nim_graph
+
 proc createStatusButton(self: Application, text: string, parentH: pointer): WidgetRef[QToolButton] =
   var btn = newWidget(QToolButton.create())
   btn.asButton.setText(text)
@@ -80,7 +98,7 @@ proc setupPaneManager(self: Application, splitter: QSplitter) =
         var display = buf.name
         if cwd.len > 0:
           try: display = relativePath(buf.name, cwd)
-          except: discard
+          except CatchableError: discard
         entries.add((display, buf.name))
       if entries.len == 0:
         return
@@ -303,7 +321,7 @@ proc setupCommandDispatcher(self: Application) =
       var display = buf.name
       if cwd.len > 0:
         try: display = relativePath(buf.name, cwd)
-        except: discard
+        except CatchableError: discard
       entries.add((display, buf.name))
     if entries.len == 0:
       return
@@ -344,7 +362,7 @@ proc setupCommandDispatcher(self: Application) =
       return
     try:
       p.triggerGotoDefinition(self.nimSuggest)
-    except:
+    except CatchableError:
       discard)
 
   disp.register("editor.jumpBack", "Jump Back", proc() {.raises: [].} =
@@ -353,7 +371,7 @@ proc setupCommandDispatcher(self: Application) =
       return
     try:
       p.triggerJumpBack()
-    except:
+    except CatchableError:
       discard)
 
   disp.register("editor.autocomplete", "Autocomplete", proc() {.raises: [].} =
@@ -362,7 +380,7 @@ proc setupCommandDispatcher(self: Application) =
       return
     try:
       p.triggerAutocomplete(self.nimSuggest)
-    except:
+    except CatchableError:
       discard)
 
   disp.register("editor.showPrototype", "Show Prototype", proc() {.raises: [].} =
@@ -371,7 +389,7 @@ proc setupCommandDispatcher(self: Application) =
       return
     try:
       p.triggerPrototype()
-    except:
+    except CatchableError:
       discard)
 
   disp.register("editor.addColumn", "Add Column", proc() {.raises: [].} =
@@ -388,7 +406,7 @@ proc setupCommandDispatcher(self: Application) =
       return
     try:
       discard self.paneManager.splitRow(p)
-    except:
+    except CatchableError:
       discard)
 
   disp.register("editor.zoomIn", "Zoom In", proc() {.raises: [].} =
@@ -484,7 +502,7 @@ proc wireToolbar(self: Application) =
           return
         self.openInPane(target, file)
         target.jumpToLine(line, col)
-      except:
+      except CatchableError:
         discard
     let toolchain = self.resolvedProjectToolchain()
     let cmd = quoteShell(toolchain.nimbleCommand) & " run"
@@ -508,7 +526,7 @@ proc wireToolbar(self: Application) =
           return
         self.openInPane(target, file)
         target.jumpToLine(line, col)
-      except:
+      except CatchableError:
         discard
     let toolchain = self.resolvedProjectToolchain()
     let cmd = quoteShell(toolchain.nimbleCommand) & " build"
@@ -518,7 +536,7 @@ proc wireToolbar(self: Application) =
     try:
       let srcDir = if self.currentProject.len > 0: self.currentProject / "src"
                    else: getCurrentDir() / "src"
-      echo "=== graph srcDir: ", srcDir, " exists: ", dirExists(srcDir)
+      logDebug("application: graph srcDir: ", srcDir, " exists: ", dirExists(srcDir))
       let config = nim_graph.Config(
         srcDir: srcDir,
         outputFile: "",
@@ -531,8 +549,8 @@ proc wireToolbar(self: Application) =
       let projectName = nim_graph.getProjectName(config.srcDir)
       let dot = nim_graph.generateDot(modules, projectName, config)
       showGraphDialog(self.appWidget(), dot)
-    except:
-      echo "=== graph error: ", getCurrentExceptionMsg()
+    except CatchableError:
+      logError("application: graph error: ", getCurrentExceptionMsg())
 
   self.toolbar.onFileTreeToggle do():
     if self.currentProject.len > 0:
@@ -578,7 +596,7 @@ proc wireToolbar(self: Application) =
           self.bufferManager.rehighlightAll()
           for panel in self.paneManager.panels:
             panel.applyEditorTheme()
-        except:
+        except CatchableError:
           discard
     )
 
@@ -719,7 +737,7 @@ proc wireFileWatcher(self: Application) =
           content = readFile(p)
           readOk = true
           break
-        except:
+        except CatchableError:
           when defined(debugFileWatcher):
             echo "[FileWatcher] retry readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
           sleep(FileWatcherRetryMs)
@@ -742,7 +760,7 @@ proc wireFocusTracking(self: Application) =
       self.paneManager.updateFocus(now, self.theme == Dark)
       discard old
       self.requestSessionSave()
-    except:
+    except CatchableError:
       discard
 
 proc build*(self: Application) =
@@ -769,7 +787,7 @@ proc build*(self: Application) =
   self.theme = Dark
   applyTheme(self.theme)
 
-  echo "Loading settings..."
+  logInfo("application: Loading settings...")
   self.settings = Settings.load()
   self.theme = self.settings.appearance.themeMode
   applyTheme(self.theme)

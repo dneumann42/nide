@@ -268,7 +268,7 @@ proc updateDiagCounts*(self: Toolbar, lines: seq[LogLine]) {.raises: [].} =
       self.diagErrBtn.asWidget.show()
     else:
       self.diagErrBtn.asWidget.hide()
-  except: discard
+  except CatchableError: discard
 
 proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filterLevel: LogLevel) {.raises: [].} =
   if lines.len == 0: return
@@ -340,7 +340,7 @@ proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filt
     popover.setGeometry(btnPos.x(), yPos, pw, min(ph, MaxPopupHeight))
     popover.raiseX()
     popover.show()
-  except: discard
+  except CatchableError: discard
 
 proc onDiagHint*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.diagHintBtn.onClicked(triggered)

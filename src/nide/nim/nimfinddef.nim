@@ -23,7 +23,7 @@ proc parseDefResponse*(lines: seq[string]): (bool, Definition) {.raises: [].} =
         d.symkind = parts[1]
         d.qpath   = parts[2]
         return (true, d)
-      except: discard
+      except CatchableError: discard
   return (false, Definition())
 
 proc queryDef*(client: NimSuggestClient,
@@ -43,9 +43,9 @@ proc queryDef*(client: NimSuggestClient,
   let onSug = proc(completions: seq[Completion]) {.raises: [].} =
     let (ok, def) = parseDefResponse(client.responseLines)
     if ok:
-      try: onResult(def) except: discard
+      try: onResult(def) except CatchableError: discard
     else:
-      try: onError("Definition not found") except: discard
+      try: onError("Definition not found") except CatchableError: discard
 
   let pq = PendingQuery(request: request, isSug: false, onResultSug: onSug, onError: onError)
 

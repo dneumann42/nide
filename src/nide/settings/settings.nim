@@ -171,7 +171,7 @@ proc findNimble*(): string {.raises: [].} =
     let pathExe = findExe("nimble")
     if pathExe.len > 0:
       return pathExe
-  except:
+  except CatchableError:
     discard
   return ""
 
@@ -519,7 +519,7 @@ proc showSettingsDialog*(
           if foundNim.len > 0:
             testNimPath = foundNim
             nimFromPath = true
-        except:
+        except CatchableError:
           discard
 
       if not (testNimblePath.len > 0 and fileExists(testNimblePath)):
@@ -528,7 +528,7 @@ proc showSettingsDialog*(
           if foundNimble.len > 0:
             testNimblePath = foundNimble
             nimbleFromPath = true
-        except:
+        except CatchableError:
           discard
 
       var results: string
@@ -543,7 +543,7 @@ proc showSettingsDialog*(
           else:
             results &= "nim: FAILED\n" & nimOut.strip()
             hasError = true
-        except:
+        except CatchableError:
           results &= "nim: FAILED\n"
           hasError = true
       else:
@@ -559,7 +559,7 @@ proc showSettingsDialog*(
           else:
             results &= "nimble: FAILED\n" & nimbOut.strip()
             hasError = true
-        except:
+        except CatchableError:
           results &= "nimble: FAILED\n"
           hasError = true
       else:
@@ -598,7 +598,7 @@ proc showSettingsDialog*(
           QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #50fa7b;'>Nim " & version & " installed successfully!</span>")
         else:
           QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to install Nim: " & installOutput & "</span>")
-      except:
+      except CatchableError:
         QLabel(h: testResultLabelH, owned: false).setText("<span style='color: #ff5555;'>Failed to install Nim</span>")
 
     var nimForm = newWidget(QFormLayout.create())
@@ -782,5 +782,5 @@ proc showSettingsDialog*(
         updatedProjectConfig.nimPath = projectNimPathEdit.text()
         updatedProjectConfig.nimblePath = projectNimblePathEdit.text()
       onApply(updated, updatedProjectConfig)
-  except:
+  except CatchableError:
     discard

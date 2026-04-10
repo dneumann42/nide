@@ -1,4 +1,5 @@
 import std/[xmlparser, xmltree, strutils, re]
+import nide/helpers/debuglog
 
 type
   ParsedSymbol* = object
@@ -70,5 +71,5 @@ proc parseIndexHtml*(html: string): seq[ParsedSymbol] {.raises: [].} =
                           ))
         for i in 0..<node.len:
           nodesToProcess.add(node[i])
-  except:
-    echo "[nimindexparse] Parse error: " & getCurrentExceptionMsg()
+  except:  # parseXml raises Exception
+    logError("nimindexparse: Parse error: ", getCurrentExceptionMsg())

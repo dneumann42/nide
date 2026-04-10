@@ -123,7 +123,7 @@ proc loadAllThemes*() =
     try:
       let theme = Toml.decode(src, SyntaxTheme)
       allThemes[theme.meta.name] = theme
-    except:
+    except CatchableError:
       discard
 
 proc availableThemes*(): seq[string] =
@@ -146,7 +146,7 @@ proc setCurrentTheme*(name: string) {.raises: [].} =
     currentThemeName = name
     currentTheme = getTheme(name)
     currentFormats = buildFormats(currentTheme)
-  except:
+  except CatchableError:
     # Fallback to default formats if something goes wrong
     currentThemeName = "Fallback"
     currentFormats = buildDefaultFormats()
@@ -160,7 +160,7 @@ proc initDefaultTheme*() {.raises: [].} =
     if currentThemeName.len == 0:
       currentFormats = buildDefaultFormats()
       currentThemeName = "Fallback"
-  except:
+  except CatchableError:
     currentFormats = buildDefaultFormats()
     currentThemeName = "Fallback"
 

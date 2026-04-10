@@ -25,7 +25,7 @@ proc parseLine*(s: string): LogLine =
   try:
     result.line = parseInt(coords[0 ..< comma].strip())
     result.col  = parseInt(coords[comma+1 .. ^1].strip())
-  except: return
+  except CatchableError: return
   let after = s[closeParen+1 .. ^1]
   if after.startsWith(" Error:"):
     result.level = llError

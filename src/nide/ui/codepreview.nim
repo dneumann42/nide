@@ -40,7 +40,7 @@ proc lineNumberAreaPaintEvent*(editor: QPlainTextEdit, event: QPaintEvent, gutte
       painter.drawText(0, top, w - 4, lineH, AlignRightVCenter, numStr)
       blk = blk.next()
     discard painter.endX()
-  except: discard
+  except CatchableError: discard
 
 proc setupCodePreview*(parent: QWidget): tuple[preview: QPlainTextEdit, gutterH: pointer] =
   var gutterH: pointer = nil

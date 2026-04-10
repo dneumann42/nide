@@ -77,7 +77,7 @@ proc reposition*(self: FileTree) {.raises: [].} =
     let toolbarHeight = ToolbarHeight
     self.container.setGeometry(cint 0, toolbarHeight, cint TreeWidth, cint TreeHeight)
     self.container.raiseX()
-  except:
+  except CatchableError:
     discard
 
 proc applyTheme*(self: FileTree, theme: Theme) {.raises: [].} =
@@ -161,8 +161,8 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
         event.accept()
       else:
         event.ignore()
-    except:
-      try: event.ignore() except: discard
+    except CatchableError:
+      try: event.ignore() except CatchableError: discard
 
   treeVtbl.dragMoveEvent = proc(tree: QTreeView, event: QDragMoveEvent) {.raises: [], gcsafe.} =
     try:
@@ -175,8 +175,8 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
         event.accept()
       else:
         event.ignore()
-    except:
-      try: event.ignore() except: discard
+    except CatchableError:
+      try: event.ignore() except CatchableError: discard
 
   treeVtbl.dropEvent = proc(tree: QTreeView, event: QDropEvent) {.raises: [], gcsafe.} =
     try:
@@ -200,8 +200,8 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
         event.acceptProposedAction()
       else:
         event.ignore()
-    except:
-      try: event.ignore() except: discard
+    except CatchableError:
+      try: event.ignore() except CatchableError: discard
 
   treeVtbl.contextMenuEvent = proc(tree: QTreeView, event: QContextMenuEvent) {.raises: [], gcsafe.} =
     try:
@@ -255,7 +255,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
           self.onMenuAction(ftNewFile, path, isDir)
         elif isDir and chosen.h == newFolderAction.h:
           self.onMenuAction(ftNewFolder, path, isDir)
-    except:
+    except CatchableError:
       discard
 
   self.treeView = newWidget(QTreeView.create(vtbl = treeVtbl))
@@ -296,7 +296,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
         let path = m.filePath(index)
         if self.onFileSelected != nil:
           self.onFileSelected(path)
-    except:
+    except CatchableError:
       discard
 
   self.container.resize(cint TreeWidth, cint TreeHeight)
@@ -309,7 +309,7 @@ proc setRoot*(self: FileTree, dir: string) {.raises: [].} =
   try:
     let rootIndex = self.model.setRootPath(dir)
     self.treeView.setRootIndex(rootIndex)
-  except:
+  except CatchableError:
     discard
 
 proc toggle*(self: FileTree) {.raises: [].} =
@@ -321,9 +321,9 @@ proc toggle*(self: FileTree) {.raises: [].} =
       self.container.setFixedSize(cint TreeWidth, cint TreeHeight)
       self.container.show()
       self.reposition()
-  except:
+  except CatchableError:
     discard
 
 proc isVisible*(self: FileTree): bool {.raises: [].} =
   try: self.container.isVisible()
-  except: false
+  except CatchableError: false

@@ -56,4 +56,4 @@ proc showNewModuleDialog*(parent: QWidget): string =
         createDir(dir)
         writeFile(path, "when isMainModule:\n  discard\n")
         return path
-      except: discard
+      except CatchableError: discard

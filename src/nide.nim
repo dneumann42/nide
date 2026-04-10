@@ -1,8 +1,9 @@
-import nide/application/application
-import nide/helpers/qtconst
+import nide/application/[application, buildwiring]
+import nide/helpers/[debuglog, qtconst]
 import seaqt/qapplication
 
 proc start() =
+  setupLogging()
   let _ = QApplication.create()
   var application = Application.new()
   QApplication.setApplicationName("Nide DEV 0.0.1")

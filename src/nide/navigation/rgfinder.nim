@@ -12,7 +12,7 @@ const
   MaxRgResults = 200
 
 proc dbg(msg: string) {.raises: [].} =
-  try: stderr.write(msg & "\n") except: discard
+  try: stderr.write(msg & "\n") except CatchableError: discard
 
 proc toStr*(oa: openArray[char]): string {.raises: [].} =
   result = newString(oa.len)
@@ -108,17 +108,17 @@ proc showRipgrepFinder*(parent: QWidget,
             let parts = lineStr.split(':', 2)
             if parts.len == 3:
               currentMatches.add(RgMatch(
-                file:    (try: relativePath(parts[0], cwd) except: parts[0]),
+                file:    (try: relativePath(parts[0], cwd) except CatchableError: parts[0]),
                 lineNum: parseInt(parts[1]),
                 match:   parts[2]
               ))
-          except: discard
+          except CatchableError: discard
         dbg("rgfinder: matches=" & $currentMatches.len)
         for m in currentMatches:
           lw.addItem(m.file & ":" & $m.lineNum & "  " & m.match.strip())
         if lw.count() > 0:
           lw.setCurrentRow(cint 0)
-      except: discard
+      except CatchableError: discard
 
     QTimer(h: timerH, owned: false).onTimeout do() {.raises: [].}:
       dbg("rgfinder: timer fired, query=" & pendingQuery)
@@ -137,7 +137,7 @@ proc showRipgrepFinder*(parent: QWidget,
           cur.setPosition(blk.position())
           pv.setTextCursor(cur)
           pv.ensureCursorVisible()
-        except:
+        except CatchableError:
           QPlainTextEdit(h: previewH, owned: false).setPlainText("(could not read file)")
 
     searchBox.onTextChanged do(text: openArray[char]) {.raises: [].}:
@@ -180,4 +180,4 @@ proc showRipgrepFinder*(parent: QWidget,
       doSelect(QListWidget(h: listH, owned: false).row(item))
 
     discard QDialog(h: dialogH, owned: false).exec()
-  except: discard
+  except CatchableError: discard

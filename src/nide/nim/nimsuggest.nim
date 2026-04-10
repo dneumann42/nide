@@ -66,7 +66,7 @@ proc findNimbleEntry*(fromFile: string): string {.raises: [].} =
             let candidate = dir / "src" / binName & ".nim"
             if candidate.fileExists:
               return candidate
-      except: discard
+      except CatchableError: discard
       return fromFile
     prev = dir
     dir = dir.parentDir()
@@ -93,16 +93,16 @@ proc parseSugResponse*(lines: seq[string]): seq[Completion] {.raises: [].} =
         c.line = parseInt(parts[5])
         c.col = parseInt(parts[6])
         result.add(c)
-      except: discard
+      except CatchableError: discard
 
 proc drainPending(client: NimSuggestClient, msg: string) {.raises: [].} =
   let q = client.pending
   client.pending = @[]
   for pq in q:
-    try: pq.onError(msg) except: discard
+    try: pq.onError(msg) except CatchableError: logError("nimsuggest: drainPending callback error: ", getCurrentExceptionMsg())
 
 proc log(client: NimSuggestClient, msg: string) {.raises: [].} =
-  appendDebugLog("nimsuggest", msg)
+  logDebug("nimsuggest: ", msg)
   if client.debug:
     echo "[nimsuggest] " & msg
 
@@ -145,7 +145,7 @@ proc onSocketReadyRead(client: NimSuggestClient) {.raises: [].} =
         client.handleResponse()
       else:
         client.responseLines.add(line)
-  except:
+  except CatchableError:
     client.log("onSocketReadyRead error: " & getCurrentExceptionMsg())
 
 proc onSocketDead(client: NimSuggestClient, msg: string) {.raises: [].} =
@@ -172,7 +172,7 @@ proc sendFront*(client: NimSuggestClient) {.raises: [].} =
     client.log("Sending: " & req.strip())
     let io = QIODevice(h: client.socketH, owned: false)
     discard io.write(req.cstring)
-  except:
+  except CatchableError:
     client.log("sendFront write error: " & getCurrentExceptionMsg())
 
 proc reconnect*(client: NimSuggestClient) {.raises: [].} =
@@ -206,7 +206,7 @@ proc reconnect*(client: NimSuggestClient) {.raises: [].} =
       if clientRef.state != csIdle and clientRef.pending.len > 0:
         clientRef.onSocketDead("socket error: " & $err)
     sock.connectToHost("127.0.0.1", cushort(client.port), IO_ReadWrite, AS_IPv4Protocol)
-  except:
+  except CatchableError:
     client.state = csDead
     client.log("reconnect failed: " & getCurrentExceptionMsg())
     client.drainPending("reconnect failed")
@@ -225,10 +225,10 @@ proc handleResponse(client: NimSuggestClient) {.raises: [].} =
     let completions = parseSugResponse(client.responseLines)
     client.responseLines = @[]
     client.log("Parsed " & $completions.len & " completions")
-    try: pq.onResultSug(completions) except: discard
+    try: pq.onResultSug(completions) except CatchableError: logError("nimsuggest: onResultSug callback error: ", getCurrentExceptionMsg())
   else:
     client.log("Calling def callback")
-    try: pq.onResultSug(@[]) except: discard
+    try: pq.onResultSug(@[]) except CatchableError: logError("nimsuggest: onResultSug callback error: ", getCurrentExceptionMsg())
     client.responseLines = @[]
   # nimsuggest closes the TCP connection after each response (--autobind mode).
   # Reconnect to the same port so the next query doesn't restart the process.
@@ -237,7 +237,7 @@ proc handleResponse(client: NimSuggestClient) {.raises: [].} =
   # writing to a half-closed socket that silently drops data.
   client.log("Post-response: closing socket and reconnecting for next query")
   if client.socketH != nil:
-    try: QAbstractSocket(h: client.socketH, owned: false).close() except: discard
+    try: QAbstractSocket(h: client.socketH, owned: false).close() except CatchableError: discard
     client.socketH = nil
   client.state = csIdle
   client.reconnect()
@@ -256,7 +256,7 @@ proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
     let nl = client.portBuf.find('\n')
     if nl < 0: return
     let portStr = client.portBuf[0 ..< nl].strip()
-    let p = try: parseInt(portStr) except: 0
+    let p = try: parseInt(portStr) except CatchableError: 0
     if p <= 0 or p > MaxTcpPort:
       client.onSocketDead("invalid port: " & portStr)
       return
@@ -281,7 +281,7 @@ proc onProcessPortOutput(client: NimSuggestClient) {.raises: [].} =
       if clientRef.socketH == sockH: clientRef.socketH = nil
       if clientRef.state != csIdle and clientRef.pending.len > 0:
         clientRef.onSocketDead("socket error: " & $err)
-  except: discard
+  except CatchableError: discard
 
 proc kill*(client: NimSuggestClient) {.raises: [].} =
   let prevState = client.state
@@ -297,14 +297,14 @@ proc kill*(client: NimSuggestClient) {.raises: [].} =
     try:
       QAbstractSocket(h: h, owned: false).disconnectFromHost()
       QAbstractSocket(h: h, owned: false).close()
-    except: discard
+    except CatchableError: discard
   if client.processH != nil:
     let h = client.processH
     client.processH = nil  # clear before ops — kill() fires onFinished synchronously
     try:
       QProcess(h: h, owned: false).kill()
       discard QProcess(h: h, owned: false).waitForFinished(ProcessKillTimeoutMs)
-    except: discard
+    except CatchableError: discard
   discard prevState
 
 proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
@@ -316,14 +316,14 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
     try:
       QAbstractSocket(h: h, owned: false).disconnectFromHost()
       QAbstractSocket(h: h, owned: false).close()
-    except: discard
+    except CatchableError: discard
   if client.processH != nil:
     let h = client.processH
     client.processH = nil
     try:
       QProcess(h: h, owned: false).kill()
       discard QProcess(h: h, owned: false).waitForFinished(ProcessKillTimeoutMs)
-    except: discard
+    except CatchableError: discard
   client.port = 0
   client.portBuf = ""
   client.responseLines = @[]
@@ -354,7 +354,7 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
         clientRef.processH = nil
         clientRef.onSocketDead("process exited (code " & $exitCode & ")")
 
-    let pid = try: $getCurrentProcessId() except: "0"
+    let pid = try: $getCurrentProcessId() except CatchableError: "0"
     let executable =
       if client.executable.len > 0: client.executable else: "nimsuggest"
     var args = @["--autobind",
@@ -368,7 +368,7 @@ proc startNimSuggest*(client: NimSuggestClient) {.raises: [].} =
       " projectRoot=" & projectRoot &
       " args=" & args.join(" "))
     process.start(executable, args)
-  except:
+  except CatchableError:
     client.state = csDead
     let errMsg = "Failed to start: " & getCurrentExceptionMsg()
     client.log(errMsg)
@@ -405,7 +405,7 @@ proc querySug*(client: NimSuggestClient,
     let old = client.pending[0]
     client.pending = @[]
     client.responseLines = @[]
-    try: old.onError("cancelled") except: discard
+    try: old.onError("cancelled") except CatchableError: logError("nimsuggest: onError callback error: ", getCurrentExceptionMsg())
 
   let pq = PendingQuery(request: request, isSug: true, onResultSug: onResult, onError: onError)
 

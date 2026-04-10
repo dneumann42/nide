@@ -1,4 +1,4 @@
-import std/os
+import std/[logging, os]
 
 const
   NideDataDirName* = ".local" / "nide"
@@ -16,5 +16,5 @@ proc ensureDirExists*(path: string): bool {.raises: [].} =
       createDir(path)
     true
   except OSError, IOError:
-    echo getCurrentExceptionMsg()
+    {.cast(raises: []).}: error("appdirs: ", getCurrentExceptionMsg())
     false

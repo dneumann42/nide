@@ -1,6 +1,6 @@
 import seaqt/[qwidget, qvboxlayout, qlabel, qdialog, qpainter, qrect, qcursor]
 import nide/nim/nimsuggest
-import nide/helpers/qtconst
+import nide/helpers/[debuglog, qtconst]
 import nide/ui/widgets
 
 const
@@ -83,8 +83,8 @@ proc showPrototype*(parent: QWidget,
     dialog.setGeometry(150, 150, 550, 120)
     dialog.show()
 
-  except:
-    echo "[funcprototype] showPrototype error: " & getCurrentExceptionMsg()
+  except CatchableError:
+    logError("funcprototype: showPrototype error: ", getCurrentExceptionMsg())
 
 proc isPrototypeVisible*(pw: PrototypeWindow): bool {.raises: [].} =
   return pw != nil and pw.isVisible

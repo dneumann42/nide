@@ -22,7 +22,7 @@ proc resolveExecutableFromPath(baseName: string): string =
     let resolved = findExe(baseName)
     if resolved.len > 0:
       return resolved
-  except:
+  except CatchableError:
     discard
   ""
 

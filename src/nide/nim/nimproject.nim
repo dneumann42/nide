@@ -16,7 +16,7 @@ proc projectBackend*(nimblePath: string): string {.raises: [].} =
         let backend = rhs[q1 + 1 ..< q2].strip()
         if backend.len > 0:
           return backend
-  except:
+  except CatchableError:
     discard
   "c"
 
@@ -47,7 +47,7 @@ proc findProjectMain*(nimblePath: string): string {.raises: [].} =
     if srcMain.fileExists: return srcMain
     let rootMain = dir / defaultName & ".nim"
     if rootMain.fileExists: return rootMain
-  except: discard
+  except CatchableError: discard
   return ""
 
 proc findProjectRoot*(path: string): string {.raises: [].} =
@@ -67,7 +67,7 @@ proc findProjectRoot*(path: string): string {.raises: [].} =
         return dir
       prev = dir
       dir = dir.parentDir()
-  except:
+  except CatchableError:
     discard
   ""
 
@@ -96,7 +96,7 @@ proc projectDependencyPaths*(projectRoot: string): seq[string] {.raises: [].} =
       if suffix.len == 0:
         continue
       result.add(nimbleDepsDir / suffix)
-  except:
+  except CatchableError:
     discard
 
 proc projectDependencyPathArgs*(projectRoot: string): seq[string] {.raises: [].} =

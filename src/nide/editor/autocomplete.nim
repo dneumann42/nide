@@ -7,6 +7,7 @@
 import seaqt/[qwidget, qlistwidget, qlistwidgetitem,
               qrect, qplaintextedit, qobject]
 import nide/nim/nimsuggest, nide/ui/widgets, nide/helpers/uicolors
+import nide/helpers/debuglog
 import std/os
 
 type
@@ -64,14 +65,14 @@ proc accept*(menu: AutocompleteMenu) {.raises: [].} =
       selectedName = menu.completions[row].name
   menu.closeWidget()
   if selectedName.len > 0:
-    try: menu.insertTextCb(selectedName) except: discard
-  try: menu.closeCb() except: discard
+    try: menu.insertTextCb(selectedName) except CatchableError: discard
+  try: menu.closeCb() except CatchableError: discard
 
 proc dismiss*(menu: AutocompleteMenu) {.raises: [].} =
   ## Close without inserting.
   if menu == nil or menu.widgetH == nil: return
   menu.closeWidget()
-  try: menu.closeCb() except: discard
+  try: menu.closeCb() except CatchableError: discard
 
 proc isOpen*(menu: AutocompleteMenu): bool {.raises: [].} =
   menu != nil and menu.widgetH != nil
@@ -81,7 +82,7 @@ proc showCompletions*(editor: QPlainTextEdit,
                       insertText: proc(text: string) {.raises: [].},
                       close: proc() {.raises: [].},
                       outMenu: ptr AutocompleteMenu) {.raises: [].} =
-  echo "[autocomplete] showCompletions called with ", completions.len, " items"
+  logDebug("autocomplete: showCompletions called with ", completions.len, " items")
   if completions.len == 0:
     close()
     return
@@ -180,7 +181,7 @@ proc showCompletions*(editor: QPlainTextEdit,
     pw.raiseX()
     pw.show()
 
-    echo "[autocomplete] Popup shown at viewport-local ", px, ",", py,
-         " size ", popupW, "x", popupH2
-  except:
-    echo "[autocomplete] Error: " & getCurrentExceptionMsg()
+    logDebug("autocomplete: Popup shown at viewport-local ", px, ",", py,
+         " size ", popupW, "x", popupH2)
+  except CatchableError:
+    logError("autocomplete: Error: ", getCurrentExceptionMsg())

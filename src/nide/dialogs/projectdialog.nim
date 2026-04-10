@@ -14,7 +14,7 @@ const
 proc getNimVersions*(): seq[string] =
   try:
     discard execProcess("nimble", args = ["refresh"], options = {poStdErrToStdOut, poUsePath})
-  except:
+  except CatchableError:
     discard
   let releasesFile = getHomeDir() / ".nimble" / "official-nim-releases.json"
   if not fileExists(releasesFile):
@@ -27,7 +27,7 @@ proc getNimVersions*(): seq[string] =
         result.add(item["version"].getStr())
     result.sort(Descending)
     result.add("devel")
-  except:
+  except CatchableError:
     return @["2.2.6", "devel"]
 
 proc showNewProjectDialog*(parent: QWidget, pm: var ProjectManager) =

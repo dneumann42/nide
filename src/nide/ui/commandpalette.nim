@@ -96,7 +96,7 @@ proc closeWidget(palette: CommandPalette) {.raises: [].} =
   if palette == nil or palette.container.h == nil:
     return
   palette.container.hide()
-  try: palette.onClosed() except: discard
+  try: palette.onClosed() except CatchableError: discard
 
 proc scoreMatch(query: string, item: PaletteItem): tuple[ok: bool, rank: int, text: string] {.raises: [].} =
   let q = query.strip().toLowerAscii()
@@ -192,7 +192,7 @@ proc activateCurrent(palette: CommandPalette) {.raises: [].} =
     return
   let id = palette.filtered[row].desc.id
   palette.closeWidget()
-  try: palette.onSelected(id) except: discard
+  try: palette.onSelected(id) except CatchableError: discard
 
 proc dismiss*(palette: CommandPalette) {.raises: [].} =
   palette.closeWidget()

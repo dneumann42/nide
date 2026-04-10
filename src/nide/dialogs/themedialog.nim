@@ -108,7 +108,7 @@ proc buildThemePickerWidget*(
         setCurrentTheme(name)
         previewHl.rehighlight()
         setCurrentTheme(savedName)
-      except: discard
+      except CatchableError: discard
 
     applyPreviewTheme(currentName)
 
@@ -121,7 +121,7 @@ proc buildThemePickerWidget*(
     QListWidget(h: listH, owned: false).onCurrentRowChanged do(row: cint) {.raises: [].}:
       if row >= 0 and row < cint(themes.len):
         applyPreviewTheme(themes[row])
-  except: discard
+  except CatchableError: discard
 
 proc currentThemeSelection*(picker: ThemePickerWidget): string {.raises: [].} =
   ## Return the name of the currently highlighted theme in the picker.
@@ -129,7 +129,7 @@ proc currentThemeSelection*(picker: ThemePickerWidget): string {.raises: [].} =
     let row = picker.listWidget.currentRow()
     if row >= 0 and row < cint(picker.themes.len):
       return picker.themes[row]
-  except: discard
+  except CatchableError: discard
 
 # ── Standalone theme-picker dialog ─────────────────────────────────────────
 
@@ -177,4 +177,4 @@ proc showThemeDialog*(
         onSelected(name)
 
     discard QDialog(h: dialogH, owned: false).exec()
-  except: discard
+  except CatchableError: discard

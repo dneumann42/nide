@@ -59,10 +59,10 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
     of peClose:        self.closePane(ev.pane)
     of peVSplit:
       try: discard self.insertCol(ev.pane, col)
-      except: discard
+      except: discard  # Qt widget creation can raise Exception
     of peHSplit:
       try: discard self.insertRow(ev.pane, col)
-      except: discard
+      except: discard  # Qt widget creation can raise Exception
     of peNewModule:    self.callbacks.onNewModule(ev.pane)
     of peOpenModule:   self.callbacks.onOpenModule(ev.pane)
     of peNewProject:
@@ -170,7 +170,7 @@ proc closePane*(self: PaneManager, pane: Pane, notify = true) {.raises: [].} =
         if self.panels[i] == pane:
           self.panels.delete(i)
           break
-    except: discard
+    except CatchableError: discard
   if notify:
     self.notifyLayoutChanged()
 
@@ -182,7 +182,7 @@ proc closeOtherPanes*(self: PaneManager, keepPane: Pane) {.raises: [].} =
     for p in toClose:
       self.closePane(p, notify = false)
     self.notifyLayoutChanged()
-  except: discard
+  except CatchableError: discard
 
 proc splitRow*(self: PaneManager, pane: Pane): Pane =
   let parent = pane.widget().parentWidget()
@@ -229,7 +229,7 @@ proc detachWidget(w: QWidget) =
     w.hide()
     w.setParent(QWidget())
     QObject(h: w.h, owned: false).deleteLater()
-  except:
+  except CatchableError:
     discard
 
 proc deleteWindow*(self: PaneManager, pane: Pane): bool {.raises: [].} =

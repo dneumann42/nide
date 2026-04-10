@@ -97,13 +97,13 @@ proc runCommand*(parent: QWidget, title, command: string,
           discard
         QListWidget(h: listH, owned: false).addItem(item)
         QListWidget(h: listH, owned: false).scrollToBottom()
-      except: discard
+      except CatchableError: discard
 
     proc focusInput() {.raises: [].} =
       try:
         if allowInput:
           QWidget(h: inputEditH, owned: false).setFocus()
-      except: discard
+      except CatchableError: discard
 
     proc processBytes(data: openArray[char]) {.raises: [].} =
       try:
@@ -116,7 +116,7 @@ proc runCommand*(parent: QWidget, title, command: string,
             addLogLine(buf[start ..< i])
             start = i + 1
         pending[] = buf[start .. ^1]
-      except: discard
+      except CatchableError: discard
 
     process.setProcessChannelMode(PC_MergedChannels)   # MergedChannels
     if workingDirectory.len > 0:
@@ -130,7 +130,7 @@ proc runCommand*(parent: QWidget, title, command: string,
         if bytes.len > 0:
           processBytes(toOpenArray(
             cast[ptr UncheckedArray[char]](unsafeAddr bytes[0]), 0, bytes.high))
-      except: discard
+      except CatchableError: discard
 
     process.onFinished do(exitCode: cint) {.raises: [].}:
       try:
@@ -149,7 +149,7 @@ proc runCommand*(parent: QWidget, title, command: string,
         if allowInput:
           QWidget(h: inputEditH, owned: false).setEnabled(false)
           QWidget(h: sendBtnH, owned: false).setEnabled(false)
-      except: discard
+      except CatchableError: discard
 
     proc submitInput() {.raises: [].} =
       try:
@@ -161,7 +161,7 @@ proc runCommand*(parent: QWidget, title, command: string,
         addLogLine("> " & line)
         QLineEdit(h: inputEditH, owned: false).clear()
         focusInput()
-      except: discard
+      except CatchableError: discard
 
     listWidget.onItemClicked do(item: QListWidgetItem) {.raises: [].}:
       try:
@@ -171,7 +171,7 @@ proc runCommand*(parent: QWidget, title, command: string,
           if ll.level != llOther and onGotoLocation != nil:
             onGotoLocation(ll.file, ll.line, ll.col)
             QWidget(h: dialogH, owned: false).hide()
-      except: discard
+      except CatchableError: discard
 
     copyBtn.onClicked do() {.raises: [].}:
       try:
@@ -179,7 +179,7 @@ proc runCommand*(parent: QWidget, title, command: string,
         for ll in lines[]:
           text.add(ll.raw & "\n")
         QGuiApplication.clipboard().setText(text)
-      except: discard
+      except CatchableError: discard
 
     copyErrBtn.onClicked do() {.raises: [].}:
       try:
@@ -188,7 +188,7 @@ proc runCommand*(parent: QWidget, title, command: string,
           if ll.level in {llError, llWarning}:
             text.add(ll.raw & "\n")
         QGuiApplication.clipboard().setText(text)
-      except: discard
+      except CatchableError: discard
 
     killBtn.onClicked do() {.raises: [].}:
       let pid = QProcess(h: processH, owned: false).processId()
@@ -221,4 +221,4 @@ proc runCommand*(parent: QWidget, title, command: string,
     process.start("bash", @["-c", command])
     QWidget(h: dialogH, owned: false).show()
     focusInput()
-  except: discard
+  except CatchableError: discard

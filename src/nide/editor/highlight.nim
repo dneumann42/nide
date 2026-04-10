@@ -93,7 +93,7 @@ proc rebuildCache(hl: NimHighlighter, src: string) =
   var tokens: seq[Token]
   try:
     tokens = tokenizeSource(src)
-  except:
+  except:  # Nim compiler lexer can raise Exception, not just CatchableError
     return
 
   const routineKws = {tkProc, tkFunc, tkMethod, tkMacro, tkTemplate, tkIterator, tkConverter}

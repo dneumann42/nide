@@ -92,7 +92,7 @@ proc fetchLatestNimbleRelease*(): tuple[release: NimbleRelease, error: string] {
       return
 
     result.release = release
-  except:
+  except CatchableError:
     result.error = "Failed to resolve the latest Nimble release"
 
 proc installLatestNimble*(configuredPath: string): NimbleInstallResult {.raises: [].} =
@@ -104,7 +104,7 @@ proc installLatestNimble*(configuredPath: string): NimbleInstallResult {.raises:
 
   try:
     ensureInstallDir(targetDir)
-  except:
+  except CatchableError:
     result.message = "Failed to create install directory"
     return
 
@@ -127,7 +127,7 @@ proc installLatestNimble*(configuredPath: string): NimbleInstallResult {.raises:
     if downloadCode != 0:
       result.message = "Failed to download Nimble: " & downloadOutput.strip()
       return
-  except:
+  except CatchableError:
     result.message = "Failed to download Nimble"
     return
 
@@ -187,14 +187,14 @@ proc installLatestNimble*(configuredPath: string): NimbleInstallResult {.raises:
       if extractCode != 0:
         result.message = "Failed to extract Nimble: " & extractOutput.strip()
         return
-  except:
+  except CatchableError:
     result.message = "Failed to extract Nimble"
     return
   finally:
     try:
       if fileExists(archivePath):
         removeFile(archivePath)
-    except:
+    except CatchableError:
       discard
 
   result.ok = true

@@ -75,7 +75,7 @@ proc openFile*(bm: var BufferManager, path: string): Buffer =
     result.content = readFile(path)
     when defined(debugFileWatcher):
       echo "[FileWatcher] BufferManager.openFile: read content, len: ", result.content.len
-  except:
+  except CatchableError:
     when defined(debugFileWatcher):
       echo "[FileWatcher] BufferManager.openFile: failed to read file: ", path
     discard
