@@ -173,6 +173,30 @@ proc shouldRefreshAutocompleteOnKeyPress*(key, mods: int, text: string): bool =
     return true
   text.len > 0
 
+proc commandKeyComboForDispatch*(key, mods: cint): Option[KeyCombo] =
+  let isModifierOnly = key >= Key_Shift and key <= Key_Meta
+  if isModifierOnly:
+    return none(KeyCombo)
+  let relevantMods = mods and (ctrlMod or altMod or shiftMod)
+  some(combo(key, relevantMods))
+
+proc nextWrappedIndex*(current, total: int): int =
+  if total <= 0:
+    return -1
+  if current < 0:
+    return 0
+  let normalized = current mod total
+  (normalized + 1) mod total
+
+proc focusIndexAfterRemoval*(removedIndex, total: int): int =
+  if total <= 1:
+    return -1
+  if removedIndex < 0:
+    return 0
+  if removedIndex < total - 1:
+    return removedIndex
+  total - 2
+
 proc normalizeIdentifier(text: string): string =
   result = newStringOfCap(text.len)
   for ch in text:

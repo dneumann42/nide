@@ -268,6 +268,11 @@ proc setupCommandDispatcher(self: Application) =
     if p != nil:
       self.paneManager.closeOtherPanes(p))
 
+  disp.register("editor.deleteWindow", "Delete Window", proc() {.raises: [].} =
+    let p = self.getTargetPane()
+    if p != nil:
+      discard self.paneManager.deleteWindow(p))
+
   disp.register("editor.splitHorizontal", "Split Window Horizontally", proc() {.raises: [].} =
     let p = self.getTargetPane()
     if p != nil:
@@ -306,6 +311,11 @@ proc setupCommandDispatcher(self: Application) =
           p.setBuffer(buf)
           self.requestSessionSave()
           break)
+
+  disp.register("editor.otherWindow", "Other Window", proc() {.raises: [].} =
+    let p = self.getTargetPane()
+    if p != nil:
+      discard self.paneManager.focusNextPane(p))
 
   disp.register("editor.findInBuffer", "Find in Buffer", proc() {.raises: [].} =
     let p = self.getTargetPane()

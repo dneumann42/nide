@@ -1,6 +1,7 @@
 import std/[unittest, options]
 import nide/pane/logic
 import nide/helpers/logparser
+import nide/settings/keybindings
 
 # Helpers to build LogLine fixtures (same pattern as tnimimports.nim)
 proc errLine(file: string, line = 1): LogLine =
@@ -217,6 +218,37 @@ suite "autocomplete refresh":
   test "modifier chords do not refresh autocomplete":
     check not shouldRefreshAutocompleteOnKeyPress(0x3B, 0x04000000, ";")
     check not shouldRefreshAutocompleteOnKeyPress(0x4E, 0x04000000, "")
+
+suite "command dispatch combos":
+  test "modifier-only keys are ignored":
+    check commandKeyComboForDispatch(0x01000021, ctrlMod).isNone()
+    check commandKeyComboForDispatch(0x01000020, shiftMod).isNone()
+
+  test "dispatcher keeps only command-relevant modifiers":
+    let kc = commandKeyComboForDispatch(0x46, ctrlMod or altMod).get()
+    check kc == combo(0x46, ctrlMod or altMod)
+
+  test "find-file chord tail stays dispatchable":
+    let kc = commandKeyComboForDispatch(0x46, ctrlMod).get()
+    check kc == combo(0x46, ctrlMod)
+
+suite "pane index helpers":
+  test "next wrapped index cycles and wraps":
+    check nextWrappedIndex(0, 3) == 1
+    check nextWrappedIndex(1, 3) == 2
+    check nextWrappedIndex(2, 3) == 0
+
+  test "next wrapped index handles missing current":
+    check nextWrappedIndex(-1, 3) == 0
+    check nextWrappedIndex(0, 0) == -1
+
+  test "focus index after removal picks next surviving pane":
+    check focusIndexAfterRemoval(0, 3) == 0
+    check focusIndexAfterRemoval(1, 3) == 1
+
+  test "focus index after removal falls back to previous at end":
+    check focusIndexAfterRemoval(2, 3) == 1
+    check focusIndexAfterRemoval(0, 1) == -1
 
 # ── autocomplete ranking ──────────────────────────────────────────────────────
 

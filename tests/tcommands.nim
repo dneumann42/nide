@@ -41,6 +41,24 @@ suite "default keybindings":
     check d.dispatch(combo(0x20, noMod))
     check fired
 
+  test "ctrl x zero triggers delete window":
+    let d = CommandDispatcher()
+    var fired = false
+    registerDefaultBindings(d)
+    d.register("editor.deleteWindow", proc() {.raises: [].} = fired = true)
+    d.inChord = true
+    check d.dispatch(combo(0x30, noMod))
+    check fired
+
+  test "ctrl x o triggers other window":
+    let d = CommandDispatcher()
+    var fired = false
+    registerDefaultBindings(d)
+    d.register("editor.otherWindow", proc() {.raises: [].} = fired = true)
+    d.inChord = true
+    check d.dispatch(combo(0x4F, noMod))
+    check fired
+
   test "ctrl comma dispatches jump back command":
     let d = CommandDispatcher()
     var fired = false
@@ -66,3 +84,5 @@ suite "command metadata":
     registerDefaultBindings(d)
     check "Ctrl+Shift+P" in d.bindingStrings("editor.commandPalette")
     check "Ctrl+X Ctrl+F" in d.bindingStrings("editor.findFile")
+    check "Ctrl+X 0" in d.bindingStrings("editor.deleteWindow")
+    check "Ctrl+X O" in d.bindingStrings("editor.otherWindow")

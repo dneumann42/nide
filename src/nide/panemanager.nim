@@ -1,4 +1,4 @@
-import seaqt/[qwidget, qsplitter]
+import seaqt/[qwidget, qsplitter, qobject]
 import nide/pane/pane, nide/helpers/widgetref, nide/nim/nimsuggest
 import commands
 import std/algorithm
@@ -39,6 +39,8 @@ proc closePane*(self: PaneManager, pane: Pane, notify = true) {.raises: [].}
 proc closeOtherPanes*(self: PaneManager, keepPane: Pane) {.raises: [].}
 proc insertCol*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter]): Pane
 proc insertRow*(self: PaneManager, afterPane: Pane, col: WidgetRef[QSplitter]): Pane
+proc deleteWindow*(self: PaneManager, pane: Pane): bool {.raises: [].}
+proc focusNextPane*(self: PaneManager, pane: Pane): bool {.raises: [].}
 
 proc notifyLayoutChanged(self: PaneManager) =
   if self.callbacks.onLayoutChanged != nil:
@@ -209,6 +211,99 @@ proc visibleColumns*(self: PaneManager): seq[seq[Pane]] =
     while result.len <= pos.colIdx:
       result.add(@[])
     result[pos.colIdx].add(pos.pane)
+
+proc visiblePanes(self: PaneManager): seq[Pane] =
+  for col in self.visibleColumns():
+    for pane in col:
+      result.add(pane)
+
+proc detachWidget(w: QWidget) =
+  try:
+    w.hide()
+    w.setParent(QWidget())
+    QObject(h: w.h, owned: false).deleteLater()
+  except:
+    discard
+
+proc deleteWindow*(self: PaneManager, pane: Pane): bool {.raises: [].} =
+  let ordered = self.visiblePanes()
+  if ordered.len <= 1:
+    return false
+
+  var paneIndex = -1
+  for i, candidate in ordered:
+    if candidate == pane:
+      paneIndex = i
+      break
+  if paneIndex < 0:
+    return false
+
+  let focusIndex = focusIndexAfterRemoval(paneIndex, ordered.len)
+  let focusTarget =
+    if focusIndex >= 0 and focusIndex < ordered.len:
+      if ordered[focusIndex] == pane:
+        if focusIndex + 1 < ordered.len: ordered[focusIndex + 1] else: nil
+      else:
+        ordered[focusIndex]
+    else:
+      nil
+
+  let paneWidget = pane.widget()
+  let parent = paneWidget.parentWidget()
+  if parent.h == nil:
+    return false
+  let col = QSplitter(h: parent.h, owned: false)
+  let colWidget = col.asWidget
+  let root = self.splitter.get()
+  let columnWasSinglePane = col.count().int <= 1
+
+  for i in countdown(self.panels.high, 0):
+    if self.panels[i] == pane:
+      self.panels.delete(i)
+      break
+
+  if self.lastFocusedPane == pane:
+    self.lastFocusedPane = nil
+
+  detachWidget(paneWidget)
+  if columnWasSinglePane:
+    detachWidget(colWidget)
+
+  if focusTarget != nil:
+    self.lastFocusedPane = focusTarget
+    focusTarget.focus()
+  elif self.panels.len > 0:
+    self.lastFocusedPane = self.panels[0]
+    self.panels[0].focus()
+
+  let rootCount = root.count().int
+  if rootCount > 0:
+    var sizes = newSeq[cint](rootCount)
+    for i in 0..<rootCount:
+      sizes[i] = cint 1
+    root.setSizes(sizes)
+
+  self.notifyLayoutChanged()
+  true
+
+proc focusNextPane*(self: PaneManager, pane: Pane): bool {.raises: [].} =
+  let ordered = self.visiblePanes()
+  if ordered.len <= 1:
+    return false
+
+  var paneIndex = -1
+  for i, candidate in ordered:
+    if candidate == pane:
+      paneIndex = i
+      break
+  let nextIndex = nextWrappedIndex(paneIndex, ordered.len)
+  if nextIndex < 0:
+    return false
+
+  let target = ordered[nextIndex]
+  self.lastFocusedPane = target
+  target.focus()
+  true
 
 proc setProjectOpen*(self: PaneManager, open: bool) =
   self.hasProject = open

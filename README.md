@@ -15,7 +15,7 @@ A keyboard-driven IDE for Nim, built with Qt.
 - **Dependency viewer** — Graphviz-based module dependency graph
 - **Build & run** — Build and run projects via nimble, with error navigation from output
 - **Syntax highlighting** — Multiple themes: Nord, Solarized Dark/Light, GitHub Light, Monokai
-- **Multi-pane editing** — Split horizontally or vertically, switch panes with `Ctrl+1-9`
+- **Multi-pane editing** — Split horizontally or vertically, cycle panes with `Ctrl+X O`
 - **Emacs-style editing** — Kill/yank, chord keys, and the rest of the usual suspects
 - **Keybindings** — Fully configurable via settings UI
 - **Diagnostics** — Inline error popover with nimsuggest diagnostics
@@ -97,7 +97,9 @@ Run with:
 | `Ctrl+Shift+\` | Split row |
 | `Ctrl+X 2` | Split horizontal |
 | `Ctrl+X 3` | Split vertical |
+| `Ctrl+X 0` | Delete current pane |
 | `Ctrl+X 1` | Close other panes |
+| `Ctrl+X O` | Other window |
 
 ### Misc
 

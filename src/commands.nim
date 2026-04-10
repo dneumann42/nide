@@ -112,10 +112,12 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x01000000, noMod),         "editor.closeSearch")    ## Escape
   ## C-x chord bindings
   d.bindChordKey(combo(0x31, noMod),   "editor.deleteOtherWindows")
+  d.bindChordKey(combo(0x30, noMod),   "editor.deleteWindow")
   d.bindChordKey(combo(0x32, noMod),   "editor.splitHorizontal")
   d.bindChordKey(combo(0x33, noMod),   "editor.splitVertical")
   d.bindChordKey(combo(0x4B, noMod),   "editor.killBuffer")
   d.bindChordKey(combo(0x42, noMod),   "editor.switchBuffer")
+  d.bindChordKey(combo(0x4F, noMod),   "editor.otherWindow")
   d.bindChordKey(combo(0x20, noMod),   "editor.rectangleMark")
   d.bindChordKey(combo(0x53, ctrlMod), "editor.saveBuffer")
   d.bindChordKey(combo(0x43, ctrlMod), "editor.quitApplication")

@@ -797,6 +797,14 @@ proc doSearchImpl(pane: Pane) {.raises: [].} =
   applySelections(pane)
   moveToCurrent(pane)
 
+proc dispatchPaneCommandKey(pane: Pane, key, mods: cint): bool {.raises: [].} =
+  if pane.dispatcher == nil:
+    return false
+  let maybeCombo = commandKeyComboForDispatch(key, mods)
+  if maybeCombo.isNone():
+    return false
+  pane.dispatcher.dispatch(maybeCombo.get())
+
 proc newPane*(
   onEvent: proc(ev: PaneEvent) {.raises: [].}
 ): Pane =
@@ -1054,14 +1062,9 @@ proc newPane*(
          shouldClearMarkOnKeyPress(key.int, mods.int, typedText):
         pane.clearMarkState(clearNativeSelection = pane.rectangleMarkActive)
 
-    # Command dispatcher — ignore modifier-only keypresses
-    let isModifierOnly = key >= Key_Shift and key <= Key_Meta
-    if not isModifierOnly:
-      let relevantMods = mods and (ctrlMod or altMod or shiftMod)
-      let c: KeyCombo = (key, relevantMods)
-      {.cast(gcsafe).}:
-        if pane.dispatcher != nil and pane.dispatcher.dispatch(c):
-          return
+    {.cast(gcsafe).}:
+      if dispatchPaneCommandKey(pane, key, mods):
+        return
 
     QPlainTextEditkeyPressEvent(self, e)
   editorVtbl.mousePressEvent = proc(self: QPlainTextEdit, e: QMouseEvent) {.raises: [], gcsafe.} =
@@ -1284,8 +1287,15 @@ proc newPane*(
   outerLayout.addWidget(headerBar, cint(0), cint(0))
   outerLayout.addWidget(searchBar, cint(0), cint(0))
   outerLayout.addWidget(stack.asWidget, cint(0), cint(0))
-  var container = newWidget(QWidget.create())
+  var containerVtbl = new QWidgetVTable
+  containerVtbl.keyPressEvent = proc(self: QWidget, e: QKeyEvent) {.raises: [], gcsafe.} =
+    {.cast(gcsafe).}:
+      if dispatchPaneCommandKey(pane, e.key(), e.modifiers()):
+        return
+    QWidgetkeyPressEvent(self, e)
+  var container = newWidget(QWidget.create(vtbl = containerVtbl))
   container.setAutoFillBackground(true)
+  container.setFocusPolicy(FP_ClickFocus)
   outerLayout.applyTo(container)
 
   result.container = container
