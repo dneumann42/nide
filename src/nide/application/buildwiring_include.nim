@@ -396,6 +396,7 @@ proc setupCommandDispatcher(self: Application) =
       let target = self.getTargetPane()
       if target != nil:
         target.editor.asWidget.setFocus())
+  self.commandPalette.applyTheme(self.theme)
 
 proc wireFileTree(self: Application) =
   self.fileTree.onFileSelected = proc(path: string) {.raises: [].} =
@@ -580,11 +581,16 @@ proc wireToolbar(self: Application) =
       self.projectConfig,
       proc(updated: Settings, projectConfig: ProjectConfig) {.raises: [].} =
         self.settings = updated
+        self.theme = updated.appearance.themeMode
         self.settings.write()
         if self.currentProject.len > 0:
           self.projectConfig = projectConfig
           saveProjectConfig(self.currentProject, self.projectConfig)
-        applyTheme(updated.appearance.themeMode)
+        applyTheme(self.theme)
+        if self.fileTree != nil:
+          self.fileTree.applyTheme(self.theme)
+        if self.commandPalette != nil:
+          self.commandPalette.applyTheme(self.theme)
         setCurrentTheme(updated.appearance.syntaxTheme)
         self.bufferManager.rehighlightAll()
         for pane in self.paneManager.panels:
@@ -746,10 +752,13 @@ proc build*(self: Application) =
   fileTreeCell[] = self.fileTree
 
   self.theme = Dark
-  applyTheme(Dark)
+  applyTheme(self.theme)
 
   echo "Loading settings..."
   self.settings = Settings.load()
+  self.theme = self.settings.appearance.themeMode
+  applyTheme(self.theme)
+  self.fileTree.applyTheme(self.theme)
 
   self.opacityEffect = setupWindowOpacity(
     self.appWidget(),

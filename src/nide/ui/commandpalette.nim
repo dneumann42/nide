@@ -3,6 +3,7 @@ import seaqt/[qwidget, qlineedit, qlistwidget, qlistwidgetitem, qshortcut,
               qkeysequence, qobject]
 import commands
 import nide/helpers/qtconst
+import nide/settings/theme
 import nide/ui/widgets
 
 type
@@ -31,6 +32,52 @@ const
 
 proc reposition*(palette: CommandPalette) {.raises: [].}
 proc populate(palette: CommandPalette, query: string) {.raises: [].}
+
+proc applyTheme*(palette: CommandPalette, theme: Theme) {.raises: [].} =
+  if palette == nil or palette.container.h == nil:
+    return
+
+  let panelBg = windowColor(theme)
+  let controlBg = surfaceColor(theme)
+  let headerBg = headerColor(theme)
+  let border = borderColor(theme)
+  let text = textColor(theme)
+  let muted = mutedTextColor(theme)
+  let selected = highlightColor(theme)
+  let selectedText = highlightedTextColor(theme)
+
+  palette.container.setStyleSheet(
+    "QWidget#commandPalette {" &
+    "  background: " & panelBg & ";" &
+    "  border: 1px solid " & border & ";" &
+    "  border-radius: 6px;" &
+    "}" &
+    "QLineEdit {" &
+    "  background: " & headerBg & ";" &
+    "  color: " & text & ";" &
+    "  border: none;" &
+    "  border-bottom: 1px solid " & border & ";" &
+    "  padding: 10px 12px;" &
+    "  font-family: '" & clMonoFont & "', monospace;" &
+    "  font-size: " & clMonoSize & ";" &
+    "  selection-background-color: " & selected & ";" &
+    "  selection-color: " & selectedText & ";" &
+    "}" &
+    "QLineEdit[placeholderText]:empty { color: " & muted & "; }" &
+    "QListWidget {" &
+    "  background: " & controlBg & ";" &
+    "  color: " & text & ";" &
+    "  border: none;" &
+    "  outline: 0;" &
+    "  font-family: '" & clMonoFont & "', monospace;" &
+    "  font-size: " & clMonoSize & ";" &
+    "}" &
+    "QListWidget::item { padding: 4px 10px; }" &
+    "QListWidget::item:selected {" &
+    "  background: " & selected & ";" &
+    "  color: " & selectedText & ";" &
+    "}"
+  )
 
 proc rebuildItems(palette: CommandPalette) {.raises: [].} =
   if palette == nil or palette.dispatcher == nil:
@@ -199,35 +246,7 @@ proc newCommandPalette*(parent: QWidget,
 
   palette.container = newWidget(QWidget.create(parent))
   palette.container.setObjectName("commandPalette")
-  palette.container.setStyleSheet(
-    "QWidget#commandPalette {" &
-    "  background: " & clBase & ";" &
-    "  border: 1px solid " & clSurface2 & ";" &
-    "  border-radius: 6px;" &
-    "}" &
-    "QLineEdit {" &
-    "  background: " & clBase & ";" &
-    "  color: " & clText & ";" &
-    "  border: none;" &
-    "  border-bottom: 1px solid " & clSurface2 & ";" &
-    "  padding: 10px 12px;" &
-    "  font-family: '" & clMonoFont & "', monospace;" &
-    "  font-size: " & clMonoSize & ";" &
-    "}" &
-    "QListWidget {" &
-    "  background: " & clBase & ";" &
-    "  color: " & clText & ";" &
-    "  border: none;" &
-    "  outline: 0;" &
-    "  font-family: '" & clMonoFont & "', monospace;" &
-    "  font-size: " & clMonoSize & ";" &
-    "}" &
-    "QListWidget::item { padding: 4px 10px; }" &
-    "QListWidget::item:selected {" &
-    "  background: " & clSurface0 & ";" &
-    "  color: " & clText & ";" &
-    "}"
-  )
+  palette.applyTheme(Dark)
 
   var input = lineEdit("Execute command")
   palette.inputH = input.h

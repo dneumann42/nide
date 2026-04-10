@@ -6,6 +6,7 @@ import std/[os, strutils]
 import nide/helpers/devicons
 import nide/helpers/fspaths
 import nide/helpers/qtconst
+import nide/settings/theme
 import nide/ui/widgets
 
 const TreeWidth = 320
@@ -79,6 +80,48 @@ proc reposition*(self: FileTree) {.raises: [].} =
   except:
     discard
 
+proc applyTheme*(self: FileTree, theme: Theme) {.raises: [].} =
+  if self == nil or self.container.h == nil:
+    return
+
+  let panelBg = windowColor(theme)
+  let controlBg = surfaceColor(theme)
+  let headerBg = headerColor(theme)
+  let border = borderColor(theme)
+  let text = textColor(theme)
+  let selected = highlightColor(theme)
+  let selectedText = highlightedTextColor(theme)
+
+  self.container.setStyleSheet(
+    "QWidget#fileTreePanel {" &
+    "  background: " & panelBg & ";" &
+    "  border: 1px solid " & border & ";" &
+    "  border-radius: 6px;" &
+    "}" &
+    "QLabel#fileTreeHeader {" &
+    "  background: " & headerBg & ";" &
+    "  color: " & text & ";" &
+    "  padding: 4px 8px;" &
+    "  font-weight: bold;" &
+    "  border: none;" &
+    "  border-bottom: 1px solid " & border & ";" &
+    "}" &
+    "QTreeView#fileTreeView {" &
+    "  background: " & controlBg & ";" &
+    "  color: " & text & ";" &
+    "  border: none;" &
+    "  outline: 0;" &
+    "  show-decoration-selected: 1;" &
+    "}" &
+    "QTreeView#fileTreeView::item:selected {" &
+    "  background: " & selected & ";" &
+    "  color: " & selectedText & ";" &
+    "}" &
+    "QTreeView#fileTreeView::branch:selected {" &
+    "  background: " & selected & ";" &
+    "}"
+  )
+
 proc newFileTree*(mainWindow: QWidget): FileTree =
   result = FileTree()
   let self = result
@@ -86,12 +129,14 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   # Create as a top-level widget positioned manually over the content area.
   # Parent is mainWindow so it stays on top, but with Tool flag for floating behavior.
   self.container = newWidget(QWidget.create(mainWindow, WF_Tool))
+  self.container.setObjectName("fileTreePanel")
 
   let layout = vbox()
   layout.applyTo(self.container)
 
   # Header label
   var header = label("Files", "QLabel { padding: 4px 8px; font-weight: bold; }")
+  QWidget(h: header.h, owned: false).setObjectName("fileTreeHeader")
   QWidget(h: header.h, owned: false).setFixedHeight(HeaderHeight)
   layout.add(header)
 
@@ -214,6 +259,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
       discard
 
   self.treeView = newWidget(QTreeView.create(vtbl = treeVtbl))
+  QWidget(h: self.treeView.h, owned: false).setObjectName("fileTreeView")
   QWidget(h: self.treeView.h, owned: false).setSizePolicy(SP_Expanding, SP_Expanding)
   QWidget(h: self.treeView.h, owned: false).setMinimumSize(cint TreeWidth, cint TreeHeight)
   self.treeView.setModel(QAbstractItemModel(h: self.model.h, owned: false))
@@ -254,6 +300,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
       discard
 
   self.container.resize(cint TreeWidth, cint TreeHeight)
+  self.applyTheme(Dark)
 
   # Start hidden
   self.container.hide()
