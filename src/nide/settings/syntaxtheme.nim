@@ -55,10 +55,13 @@ const ThemeSources* = [
   staticRead("themes/vscode_dark.toml"),
   staticRead("themes/monokai.toml"),
   staticRead("themes/dracula.toml"),
+  staticRead("themes/gruvbox_dark.toml"),
+  staticRead("themes/tokyo_night.toml"),
   staticRead("themes/solarized_dark.toml"),
   staticRead("themes/solarized_light.toml"),
   staticRead("themes/github_light.toml"),
   staticRead("themes/nord.toml"),
+  staticRead("themes/rose_pine_dawn.toml"),
 ]
 
 proc makeFormat(color: string, bold = false, italic = false): QTextCharFormat =

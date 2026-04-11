@@ -1,8 +1,9 @@
 import std/[os, algorithm, strutils]
 import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject,
-              qsplitter, qplaintextedit, qlabel]
-import nide/editor/highlight, nide/ui/codepreview, nide/ui/widgets
+              qabstractbutton,
+              qsplitter, qlabel]
+import nide/ui/[filepreview, widgets]
 import nide/helpers/qtconst
 
 var gitignorePatterns*: seq[string] = @[]
@@ -95,13 +96,11 @@ proc fuzzyScore(query, target: string): int {.raises: [].} =
       inc qi
   if qi == query.len: qi else: -1
 
-proc findNimFiles(root: string): seq[string] {.raises: [].} =
+proc findProjectFiles(root: string): seq[(string, bool)] {.raises: [].} =
   loadGitignore(root)
   try:
     for path in walkDirRec(root):
-      if matchesGitignore(path): continue
-      if path.endsWith(".nim") or path.endsWith(".nimble"):
-        result.add(path.relativePath(root))
+      result.add((path.relativePath(root), matchesGitignore(path)))
   except CatchableError:
     discard
 
@@ -115,13 +114,15 @@ proc showFileFinder*(parent: QWidget,
     QWidget(h: dialogH, owned: false).resize(FinderWidth, FinderHeight)
 
     var searchBox = newWidget(QLineEdit.create())
-    searchBox.setPlaceholderText("Search .nim files...")
+    searchBox.setPlaceholderText("Search project files...")
+    var showIgnoredCheck = checkbox("Show ignored files")
 
     var listWidget = newWidget(QListWidget.create())
     let listH = listWidget.h
 
     let leftLayout = vbox()
     leftLayout.add(searchBox)
+    leftLayout.add(showIgnoredCheck)
     leftLayout.add(listWidget)
 
     # Recent files section below the file list
@@ -149,14 +150,11 @@ proc showFileFinder*(parent: QWidget,
     var leftPanel = newWidget(QWidget.create())
     leftLayout.applyTo(leftPanel)
 
-    let (preview, previewGutterH) = setupCodePreview(leftPanel)
-    let previewHl = NimHighlighter()
-    previewHl.attach(preview.document())
-    let previewH = preview.h
+    let preview = newFilePreviewWidget(leftPanel, showFilter = true)
 
     var splitter = newWidget(QSplitter.create(Horizontal))
     splitter.addWidget(leftPanel)
-    splitter.addWidget(preview.asWidget)
+    splitter.addWidget(preview.container)
     splitter.setStretchFactor(cint 0, cint 1)
     splitter.setStretchFactor(cint 1, cint 2)
 
@@ -165,14 +163,16 @@ proc showFileFinder*(parent: QWidget,
     outerLayout.applyTo(QWidget(h: dialogH, owned: false))
 
     let root = try: getCurrentDir() except OSError: "."
-    let allFiles = findNimFiles(root)
+    let allFiles = findProjectFiles(root)
 
     proc populate(query: string) {.raises: [].} =
       try:
         let lw = QListWidget(h: listH, owned: false)
         lw.clear()
+        let showIgnored = showIgnoredCheck.asButton.isChecked()
         var matches: seq[(int, string)]
-        for f in allFiles:
+        for (f, ignored) in allFiles:
+          if ignored and not showIgnored: continue
           let score = fuzzyScore(query, f)
           if score >= 0:
             matches.add((score, f))
@@ -189,13 +189,16 @@ proc showFileFinder*(parent: QWidget,
       if row >= 0:
         try:
           let path = root / QListWidget(h: listH, owned: false).item(row).text()
-          let content = readFile(path)
-          QPlainTextEdit(h: previewH, owned: false).setPlainText(content)
+          discard setPreviewForFile(preview, path)
         except CatchableError:
-          QPlainTextEdit(h: previewH, owned: false).setPlainText("(could not read file)")
+          showPreviewPlaceholder(preview, PreviewReadErrorPlaceholder)
 
     searchBox.onTextChanged do(text: openArray[char]) {.raises: [].}:
       populate(toStr(text))
+
+    showIgnoredCheck.clickable do(checked: bool):
+      discard checked
+      populate(searchBox.text())
 
     # Ctrl+N = next item
     var nextSc = newWidget(QShortcut.create(QKeySequence.create("Ctrl+N"),

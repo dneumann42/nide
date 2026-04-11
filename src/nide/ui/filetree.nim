@@ -1,7 +1,8 @@
 import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemview,
                qabstractitemmodel, qabstractscrollarea, qheaderview, qlabel,
                qabstractfileiconprovider, qmenu, qaction, qcontextmenuevent,
-               qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl]
+               qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl,
+               qshortcut, qkeysequence, qobject]
 import std/[os, strutils]
 import nide/helpers/devicons
 import nide/helpers/fspaths
@@ -73,10 +74,55 @@ proc reposition*(self: FileTree) {.raises: [].} =
   ## Repositions the floating panel to the top-left of the main window content area.
   if self.splitterH == nil: return
   try:
-    let mainWin = QWidget(h: self.splitterH, owned: false)
     let toolbarHeight = ToolbarHeight
     self.container.setGeometry(cint 0, toolbarHeight, cint TreeWidth, cint TreeHeight)
     self.container.raiseX()
+  except CatchableError:
+    discard
+
+proc ensureCurrentIndex(self: FileTree): QModelIndex {.raises: [].} =
+  let view = QAbstractItemView(h: self.treeView.h, owned: false)
+  result = view.currentIndex()
+  if result.isValid():
+    return
+  let rootIndex = view.rootIndex()
+  if rootIndex.isValid():
+    view.setCurrentIndex(rootIndex)
+    result = rootIndex
+
+proc focusCurrentIndex(self: FileTree, index: QModelIndex) {.raises: [].} =
+  if not index.isValid():
+    return
+  let view = QAbstractItemView(h: self.treeView.h, owned: false)
+  view.setCurrentIndex(index)
+  self.treeView.scrollTo(index, cint(QAbstractItemViewScrollHintEnum.EnsureVisible))
+
+proc moveSelection(self: FileTree, delta: int) {.raises: [].} =
+  try:
+    let current = self.ensureCurrentIndex()
+    if not current.isValid():
+      return
+    let nextIndex =
+      if delta > 0: self.treeView.indexBelow(current)
+      else: self.treeView.indexAbove(current)
+    if nextIndex.isValid():
+      self.focusCurrentIndex(nextIndex)
+  except CatchableError:
+    discard
+
+proc activateSelection(self: FileTree) {.raises: [].} =
+  try:
+    let index = self.ensureCurrentIndex()
+    if not index.isValid():
+      return
+    let model = QFileSystemModel(h: self.model.h, owned: false)
+    if model.isDir(index):
+      self.treeView.setExpanded(index, not self.treeView.isExpanded(index))
+      self.focusCurrentIndex(index)
+      return
+    let path = model.filePath(index)
+    if self.onFileSelected != nil:
+      self.onFileSelected(path)
   except CatchableError:
     discard
 
@@ -262,6 +308,7 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
   QWidget(h: self.treeView.h, owned: false).setObjectName("fileTreeView")
   QWidget(h: self.treeView.h, owned: false).setSizePolicy(SP_Expanding, SP_Expanding)
   QWidget(h: self.treeView.h, owned: false).setMinimumSize(cint TreeWidth, cint TreeHeight)
+  QWidget(h: self.treeView.h, owned: false).setFocusPolicy(FP_StrongFocus)
   self.treeView.setModel(QAbstractItemModel(h: self.model.h, owned: false))
   self.treeView.setHeaderHidden(true)
   self.treeView.setAnimated(true)
@@ -299,6 +346,48 @@ proc newFileTree*(mainWindow: QWidget): FileTree =
     except CatchableError:
       discard
 
+  var nextSc = newWidget(QShortcut.create(QKeySequence.create("Ctrl+N"),
+                                          QObject(h: self.treeView.h, owned: false)))
+  nextSc.setContext(SC_WidgetShortcut)
+  nextSc.onActivated do() {.raises: [].}:
+    self.moveSelection(1)
+
+  var prevSc = newWidget(QShortcut.create(QKeySequence.create("Ctrl+P"),
+                                          QObject(h: self.treeView.h, owned: false)))
+  prevSc.setContext(SC_WidgetShortcut)
+  prevSc.onActivated do() {.raises: [].}:
+    self.moveSelection(-1)
+
+  var downSc = newWidget(QShortcut.create(QKeySequence.create("Down"),
+                                          QObject(h: self.treeView.h, owned: false)))
+  downSc.setContext(SC_WidgetShortcut)
+  downSc.onActivated do() {.raises: [].}:
+    self.moveSelection(1)
+
+  var upSc = newWidget(QShortcut.create(QKeySequence.create("Up"),
+                                        QObject(h: self.treeView.h, owned: false)))
+  upSc.setContext(SC_WidgetShortcut)
+  upSc.onActivated do() {.raises: [].}:
+    self.moveSelection(-1)
+
+  var enterSc = newWidget(QShortcut.create(QKeySequence.create("Return"),
+                                           QObject(h: self.treeView.h, owned: false)))
+  enterSc.setContext(SC_WidgetShortcut)
+  enterSc.onActivated do() {.raises: [].}:
+    self.activateSelection()
+
+  var keypadEnterSc = newWidget(QShortcut.create(QKeySequence.create("Enter"),
+                                                 QObject(h: self.treeView.h, owned: false)))
+  keypadEnterSc.setContext(SC_WidgetShortcut)
+  keypadEnterSc.onActivated do() {.raises: [].}:
+    self.activateSelection()
+
+  var escSc = newWidget(QShortcut.create(QKeySequence.create("Escape"),
+                                         QObject(h: self.treeView.h, owned: false)))
+  escSc.setContext(SC_WidgetShortcut)
+  escSc.onActivated do() {.raises: [].}:
+    self.container.hide()
+
   self.container.resize(cint TreeWidth, cint TreeHeight)
   self.applyTheme(Dark)
 
@@ -312,18 +401,48 @@ proc setRoot*(self: FileTree, dir: string) {.raises: [].} =
   except CatchableError:
     discard
 
+proc showPanel*(self: FileTree) {.raises: [].}
+proc showAndFocusPanel*(self: FileTree) {.raises: [].}
+proc hidePanel*(self: FileTree) {.raises: [].}
+
 proc toggle*(self: FileTree) {.raises: [].} =
   try:
     if self.container.isVisible():
-      self.container.hide()
+      self.hidePanel()
     else:
-      self.reposition()
-      self.container.setFixedSize(cint TreeWidth, cint TreeHeight)
-      self.container.show()
-      self.reposition()
+      self.showAndFocusPanel()
   except CatchableError:
     discard
 
 proc isVisible*(self: FileTree): bool {.raises: [].} =
   try: self.container.isVisible()
   except CatchableError: false
+
+proc showPanel*(self: FileTree) {.raises: [].} =
+  try:
+    self.reposition()
+    self.container.setFixedSize(cint TreeWidth, cint TreeHeight)
+    self.container.show()
+    self.reposition()
+  except CatchableError:
+    discard
+
+proc showAndFocusPanel*(self: FileTree) {.raises: [].} =
+  try:
+    self.showPanel()
+    discard self.ensureCurrentIndex()
+    QWidget(h: self.treeView.h, owned: false).setFocus()
+  except CatchableError:
+    discard
+
+proc hidePanel*(self: FileTree) {.raises: [].} =
+  try:
+    self.container.hide()
+  except CatchableError:
+    discard
+
+proc hasFocus*(self: FileTree): bool {.raises: [].} =
+  try:
+    QWidget(h: self.treeView.h, owned: false).hasFocus()
+  except CatchableError:
+    false

@@ -2,8 +2,8 @@ import nide/pane/logic
 export logic
 import nide/editor/autocomplete, nide/editor/buffers, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/syntaxtheme, nide/helpers/widgetref, nide/ui/widgets
 import nide/helpers/[debuglog, qtconst]
-import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
-import std/[options, os, strutils]
+import seaqt/[qabstractbutton, qabstractitemview, qabstractscrollarea, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qresizeevent, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
+import std/[math, options, os, strutils]
 
 {.compile("../search_extra.cpp", gorge("pkg-config --cflags Qt6Widgets")).}
 proc createDefaultExtraSelection(): pointer {.importc: "QTextEditExtraSelection_createDefault".}
@@ -52,6 +52,13 @@ type
     stack: QStackedWidget
     openModuleWidget: QWidget
     editor*: QPlainTextEdit
+    imagePage: QWidget
+    imageScroll: QScrollArea
+    imageLabel: QLabel
+    imageFilterCheck: WidgetRef[QCheckBox]
+    imageZoomLabel: QLabel
+    imageScale: float64
+    imageUserZoomed: bool
     emptyDoc: WidgetRef[QTextDocument]
     changed*: bool
     buffer*: Buffer
@@ -129,6 +136,8 @@ proc activateRectangleMark*(pane: Pane) {.raises: [].}
 proc moveCursor*(pane: Pane, op: cint, count: cint = 1): bool {.raises: [].}
 proc copyRegion*(pane: Pane) {.raises: [].}
 proc killRegion*(pane: Pane) {.raises: [].}
+proc refreshImageView(pane: Pane) {.raises: [].}
+proc fitImageToPane(pane: Pane) {.raises: [].}
 
 const StatusDark = ""
 const StatusLight = "★"
@@ -158,10 +167,66 @@ const
   DefaultWheelPixelStep = 10.0
   PopoverYOffset = cint 24
   MaxPopoverHeight = cint 400
+  ImageZoomStep = 1.25
+  MinImageZoom = 0.1
+  MaxImageZoom = 16.0
 
 
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)
+
+proc isImageBuffer(pane: Pane): bool =
+  pane.buffer != nil and pane.buffer.kind == bkImage
+
+proc updateImageZoomLabel(pane: Pane) {.raises: [].} =
+  if pane.imageZoomLabel.h == nil:
+    return
+  let pct = max(int(round(pane.imageScale * 100.0)), 1)
+  pane.imageZoomLabel.setText($pct & "%")
+
+proc refreshImageView(pane: Pane) {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.kind != bkImage or pane.imageScroll.h == nil:
+    return
+  let pixmap = pane.buffer.pixmap()
+  if pixmap.h == nil or pixmap.isNull():
+    pane.imageLabel.setText("Could not render image")
+    pane.imageZoomLabel.setText("0%")
+    return
+
+  let viewport = QAbstractScrollArea(h: pane.imageScroll.h, owned: false).viewport()
+  let targetW = max(cint(round(float64(pixmap.width()) * pane.imageScale)), cint 1)
+  let targetH = max(cint(round(float64(pixmap.height()) * pane.imageScale)), cint 1)
+  let mode =
+    if pane.imageFilterCheck.get().isChecked():
+      SmoothTransformation
+    else:
+      FastTransformation
+  let scaled = pixmap.scaled(targetW, targetH, KeepAspectRatio, mode)
+  pane.imageLabel.setPixmap(scaled)
+  pane.imageLabel.asWidget.resize(scaled.size())
+  if scaled.width() < viewport.width() or scaled.height() < viewport.height():
+    QScrollArea(h: pane.imageScroll.h, owned: false).ensureVisible(
+      max(scaled.width() div 2, cint 0),
+      max(scaled.height() div 2, cint 0))
+  pane.updateImageZoomLabel()
+
+proc fitImageToPane(pane: Pane) {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.kind != bkImage or pane.imageScroll.h == nil:
+    return
+  let pixmap = pane.buffer.pixmap()
+  if pixmap.h == nil or pixmap.isNull():
+    pane.imageScale = 1.0
+    pane.updateImageZoomLabel()
+    return
+  let viewport = QAbstractScrollArea(h: pane.imageScroll.h, owned: false).viewport()
+  if viewport.width() <= 0 or viewport.height() <= 0:
+    pane.imageScale = 1.0
+  else:
+    let scaleX = float64(viewport.width()) / float64(max(pixmap.width(), cint 1))
+    let scaleY = float64(viewport.height()) / float64(max(pixmap.height(), cint 1))
+    pane.imageScale = max(min(scaleX, scaleY), MinImageZoom)
+  pane.imageUserZoomed = false
+  pane.refreshImageView()
 
 proc currentPointPos(pane: Pane): cint =
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -231,18 +296,24 @@ proc clearMarkState*(pane: Pane, clearNativeSelection = true) {.raises: [].} =
     applySelections(pane)
 
 proc activateMark*(pane: Pane) {.raises: [].} =
+  if pane.isImageBuffer():
+    return
   pane.markPos = currentPointPos(pane)
   pane.markActive = true
   pane.rectangleMarkActive = false
   syncTransientSelection(pane)
 
 proc activateRectangleMark*(pane: Pane) {.raises: [].} =
+  if pane.isImageBuffer():
+    return
   pane.markPos = currentPointPos(pane)
   pane.markActive = false
   pane.rectangleMarkActive = true
   syncTransientSelection(pane)
 
 proc moveCursor*(pane: Pane, op: cint, count: cint = 1): bool {.raises: [].} =
+  if pane.isImageBuffer():
+    return false
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   let cur = ed.textCursor()
   let mode =
@@ -255,6 +326,8 @@ proc moveCursor*(pane: Pane, op: cint, count: cint = 1): bool {.raises: [].} =
     applySelections(pane)
 
 proc copyRegion*(pane: Pane) {.raises: [].} =
+  if pane.isImageBuffer():
+    return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   if pane.rectangleMarkActive:
     let text = ed.document().toPlainText()
@@ -266,6 +339,8 @@ proc copyRegion*(pane: Pane) {.raises: [].} =
     QGuiApplication.clipboard().setText($cur.selectedText())
 
 proc killRegion*(pane: Pane) {.raises: [].} =
+  if pane.isImageBuffer():
+    return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   if pane.rectangleMarkActive:
     let oldText = ed.document().toPlainText()
@@ -545,6 +620,7 @@ proc runCheck*(pane: Pane) {.raises: [].} =
     except CatchableError: discard
     pane.checkProcessH[] = nil
   if pane.buffer == nil or pane.buffer.path.len == 0: return
+  if pane.buffer.kind != bkText: return
   if not pane.buffer.path.endsWith(".nim"): return
   let filePath = pane.buffer.path
   let nimCommand =
@@ -571,6 +647,8 @@ proc prefillDiags*(pane: Pane, lines: seq[LogLine]) {.raises: [].} =
 
 proc save*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
+    if pane.buffer.kind != bkText:
+      return
     if pane.buffer.externallyModified:
       let parent = QWidget(h: pane.container.h, owned: false)
       # StandardButton values: Save=2048, Discard=8388608
@@ -1173,9 +1251,59 @@ proc newPane*(
     if rect.contains(ed.viewport().rect()):
       ed.updateLineNumberAreaWidth()
 
+  var imageLabel = newWidget(QLabel.create(""))
+  imageLabel.setAlignment(AlignHCenterVCenter)
+  imageLabel.asWidget.setMinimumSize(cint 1, cint 1)
+  imageLabel.asWidget.setStyleSheet("QLabel { background: transparent; }")
+
+  let paneRef = pane
+  var imageScrollVtbl = new QScrollAreaVTable
+  imageScrollVtbl.resizeEvent = proc(self: QScrollArea, e: QResizeEvent) {.raises: [], gcsafe.} =
+    QScrollArearesizeEvent(self, e)
+    {.cast(gcsafe).}:
+      if paneRef.imageUserZoomed:
+        paneRef.refreshImageView()
+      else:
+        paneRef.fitImageToPane()
+  var imageScroll = newWidget(QScrollArea.create(vtbl = imageScrollVtbl))
+  imageScroll.setWidget(imageLabel.asWidget)
+  imageScroll.setWidgetResizable(false)
+  imageScroll.setAlignment(AlignHCenterVCenter)
+  imageScroll.asWidget.setStyleSheet("QScrollArea { border: none; background: " & editorBackground() & "; }")
+
+  var imageFilterCheck = checkbox("Filtering", checked = true)
+  imageFilterCheck.clickable do(checked: bool):
+    discard checked
+    pane.refreshImageView()
+
+  var imageZoomOutBtn = button("-")
+  imageZoomOutBtn.asWidget.setFixedHeight(cint 24)
+  var imageZoomLabel = newWidget(QLabel.create("100%"))
+  imageZoomLabel.setAlignment(AlignHCenterVCenter)
+  imageZoomLabel.asWidget.setMinimumWidth(cint 48)
+  var imageZoomResetBtn = button("Fit")
+  imageZoomResetBtn.asWidget.setFixedHeight(cint 24)
+  var imageZoomInBtn = button("+")
+  imageZoomInBtn.asWidget.setFixedHeight(cint 24)
+
+  var imageToolbar = hbox(margins = (cint 8, cint 6, cint 8, cint 6), spacing = cint 8)
+  imageToolbar.addWidget(imageFilterCheck.asWidget, cint 0, cint 0)
+  imageToolbar.addStretch()
+  imageToolbar.addWidget(imageZoomOutBtn.asWidget, cint 0, cint 0)
+  imageToolbar.addWidget(imageZoomLabel.asWidget, cint 0, cint 0)
+  imageToolbar.addWidget(imageZoomResetBtn.asWidget, cint 0, cint 0)
+  imageToolbar.addWidget(imageZoomInBtn.asWidget, cint 0, cint 0)
+
+  var imageLayout = vbox()
+  imageLayout.addLayout(QLayout(h: imageToolbar.h, owned: false))
+  imageLayout.addWidget(imageScroll.asWidget, cint 1, cint 0)
+  var imagePage = newWidget(QWidget.create())
+  imageLayout.applyTo(imagePage)
+
   var stack = newWidget(QStackedWidget.create())
   discard stack.addWidget(openModuleWidget)
   discard stack.addWidget(editor.asWidget)
+  discard stack.addWidget(imagePage)
 
   var label = newWidget(QLabel.create(""))
   var statusLabel = newWidget(QLabel.create(StatusDark))
@@ -1329,6 +1457,13 @@ proc newPane*(
   result.stack = stack
   result.openModuleWidget = openModuleWidget
   result.editor = editor
+  result.imagePage = imagePage
+  result.imageScroll = imageScroll
+  result.imageLabel = imageLabel
+  result.imageFilterCheck = capture(imageFilterCheck)
+  result.imageZoomLabel = imageZoomLabel
+  result.imageScale = 1.0
+  result.imageUserZoomed = false
   var emptyDoc = newWidget(QTextDocument.create())
   var emptyLayout = newWidget(QPlainTextDocumentLayout.create(emptyDoc))
   emptyDoc.setDocumentLayout(QAbstractTextDocumentLayout(h: emptyLayout.h, owned: false))
@@ -1378,6 +1513,19 @@ proc newPane*(
     showDiagPopover(pane, llError)
 
   saveBtn.onClicked do() {.raises: [].}: save(pane)
+
+  imageZoomInBtn.onClicked do() {.raises: [].}:
+    pane.imageUserZoomed = true
+    pane.imageScale = min(pane.imageScale * ImageZoomStep, MaxImageZoom)
+    pane.refreshImageView()
+
+  imageZoomOutBtn.onClicked do() {.raises: [].}:
+    pane.imageUserZoomed = true
+    pane.imageScale = max(pane.imageScale / ImageZoomStep, MinImageZoom)
+    pane.refreshImageView()
+
+  imageZoomResetBtn.onClicked do() {.raises: [].}:
+    pane.fitImageToPane()
 
   # --- Search signal connections ---
   searchInput.onTextChanged do(text: openArray[char]) {.raises: [].}:
@@ -1440,14 +1588,26 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
   try: displayName = relativePath(buf.name, getCurrentDir())
   except CatchableError: discard
   pane.label.setText(displayName)
-  let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-  ed.setDocument(buf.document())
   pane.buffer = buf
-  buf.document().onModificationChanged do(modified: bool) {.raises: [].}:
-    if pane.buffer != buf: return
-    pane.changed = modified
-    pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
-  pane.stack.setCurrentIndex(cint(1))
+  if buf.kind == bkText:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    ed.setDocument(buf.document())
+    buf.document().onModificationChanged do(modified: bool) {.raises: [].}:
+      if pane.buffer != buf: return
+      pane.changed = modified
+      pane.statusLabel.setText(if modified: StatusLight else: StatusDark)
+    pane.stack.setCurrentIndex(cint(1))
+    pane.searchBar.get().hide()
+    pane.saveBtn.get().asWidget.setEnabled(true)
+  else:
+    pane.changed = false
+    pane.statusLabel.setText(StatusDark)
+    pane.stack.setCurrentWidget(pane.imagePage)
+    pane.searchBar.get().hide()
+    pane.saveBtn.get().asWidget.setEnabled(false)
+    pane.imageScale = 1.0
+    pane.imageUserZoomed = false
+    pane.fitImageToPane()
   pane.searchBar.get().hide()
   pane.markActive = false
   pane.rectangleMarkActive = false
@@ -1465,10 +1625,14 @@ proc clearBuffer*(pane: Pane) =
   pane.label.setText("")
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   ed.setDocument(pane.emptyDoc.get())
+  pane.imageLabel.clear()
+  pane.imageScale = 1.0
+  pane.imageUserZoomed = false
   pane.changed = false
   pane.statusLabel.setText(StatusDark)
   pane.stack.setCurrentIndex(cint(0))
   pane.buffer = nil
+  pane.saveBtn.get().asWidget.setEnabled(true)
   pane.markActive = false
   pane.rectangleMarkActive = false
   pane.searchBar.get().hide()
@@ -1492,6 +1656,8 @@ proc triggerOpenProject*(pane: Pane) {.raises: [].} =
   pane.eventCb(PaneEvent(pane: pane, kind: peOpenProject))
 
 proc triggerFind*(pane: Pane) {.raises: [].} =
+  if pane.buffer == nil or pane.buffer.kind != bkText:
+    return
   pane.searchBar.get().show()
   pane.searchInput.get().asWidget.setFocus()
   let query = pane.searchInput.get().text()
@@ -1501,7 +1667,7 @@ proc triggerFind*(pane: Pane) {.raises: [].} =
     return
 
 proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].} =
-  if pane.buffer == nil or pane.buffer.path.len == 0:
+  if pane.buffer == nil or pane.buffer.kind != bkText or pane.buffer.path.len == 0:
     return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   let cur = ed.textCursor()
@@ -1539,7 +1705,7 @@ proc triggerGotoDefinition*(pane: Pane, client: NimSuggestClient) {.raises: [].}
 
 proc triggerAutocomplete*(pane: Pane, client: NimSuggestClient,
                           trigger: AutocompleteTrigger = atCommand) {.raises: [].} =
-  if pane.buffer == nil or pane.buffer.path.len == 0:
+  if pane.buffer == nil or pane.buffer.kind != bkText or pane.buffer.path.len == 0:
     return
   if trigger == atCommand and pane.autocompleteMenu.isOpen():
     pane.stopAutocompleteRefresh()
@@ -1649,10 +1815,18 @@ proc closeSearch*(pane: Pane) {.raises: [].} =
   pane.searchBar.get().hide()
   pane.matchPositions = @[]
   applySelections(pane)
-  pane.editor.asWidget.setFocus()
+  if pane.isImageBuffer():
+    pane.imageScroll.asWidget.setFocus()
+  else:
+    pane.editor.asWidget.setFocus()
 
 proc zoomIn*(pane: Pane) {.raises: [].} =
   try:
+    if pane.isImageBuffer():
+      pane.imageUserZoomed = true
+      pane.imageScale = min(pane.imageScale * ImageZoomStep, MaxImageZoom)
+      pane.refreshImageView()
+      return
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     var font = ed.document().defaultFont()
     font.setPointSize(font.pointSize() + cint 1)
@@ -1663,6 +1837,11 @@ proc zoomIn*(pane: Pane) {.raises: [].} =
 
 proc zoomOut*(pane: Pane) {.raises: [].} =
   try:
+    if pane.isImageBuffer():
+      pane.imageUserZoomed = true
+      pane.imageScale = max(pane.imageScale / ImageZoomStep, MinImageZoom)
+      pane.refreshImageView()
+      return
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
     var font = ed.document().defaultFont()
     let newSize = max(font.pointSize() - cint 1, MinFontSize)
@@ -1744,7 +1923,7 @@ proc setRestoreLastSessionAvailable*(pane: Pane, available: bool) {.raises: [].}
   except CatchableError: discard
 
 proc currentCursorPosition*(pane: Pane): tuple[line, col: int] {.raises: [].} =
-  if pane.buffer == nil:
+  if pane.buffer == nil or pane.buffer.kind != bkText:
     return (1, 0)
   try:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -1755,13 +1934,20 @@ proc currentCursorPosition*(pane: Pane): tuple[line, col: int] {.raises: [].} =
 
 proc currentScrollPosition*(pane: Pane): tuple[vertical, horizontal: int] {.raises: [].} =
   try:
-    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-    (ed.verticalScrollBar().value().int, ed.horizontalScrollBar().value().int)
+    if pane.isImageBuffer():
+      let area = QAbstractScrollArea(h: pane.imageScroll.h, owned: false)
+      (area.verticalScrollBar().value().int, area.horizontalScrollBar().value().int)
+    else:
+      let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+      (ed.verticalScrollBar().value().int, ed.horizontalScrollBar().value().int)
   except CatchableError:
     (0, 0)
 
 proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raises: [].} =
   if pane.buffer == nil:
+    return
+  if pane.buffer.kind != bkText:
+    pane.fitImageToPane()
     return
   try:
     let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -1784,7 +1970,9 @@ proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raise
     discard
 
 proc focus*(pane: Pane) {.raises: [].} =
-  if pane.buffer != nil:
+  if pane.isImageBuffer():
+    QWidget(h: pane.imageScroll.h, owned: false).setFocus()
+  elif pane.buffer != nil:
     QWidget(h: pane.editor.h, owned: false).setFocus()
   else:
     pane.container.setFocus()
@@ -1798,13 +1986,17 @@ proc applyEditorTheme*(pane: Pane) {.raises: [].} =
     # Set background via stylesheet for QPlainTextEdit and its viewport
     QWidget(h: pane.editor.h, owned: false).setStyleSheet(
       "QPlainTextEdit, QPlainTextEdit viewport { background: " & bg & "; color: " & fg & "; }")
+    QWidget(h: pane.imageScroll.h, owned: false).setStyleSheet(
+      "QScrollArea { background: " & bg & "; border: none; }")
+    QWidget(h: pane.imagePage.h, owned: false).setStyleSheet(
+      "QWidget { background: " & bg & "; color: " & fg & "; }")
     # Force gutter repaint
     ed.updateLineNumberAreaWidth()
     ed.viewport().update()
   except CatchableError: discard
 
 proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
-  if pane.buffer == nil: return
+  if pane.buffer == nil or pane.buffer.kind != bkText: return
   let ed  = QPlainTextEdit(h: pane.editor.h, owned: false)
   let doc = ed.document()
   let blk = doc.findBlockByNumber(cint(lineNum - 1))
@@ -1816,7 +2008,7 @@ proc jumpToLine*(pane: Pane, lineNum: int, col: int = 0) {.raises: [].} =
   ed.ensureCursorVisible()
 
 proc scrollToLine*(pane: Pane, line: int, col: int = 0) {.raises: [].} =
-  if pane.buffer == nil: return
+  if pane.buffer == nil or pane.buffer.kind != bkText: return
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   let doc = ed.document()
   if line > 0 and line <= ed.blockCount():
@@ -1836,7 +2028,7 @@ proc triggerPrototype*(pane: Pane) {.raises: [].} =
   pane.showPrototypeAtCursor()
 
 proc showPrototypeAtCursor*(pane: Pane) {.raises: [].} =
-  if pane.buffer == nil:
+  if pane.buffer == nil or pane.buffer.kind != bkText:
     return
   
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
@@ -1887,7 +2079,7 @@ proc doCleanImports(pane: Pane) {.raises: [].} =
     logError("pane: doCleanImports error: ", getCurrentExceptionMsg())
 
 proc triggerCleanImports*(pane: Pane) {.raises: [].} =
-  if pane.buffer == nil or pane.buffer.path.len == 0: return
+  if pane.buffer == nil or pane.buffer.kind != bkText or pane.buffer.path.len == 0: return
   if not pane.buffer.path.endsWith(".nim"): return
   if pane.diagReady:
     doCleanImports(pane)

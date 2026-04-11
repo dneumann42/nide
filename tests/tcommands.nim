@@ -22,6 +22,11 @@ suite "default keybindings":
     registerDefaultBindings(d)
     check d.lookupCommand(combo(0x47, ctrlMod)) == "editor.closeSearch"
 
+  test "alt zero toggles file tree":
+    let d = CommandDispatcher()
+    registerDefaultBindings(d)
+    check d.lookupCommand(combo(0x30, altMod)) == "editor.toggleFileTree"
+
   test "ctrl period triggers goto definition":
     let d = CommandDispatcher()
     registerDefaultBindings(d)

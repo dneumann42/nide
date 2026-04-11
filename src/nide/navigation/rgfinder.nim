@@ -1,8 +1,8 @@
 import std/[strutils, os, osproc]
 import seaqt/[qwidget, qdialog, qlineedit, qlistwidget,
               qlistwidgetitem, qshortcut, qkeysequence, qobject, qtimer,
-              qsplitter, qplaintextedit, qtextdocument, qtextcursor, qtextobject]
-import nide/editor/highlight, nide/ui/codepreview, nide/ui/widgets
+              qplaintextedit, qsplitter, qtextdocument, qtextcursor, qtextobject]
+import nide/ui/[filepreview, widgets]
 import nide/helpers/qtconst
 
 const
@@ -46,14 +46,11 @@ proc showRipgrepFinder*(parent: QWidget,
     var leftPanel = newWidget(QWidget.create())
     leftLayout.applyTo(leftPanel)
 
-    let (preview, previewGutterH) = setupCodePreview(leftPanel)
-    let previewHl = NimHighlighter()
-    previewHl.attach(preview.document())
-    let previewH = preview.h
+    let preview = newFilePreviewWidget(leftPanel, showFilter = true)
 
     var splitter = newWidget(QSplitter.create(Horizontal))
     splitter.addWidget(leftPanel)
-    splitter.addWidget(preview.asWidget)
+    splitter.addWidget(preview.container)
     splitter.setStretchFactor(cint 0, cint 1)
     splitter.setStretchFactor(cint 1, cint 2)
 
@@ -129,16 +126,15 @@ proc showRipgrepFinder*(parent: QWidget,
         let m = currentMatches[row]
         let absPath = if isAbsolute(m.file): m.file else: cwd / m.file
         try:
-          let content = readFile(absPath)
-          let pv = QPlainTextEdit(h: previewH, owned: false)
-          pv.setPlainText(content)
-          let blk = pv.document().findBlockByNumber(cint(m.lineNum - 1))
-          var cur = pv.textCursor()
-          cur.setPosition(blk.position())
-          pv.setTextCursor(cur)
-          pv.ensureCursorVisible()
+          if setPreviewForFile(preview, absPath) == fpkText:
+            let pv = QPlainTextEdit(h: preview.textPreview.h, owned: false)
+            let blk = pv.document().findBlockByNumber(cint(m.lineNum - 1))
+            var cur = pv.textCursor()
+            cur.setPosition(blk.position())
+            pv.setTextCursor(cur)
+            pv.ensureCursorVisible()
         except CatchableError:
-          QPlainTextEdit(h: previewH, owned: false).setPlainText("(could not read file)")
+          showPreviewPlaceholder(preview, PreviewReadErrorPlaceholder)
 
     searchBox.onTextChanged do(text: openArray[char]) {.raises: [].}:
       pendingQuery = toStr(text)

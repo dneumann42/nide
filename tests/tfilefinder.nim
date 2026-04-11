@@ -1,8 +1,11 @@
 import std/[os, unittest]
 
 import nide/project/filefinder
+import nide/ui/filepreview
 
 const TestRoot = "/tmp/nide-test-gitignore"
+const PreviewTestRoot = "/tmp/nide-test-filepreview"
+const RepoRoot = currentSourcePath.parentDir.parentDir
 
 suite "gitignore loading":
   setup:
@@ -94,3 +97,40 @@ suite "loadGitignore":
     writeFile(TestRoot / "subdir" / ".gitignore", "secret.nim\n")
     loadGitignore(TestRoot)
     check "subdir/secret.nim" in gitignorePatterns or "subdir\\secret.nim" in gitignorePatterns
+
+suite "file preview loading":
+  setup:
+    createDir(PreviewTestRoot)
+
+  teardown:
+    removeDir(PreviewTestRoot)
+
+  test "text sample without NUL is not binary":
+    check isBinarySample("let answer = 42\n") == false
+
+  test "sample containing NUL is binary":
+    check isBinarySample("abc" & '\0' & "def") == true
+
+  test "empty file is previewed as text":
+    let path = PreviewTestRoot / "empty.txt"
+    writeFile(path, "")
+    let (kind, content) = loadFilePreview(path)
+    check kind == fpkText
+    check content == ""
+
+  test "binary file returns placeholder":
+    let path = PreviewTestRoot / "image.bin"
+    writeFile(path, "abc" & '\0' & "def")
+    let (kind, content) = loadFilePreview(path)
+    check kind == fpkBinary
+    check content == BinaryPreviewPlaceholder
+
+  test "known image file is previewed as image":
+    let (kind, content) = loadFilePreview(RepoRoot / "screenshot.png")
+    check kind == fpkImage
+    check content == ""
+
+  test "missing file returns read error placeholder":
+    let (kind, content) = loadFilePreview(PreviewTestRoot / "missing.txt")
+    check kind == fpkError
+    check content == PreviewReadErrorPlaceholder

@@ -98,6 +98,7 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindKey(combo(0x53, ctrlMod),             "editor.findInBuffer")   ## Ctrl+S
   d.bindKey(combo(0x46, ctrlMod or shiftMod), "editor.ripgrepFind")    ## Ctrl+Shift+F
   d.bindKey(combo(0x5C, ctrlMod),             "editor.addColumn")      ## Ctrl+\
+  d.bindKey(combo(0x30, altMod),             "editor.toggleFileTree") ## Alt+0
   d.bindKey(combo(0x45, ctrlMod or shiftMod), "editor.toggleFileTree") ## Ctrl+Shift+E
   d.bindKey(combo(0x5C, ctrlMod or shiftMod), "editor.splitRow")       ## Ctrl+Shift+\
   d.bindKey(combo(0x2E, ctrlMod),             "editor.gotoDefinition") ## Ctrl+.

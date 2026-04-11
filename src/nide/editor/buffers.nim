@@ -1,13 +1,20 @@
 import std/[os, strutils]
-import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont]
+import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont, qpixmap]
 import nide/editor/highlight
 import nide/ui/widgets
+import nide/ui/filepreview
 
 type
+  BufferKind* = enum
+    bkText
+    bkImage
+
   Buffer* = ref object
     name, path: string
+    kind*: BufferKind
     content: string
     documentH: pointer
+    pixmapH: pointer
     highlighter*: NimHighlighter
     externallyModified*: bool
 
@@ -28,13 +35,22 @@ proc new*(T: typedesc[Buffer], path = ""): T =
     else:
       inc scratchCount
       "scratch-" & $scratchCount
-  T(name: n, path: path)
+  T(name: n, path: path, kind: bkText)
 
 proc name*(b: Buffer): string = b.name
 proc `name=`*(b: Buffer, n: string) = b.name = n
 proc path*(b: Buffer): string = b.path
 proc `path=`*(b: Buffer, p: string) = b.path = p
 proc content*(b: Buffer): string = b.content
+proc kind*(b: Buffer): BufferKind = b.kind
+
+proc pixmap*(b: Buffer): QPixmap =
+  if b.pixmapH == nil:
+    return QPixmap()
+  QPixmap(h: b.pixmapH, owned: false)
+
+proc setPixmap*(b: Buffer, pm: QPixmap) =
+  b.pixmapH = pm.h
 
 proc document*(b: Buffer): QTextDocument =
   if b.documentH == nil:
@@ -72,14 +88,30 @@ proc openFile*(bm: var BufferManager, path: string): Buffer =
   when defined(debugFileWatcher):
     echo "[FileWatcher] BufferManager.openFile: created new buffer for: ", path
   try:
-    result.content = readFile(path)
-    when defined(debugFileWatcher):
-      echo "[FileWatcher] BufferManager.openFile: read content, len: ", result.content.len
+    var pixmap = QPixmap.create()
+    pixmap.owned = false
+    if pixmap.load(path):
+      result.kind = bkImage
+      result.pixmapH = pixmap.h
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] BufferManager.openFile: loaded image buffer"
+    else:
+      let (previewKind, content) = loadFilePreview(path)
+      result.kind =
+        if previewKind == fpkImage: bkImage
+        else: bkText
+      if result.kind == bkImage:
+        result.pixmapH = pixmap.h
+      else:
+        result.content = content
+        when defined(debugFileWatcher):
+          echo "[FileWatcher] BufferManager.openFile: read content, len: ", result.content.len
   except CatchableError:
     when defined(debugFileWatcher):
       echo "[FileWatcher] BufferManager.openFile: failed to read file: ", path
     discard
-  discard result.document()
+  if result.kind == bkText:
+    discard result.document()
   bm.add(result)
 
 proc close*(bm: var BufferManager, name: string) =

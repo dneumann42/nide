@@ -38,10 +38,12 @@ const
 
 # ── Focus policy ──────────────────────────────────────────────────────────
 const
-  FP_ClickFocus* = cint 2
+  FP_ClickFocus*  = cint 2
+  FP_StrongFocus* = cint 11
 
 # ── Shortcut context ─────────────────────────────────────────────────────
 const
+  SC_WidgetShortcut*             = cint 0
   SC_WidgetWithChildrenShortcut* = cint 1
   SC_WindowShortcut*             = cint 2
 
@@ -189,3 +191,9 @@ const
 const
   QF_Box*   = cint 1
   QF_Plain* = cint 1
+
+# ── Aspect ratio / image transformation ─────────────────────────────────
+const
+  KeepAspectRatio*    = cint 1
+  FastTransformation* = cint 0
+  SmoothTransformation* = cint 1

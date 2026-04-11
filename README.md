@@ -66,6 +66,7 @@ Run with:
 | `Ctrl+X Ctrl+F` | Open file finder |
 | `Ctrl+S` | Find in current buffer |
 | `Ctrl+Shift+F` | Find in files (ripgrep) |
+| `Alt+0` | Toggle file tree |
 | `Ctrl+Shift+E` | Toggle file tree |
 | `Ctrl+O` | Open file |
 | `Ctrl+D` | Dashboard |

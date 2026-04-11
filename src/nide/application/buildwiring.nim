@@ -11,7 +11,7 @@ import nide/pane/pane
 import nide/panemanager
 import nide/project/[filefinder, projects]
 import nide/settings/[projectconfig, settings, syntaxtheme, theme, toolchain]
-import nide/ui/[commandpalette, filetree, opacity, toolbar, widgets]
+import nide/ui/[commandpalette, filepreview, filetree, opacity, toolbar, widgets]
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
 import std/[options, os, strutils]
 import tools/nim_graph
@@ -134,56 +134,59 @@ proc setupCommandDispatcher(self: Application) =
     let p = self.getTargetPane()
     if p == nil:
       return
-    discard p.moveCursor(op)
+    discard p.moveCursor(cint(op))
 
-  disp.register("editor.chordCx", "Prefix: C-x", proc() {.raises: [].} =
-    disp.inChord = true)
+  proc moveTarget(op: QTextCursorMoveOperationEnum) {.raises: [].} =
+    moveTarget(cint(op))
 
-  disp.register("editor.commandPalette", "Command Palette", proc() {.raises: [].} =
+  disp.register("editor.chordCx", "Prefix: C-x") do() {.raises: [].}:
+    disp.inChord = true
+
+  disp.register("editor.commandPalette", "Command Palette") do() {.raises: [].}:
     if self.commandPalette != nil:
-      self.commandPalette.open())
+      self.commandPalette.open()
 
-  disp.register("editor.setMark", "Set Mark", proc() {.raises: [].} =
+  disp.register("editor.setMark", "Set Mark") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.activateMark())
+      p.activateMark()
 
-  disp.register("editor.rectangleMark", "Rectangle Mark", proc() {.raises: [].} =
+  disp.register("editor.rectangleMark", "Rectangle Mark") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.activateRectangleMark())
+      p.activateRectangleMark()
 
-  disp.register("editor.forwardChar", "Move Forward Char", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.Right)))
-  disp.register("editor.backwardChar", "Move Backward Char", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.Left)))
-  disp.register("editor.nextLine", "Move Next Line", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.Down)))
-  disp.register("editor.prevLine", "Move Previous Line", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.Up)))
-  disp.register("editor.beginningOfLine", "Move to Beginning of Line", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.StartOfLine)))
-  disp.register("editor.endOfLine", "Move to End of Line", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.EndOfLine)))
-  disp.register("editor.forwardWord", "Move Forward Word", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.NextWord)))
-  disp.register("editor.backwardWord", "Move Backward Word", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.PreviousWord)))
-  disp.register("editor.beginningOfBuffer", "Move to Beginning of Buffer", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.Start)))
-  disp.register("editor.endOfBuffer", "Move to End of Buffer", proc() {.raises: [].} =
-    moveTarget(cint(QTextCursorMoveOperationEnum.End)))
+  disp.register("editor.forwardChar", "Move Forward Char") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.Right)
+  disp.register("editor.backwardChar", "Move Backward Char") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.Left)
+  disp.register("editor.nextLine", "Move Next Line") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.Down)
+  disp.register("editor.prevLine", "Move Previous Line") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.Up)
+  disp.register("editor.beginningOfLine", "Move to Beginning of Line") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.StartOfLine)
+  disp.register("editor.endOfLine", "Move to End of Line") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.EndOfLine)
+  disp.register("editor.forwardWord", "Move Forward Word") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.NextWord)
+  disp.register("editor.backwardWord", "Move Backward Word") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.PreviousWord)
+  disp.register("editor.beginningOfBuffer", "Move to Beginning of Buffer") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.Start)
+  disp.register("editor.endOfBuffer", "Move to End of Buffer") do() {.raises: [].}:
+    moveTarget(QTextCursorMoveOperationEnum.End)
 
-  disp.register("editor.scrollDown", "Scroll Down", proc() {.raises: [].} =
+  disp.register("editor.scrollDown", "Scroll Down") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.scrollDown())
-  disp.register("editor.scrollUp", "Scroll Up", proc() {.raises: [].} =
+      p.scrollDown()
+  disp.register("editor.scrollUp", "Scroll Up") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.scrollUp())
+      p.scrollUp()
 
-  disp.register("editor.deleteForwardChar", "Delete Forward Char", proc() {.raises: [].} =
+  disp.register("editor.deleteForwardChar", "Delete Forward Char") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
@@ -191,9 +194,9 @@ proc setupCommandDispatcher(self: Application) =
     let ed = QPlainTextEdit(h: p.editor.h, owned: false)
     let c = ed.textCursor()
     c.deleteChar()
-    ed.setTextCursor(c))
+    ed.setTextCursor(c)
 
-  disp.register("editor.killLine", "Kill Line", proc() {.raises: [].} =
+  disp.register("editor.killLine", "Kill Line") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
@@ -206,16 +209,16 @@ proc setupCommandDispatcher(self: Application) =
       c.removeSelectedText()
     else:
       c.deleteChar()
-    ed.setTextCursor(c))
+    ed.setTextCursor(c)
 
-  disp.register("editor.copySelection", "Copy Selection", proc() {.raises: [].} =
+  disp.register("editor.copySelection", "Copy Selection") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
     p.copyRegion()
-    p.clearMarkState())
+    p.clearMarkState()
 
-  disp.register("editor.killWordForward", "Kill Word Forward", proc() {.raises: [].} =
+  disp.register("editor.killWordForward", "Kill Word Forward") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
@@ -225,9 +228,9 @@ proc setupCommandDispatcher(self: Application) =
     discard c.movePosition(cint(QTextCursorMoveOperationEnum.NextWord),
                            cint(QTextCursorMoveModeEnum.KeepAnchor))
     c.removeSelectedText()
-    ed.setTextCursor(c))
+    ed.setTextCursor(c)
 
-  disp.register("editor.killWordBackward", "Kill Word Backward", proc() {.raises: [].} =
+  disp.register("editor.killWordBackward", "Kill Word Backward") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
@@ -237,9 +240,9 @@ proc setupCommandDispatcher(self: Application) =
     discard c.movePosition(cint(QTextCursorMoveOperationEnum.PreviousWord),
                            cint(QTextCursorMoveModeEnum.KeepAnchor))
     c.removeSelectedText()
-    ed.setTextCursor(c))
+    ed.setTextCursor(c)
 
-  disp.register("editor.openLine", "Open Line", proc() {.raises: [].} =
+  disp.register("editor.openLine", "Open Line") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
@@ -252,66 +255,66 @@ proc setupCommandDispatcher(self: Application) =
     c.insertText("\n")
     discard c.movePosition(cint(QTextCursorMoveOperationEnum.Left),
                            cint(QTextCursorMoveModeEnum.MoveAnchor))
-    ed.setTextCursor(c))
+    ed.setTextCursor(c)
 
-  disp.register("editor.recenter", "Recenter Cursor", proc() {.raises: [].} =
+  disp.register("editor.recenter", "Recenter Cursor") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      QPlainTextEdit(h: p.editor.h, owned: false).centerCursor())
+      QPlainTextEdit(h: p.editor.h, owned: false).centerCursor()
 
-  disp.register("editor.killRegion", "Kill Region", proc() {.raises: [].} =
+  disp.register("editor.killRegion", "Kill Region") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.killRegion())
+      p.killRegion()
 
-  disp.register("editor.yank", "Yank", proc() {.raises: [].} =
+  disp.register("editor.yank", "Yank") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
       p.clearMarkState(clearNativeSelection = false)
-      QPlainTextEdit(h: p.editor.h, owned: false).paste())
+      QPlainTextEdit(h: p.editor.h, owned: false).paste()
 
-  disp.register("editor.saveBuffer", "Save Buffer", proc() {.raises: [].} =
+  disp.register("editor.saveBuffer", "Save Buffer") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.save())
+      p.save()
 
-  disp.register("editor.quitApplication", "Quit Application", proc() {.raises: [].} =
-    QApplication.quit())
+  disp.register("editor.quitApplication", "Quit Application") do() {.raises: [].}:
+    QApplication.quit()
 
-  disp.register("editor.killBuffer", "Kill Buffer", proc() {.raises: [].} =
+  disp.register("editor.killBuffer", "Kill Buffer") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      self.paneManager.closePane(p))
+      self.paneManager.closePane(p)
 
-  disp.register("editor.deleteOtherWindows", "Delete Other Windows", proc() {.raises: [].} =
+  disp.register("editor.deleteOtherWindows", "Delete Other Windows") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      self.paneManager.closeOtherPanes(p))
+      self.paneManager.closeOtherPanes(p)
 
-  disp.register("editor.deleteWindow", "Delete Window", proc() {.raises: [].} =
+  disp.register("editor.deleteWindow", "Delete Window") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      discard self.paneManager.deleteWindow(p))
+      discard self.paneManager.deleteWindow(p)
 
-  disp.register("editor.splitHorizontal", "Split Window Horizontally", proc() {.raises: [].} =
+  disp.register("editor.splitHorizontal", "Split Window Horizontally") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      discard self.paneManager.splitRow(p))
+      discard self.paneManager.splitRow(p)
 
-  disp.register("editor.splitVertical", "Split Window Vertically", proc() {.raises: [].} =
+  disp.register("editor.splitVertical", "Split Window Vertically") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      discard self.paneManager.splitCol(p))
+      discard self.paneManager.splitCol(p)
 
-  disp.register("editor.findFile", "Find File", proc() {.raises: [].} =
+  disp.register("editor.findFile", "Find File") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
     showFileFinder(self.appWidget(),
       self.projectManager.recentFilesFor(self.currentProject)) do(path: string) {.raises: [].}:
-      self.openInPane(p, path))
+      self.openInPane(p, path)
 
-  disp.register("editor.switchBuffer", "Switch Buffer", proc() {.raises: [].} =
+  disp.register("editor.switchBuffer", "Switch Buffer") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
@@ -330,102 +333,104 @@ proc setupCommandDispatcher(self: Application) =
         if buf.name == key:
           p.setBuffer(buf)
           self.requestSessionSave()
-          break)
+          break
 
-  disp.register("editor.otherWindow", "Other Window", proc() {.raises: [].} =
+  disp.register("editor.otherWindow", "Other Window") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      discard self.paneManager.focusNextPane(p))
+      discard self.paneManager.focusNextPane(p)
 
-  disp.register("editor.findInBuffer", "Find in Buffer", proc() {.raises: [].} =
+  disp.register("editor.findInBuffer", "Find in Buffer") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.triggerFind())
+      p.triggerFind()
 
-  disp.register("editor.closeSearch", "Close Search", proc() {.raises: [].} =
+  disp.register("editor.closeSearch", "Close Search") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
       p.clearMarkState()
-      p.closeSearch())
+      p.closeSearch()
 
-  disp.register("editor.ripgrepFind", "Find in Files", proc() {.raises: [].} =
+  disp.register("editor.ripgrepFind", "Find in Files") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
     showRipgrepFinder(self.appWidget()) do(file: string, lineNum: int) {.raises: [].}:
       self.openInPane(p, file)
-      p.scrollToLine(lineNum))
+      p.scrollToLine(lineNum)
 
-  disp.register("editor.gotoDefinition", "Go to Definition", proc() {.raises: [].} =
+  disp.register("editor.gotoDefinition", "Go to Definition") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil or self.nimSuggest == nil:
       return
     try:
       p.triggerGotoDefinition(self.nimSuggest)
     except CatchableError:
-      discard)
+      discard
 
-  disp.register("editor.jumpBack", "Jump Back", proc() {.raises: [].} =
+  disp.register("editor.jumpBack", "Jump Back") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
     try:
       p.triggerJumpBack()
     except CatchableError:
-      discard)
+      discard
 
-  disp.register("editor.autocomplete", "Autocomplete", proc() {.raises: [].} =
+  disp.register("editor.autocomplete", "Autocomplete") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil or self.nimSuggest == nil:
       return
     try:
       p.triggerAutocomplete(self.nimSuggest)
     except CatchableError:
-      discard)
+      discard
 
-  disp.register("editor.showPrototype", "Show Prototype", proc() {.raises: [].} =
+  disp.register("editor.showPrototype", "Show Prototype") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
     try:
       p.triggerPrototype()
     except CatchableError:
-      discard)
+      discard
 
-  disp.register("editor.addColumn", "Add Column", proc() {.raises: [].} =
+  disp.register("editor.addColumn", "Add Column") do() {.raises: [].}:
     discard self.paneManager.addColumn()
-    self.paneManager.equalizeSplits())
+    self.paneManager.equalizeSplits()
 
-  disp.register("editor.toggleFileTree", "Toggle File Tree", proc() {.raises: [].} =
+  disp.register("editor.toggleFileTree", "Toggle File Tree") do() {.raises: [].}:
     if self.currentProject.len > 0:
-      self.fileTree.toggle())
+      if self.fileTree.isVisible():
+        self.fileTree.hidePanel()
+      else:
+        self.fileTree.showAndFocusPanel()
 
-  disp.register("editor.splitRow", "Split Row", proc() {.raises: [].} =
+  disp.register("editor.splitRow", "Split Row") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p == nil:
       return
     try:
       discard self.paneManager.splitRow(p)
     except CatchableError:
-      discard)
+      discard
 
-  disp.register("editor.zoomIn", "Zoom In", proc() {.raises: [].} =
+  disp.register("editor.zoomIn", "Zoom In") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.zoomIn())
+      p.zoomIn()
 
-  disp.register("editor.zoomOut", "Zoom Out", proc() {.raises: [].} =
+  disp.register("editor.zoomOut", "Zoom Out") do() {.raises: [].}:
     let p = self.getTargetPane()
     if p != nil:
-      p.zoomOut())
+      p.zoomOut()
 
-  self.commandPalette = newCommandPalette(self.appWidget(), disp,
-    proc(id: CommandId) {.raises: [].} =
-      discard disp.execute(id),
-    proc() {.raises: [].} =
-      let target = self.getTargetPane()
-      if target != nil:
-        target.editor.asWidget.setFocus())
+  self.commandPalette = newCommandPalette(self.appWidget(), disp) do(id: CommandId) {.raises: [].}:
+    discard disp.execute(id)
+  do() {.raises: [].}:
+    let target = self.getTargetPane()
+    if target != nil:
+      target.editor.asWidget.setFocus()
   self.commandPalette.applyTheme(self.theme)
 
 proc wireFileTree(self: Application) =
@@ -434,6 +439,7 @@ proc wireFileTree(self: Application) =
     if target == nil:
       return
     self.openInPane(target, path)
+    target.focus()
   self.fileTree.canPaste = proc(): bool {.raises: [].} =
     self.canPasteInFileTree()
   self.fileTree.onMoveRequested = proc(sourcePath: string, targetDir: string): bool {.raises: [].} =
@@ -554,7 +560,10 @@ proc wireToolbar(self: Application) =
 
   self.toolbar.onFileTreeToggle do():
     if self.currentProject.len > 0:
-      self.fileTree.toggle()
+      if self.fileTree.isVisible():
+        self.fileTree.hidePanel()
+      else:
+        self.fileTree.showAndFocusPanel()
 
   self.toolbar.onTriggered(NewProject) do():
     showNewProjectDialog(self.appWidget(), self.projectManager)
@@ -722,7 +731,7 @@ proc wireFileWatcher(self: Application) =
     var dirty = false
     for panel in self.paneManager.panels:
       if panel.buffer == buf:
-        if QPlainTextEdit(h: panel.editor.h, owned: false).document().isModified():
+        if buf.kind == bkText and QPlainTextEdit(h: panel.editor.h, owned: false).document().isModified():
           dirty = true
           break
     if dirty:
@@ -730,28 +739,53 @@ proc wireFileWatcher(self: Application) =
       when defined(debugFileWatcher):
         echo "[FileWatcher] buffer dirty, marking externallyModified"
     else:
-      var content = ""
-      var readOk = false
-      for i in 0..<FileReadRetries:
-        try:
-          content = readFile(p)
-          readOk = true
-          break
-        except CatchableError:
-          when defined(debugFileWatcher):
-            echo "[FileWatcher] retry readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
+      if buf.kind == bkImage:
+        var readOk = false
+        for i in 0..<FileReadRetries:
+          try:
+            let (ok, pixmap) = loadImagePixmap(p)
+            if ok:
+              buf.setPixmap(pixmap)
+              readOk = true
+              break
+          except CatchableError:
+            when defined(debugFileWatcher):
+              echo "[FileWatcher] retry image reload attempt ", i + 1, ": ", getCurrentExceptionMsg()
           sleep(FileWatcherRetryMs)
-      if readOk:
-        if content != buf.document().toPlainText():
-          buf.document().setPlainText(content)
-        buf.document().setModified(false)
-        buf.externallyModified = false
-        when defined(debugFileWatcher):
-          echo "[FileWatcher] reloaded content from: ", p
+        if readOk:
+          buf.externallyModified = false
+          for panel in self.paneManager.panels:
+            if panel.buffer == buf:
+              panel.setBuffer(buf)
+          when defined(debugFileWatcher):
+            echo "[FileWatcher] reloaded image from: ", p
+        else:
+          buf.externallyModified = true
+          when defined(debugFileWatcher):
+            echo "[FileWatcher] failed to reload image after retries"
       else:
-        buf.externallyModified = true
-        when defined(debugFileWatcher):
-          echo "[FileWatcher] failed to read after retries, marking externallyModified"
+        var content = ""
+        var readOk = false
+        for i in 0..<FileReadRetries:
+          try:
+            content = readFile(p)
+            readOk = true
+            break
+          except CatchableError:
+            when defined(debugFileWatcher):
+              echo "[FileWatcher] retry readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
+            sleep(FileWatcherRetryMs)
+        if readOk:
+          if content != buf.document().toPlainText():
+            buf.document().setPlainText(content)
+          buf.document().setModified(false)
+          buf.externallyModified = false
+          when defined(debugFileWatcher):
+            echo "[FileWatcher] reloaded content from: ", p
+        else:
+          buf.externallyModified = true
+          when defined(debugFileWatcher):
+            echo "[FileWatcher] failed to read after retries, marking externallyModified"
 
 proc wireFocusTracking(self: Application) =
   let appInstance = QApplication(h: QCoreApplication.instance().h, owned: false)
