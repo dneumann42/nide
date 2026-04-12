@@ -1,0 +1,23 @@
+id = "json"
+engine = "regex"
+extensions = [".json"]
+
+[[rules]]
+pattern = '''"(?:\\.|[^"\\])*"(?=\s*:)'''
+kind = "funcName"
+
+[[rules]]
+pattern = '\b(?:true|false|null)\b'
+kind = "builtinType"
+
+[[rules]]
+pattern = '\b-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?\b'
+kind = "number"
+
+[[rules]]
+pattern = '[\[\]\{\}:,]'
+kind = "operator"
+
+[[rules]]
+pattern = '''"(?:\\.|[^"\\])*"'''
+kind = "string"

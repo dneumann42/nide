@@ -15,7 +15,7 @@ type
     content: string
     documentH: pointer
     pixmapH: pointer
-    highlighter*: NimHighlighter
+    highlighter*: EditorHighlighter
     externallyModified*: bool
 
   BufferManager* = object
@@ -64,8 +64,9 @@ proc document*(b: Buffer): QTextDocument =
     doc.setDefaultFont(font)
     doc.setPlainText(b.content)
     doc.setModified(false)
-    let hl = NimHighlighter()
-    hl.attach(QTextDocument(h: b.documentH, owned: false))
+    let hl = createHighlighterForPath(b.path)
+    if hl != nil:
+      hl.attach(QTextDocument(h: b.documentH, owned: false))
     b.highlighter = hl
   result = QTextDocument(h: b.documentH, owned: false)
 
