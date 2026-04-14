@@ -36,6 +36,9 @@ type
     nimSuggest*: NimSuggestClient
     dispatcher*: CommandDispatcher
     editorWheelScrollSpeed*: int
+    editorFontFamily*: string
+    editorFontSize*: int
+    showLineNumbers*: bool
 
 proc closePane*(self: PaneManager, pane: Pane, notify = true) {.raises: [].}
 proc closeOtherPanes*(self: PaneManager, keepPane: Pane) {.raises: [].}
@@ -52,6 +55,17 @@ proc setEditorWheelScrollSpeed*(self: PaneManager, speed: int) {.raises: [].} =
   self.editorWheelScrollSpeed = speed
   for pane in self.panels:
     pane.setEditorWheelScrollSpeed(speed)
+
+proc setEditorFont*(self: PaneManager, family: string, size: int) {.raises: [].} =
+  self.editorFontFamily = family
+  self.editorFontSize = size
+  for pane in self.panels:
+    pane.setEditorFont(family, size)
+
+proc setLineNumbersVisible*(self: PaneManager, visible: bool) {.raises: [].} =
+  self.showLineNumbers = visible
+  for pane in self.panels:
+    pane.setLineNumbersVisible(visible)
 
 proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
   result = newPane(proc(ev: PaneEvent) {.raises: [].} =
@@ -93,11 +107,20 @@ proc makePane(self: PaneManager, col: WidgetRef[QSplitter]): Pane =
   result.nimCommandProvider = self.callbacks.resolveNimCommand
   result.nimBackendProvider = self.callbacks.resolveNimBackend
   result.dispatcher = self.dispatcher
+  result.setEditorFont(self.editorFontFamily, self.editorFontSize)
+  result.setLineNumbersVisible(self.showLineNumbers)
   result.setEditorWheelScrollSpeed(self.editorWheelScrollSpeed)
   result.setupSmoothScrolling()
 
 proc init*(T: typedesc[PaneManager], splitter: QSplitter, cbs: PaneCallbacks): T =
-  T(splitter: capture(splitter), callbacks: cbs, editorWheelScrollSpeed: 10)
+  T(
+    splitter: capture(splitter),
+    callbacks: cbs,
+    editorWheelScrollSpeed: 10,
+    editorFontFamily: "Fira Code",
+    editorFontSize: 14,
+    showLineNumbers: true
+  )
 
 proc addColumn*(self: PaneManager): Pane =
   var col = newWidget(QSplitter.create(Vertical))    # vertical

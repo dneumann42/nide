@@ -63,6 +63,7 @@ type
     changed*: bool
     buffer*: Buffer
     editorWheelScrollSpeed*: float64
+    showLineNumbers*: bool
     eventCb: proc(ev: PaneEvent) {.raises: [].}
     moduleBtnsRow: WidgetRef[QWidget]
     openProjectRow: WidgetRef[QWidget]
@@ -118,6 +119,8 @@ type
 proc scrollUp*(pane: Pane) {.raises: [].}
 proc scrollDown*(pane: Pane) {.raises: [].}
 proc setEditorWheelScrollSpeed*(pane: Pane, speed: int) {.raises: [].}
+proc setEditorFont*(pane: Pane, family: string, size: int) {.raises: [].}
+proc setLineNumbersVisible*(pane: Pane, visible: bool) {.raises: [].}
 proc applySelections*(pane: Pane) {.raises: [].}
 proc applyEditorTheme*(pane: Pane) {.raises: [].}
 proc closeSearch*(pane: Pane) {.raises: [].}
@@ -678,6 +681,8 @@ proc save*(pane: Pane) {.raises: [].} =
       logError("pane: save error: ", getCurrentExceptionMsg())
 
 proc lineNumberAreaWidth*(editor: QPlainTextEdit): cint =
+  if not QObject(h: editor.h, owned: false).property("nide.showLineNumbers").toBool():
+    return 0
   let digits = max(1, ($editor.blockCount()).len)
   let fm = QFontMetrics.create(editor.document().defaultFont())
   cint(fm.horizontalAdvance("0") * digits + LineNumberPadding)
@@ -1214,6 +1219,7 @@ proc newPane*(
   editorFont.setStyleHint(cint(QFontStyleHintEnum.TypeWriter))
 
   editor.asWidget.setFont(editorFont)
+  discard QObject(h: editor.h, owned: false).setProperty("nide.showLineNumbers", QVariant.create(true))
 
   let editorH = editor.h
   var gutterVtbl = new QWidgetVTable
@@ -1463,6 +1469,7 @@ proc newPane*(
   result.imageZoomLabel = imageZoomLabel
   result.imageScale = 1.0
   result.imageUserZoomed = false
+  result.showLineNumbers = true
   var emptyDoc = newWidget(QTextDocument.create())
   var emptyLayout = newWidget(QPlainTextDocumentLayout.create(emptyDoc))
   emptyDoc.setDocumentLayout(QAbstractTextDocumentLayout(h: emptyLayout.h, owned: false))
@@ -1865,6 +1872,31 @@ proc scrollUp*(pane: Pane) {.raises: [].} =
 
 proc setEditorWheelScrollSpeed*(pane: Pane, speed: int) {.raises: [].} =
   pane.editorWheelScrollSpeed = max(float64(speed), 1.0)
+
+proc setEditorFont*(pane: Pane, family: string, size: int) {.raises: [].} =
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    var font = ed.document().defaultFont()
+    if family.len > 0:
+      font.setFamily(family)
+    if size > 0:
+      font.setPointSize(cint size)
+    ed.asWidget.setFont(font)
+    ed.document().setDefaultFont(font)
+    if pane.emptyDoc.h != nil:
+      QTextDocument(h: pane.emptyDoc.h, owned: false).setDefaultFont(font)
+    ed.updateLineNumberAreaWidth()
+    ed.viewport().update()
+  except CatchableError: discard
+
+proc setLineNumbersVisible*(pane: Pane, visible: bool) {.raises: [].} =
+  pane.showLineNumbers = visible
+  try:
+    let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+    discard QObject(h: ed.h, owned: false).setProperty("nide.showLineNumbers", QVariant.create(visible))
+    ed.updateLineNumberAreaWidth()
+    ed.viewport().update()
+  except CatchableError: discard
 
 proc scrollDown*(pane: Pane) {.raises: [].} =
   try:

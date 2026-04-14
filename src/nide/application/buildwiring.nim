@@ -121,6 +121,11 @@ proc setupPaneManager(self: Application, splitter: QSplitter) =
     resolveNimBackend: proc(): string {.raises: [].} =
       if self.currentProjectBackend.len > 0: self.currentProjectBackend else: "c"
   ))
+  self.paneManager.setEditorFont(
+    self.settings.appearance.font,
+    self.settings.appearance.fontSize)
+  self.paneManager.setLineNumbersVisible(
+    self.settings.appearance.lineNumbers)
   self.paneManager.setEditorWheelScrollSpeed(
     self.settings.appearance.editorWheelScrollSpeed)
 
@@ -620,40 +625,83 @@ proc wireToolbar(self: Application) =
       self.currentProject,
       self.projectConfig,
       proc(updated: Settings, projectConfig: ProjectConfig) {.raises: [].} =
+        let previousSettings = self.settings
+        let previousProjectConfig = self.projectConfig
+        let themeModeChanged =
+          previousSettings.appearance.themeMode != updated.appearance.themeMode
+        let syntaxThemeChanged =
+          previousSettings.appearance.syntaxTheme != updated.appearance.syntaxTheme
+        let editorFontChanged =
+          previousSettings.appearance.font != updated.appearance.font or
+          previousSettings.appearance.fontSize != updated.appearance.fontSize
+        let lineNumbersChanged =
+          previousSettings.appearance.lineNumbers != updated.appearance.lineNumbers
+        let wheelSpeedChanged =
+          previousSettings.appearance.editorWheelScrollSpeed != updated.appearance.editorWheelScrollSpeed
+        let opacityChanged =
+          previousSettings.appearance.opacityEnabled != updated.appearance.opacityEnabled or
+          previousSettings.appearance.opacityLevel != updated.appearance.opacityLevel
+        let keybindingsChanged =
+          previousSettings.keybindingScheme != updated.keybindingScheme or
+          previousSettings.keybindings != updated.keybindings
+        let nimSettingsChanged =
+          previousSettings.nim != updated.nim
+        let projectConfigChanged =
+          previousProjectConfig != projectConfig
+
         self.settings = updated
         self.theme = updated.appearance.themeMode
         self.settings.write()
-        if self.currentProject.len > 0:
+        if self.currentProject.len > 0 and projectConfigChanged:
           self.projectConfig = projectConfig
           saveProjectConfig(self.currentProject, self.projectConfig)
-        applyTheme(self.theme)
-        self.toolbar.applyTheme(self.theme)
-        if self.fileTree != nil:
-          self.fileTree.applyTheme(self.theme)
-        if self.commandPalette != nil:
-          self.commandPalette.applyTheme(self.theme)
-        setCurrentTheme(updated.appearance.syntaxTheme)
-        self.bufferManager.rehighlightAll()
-        for pane in self.paneManager.panels:
-          pane.applyEditorTheme()
-        self.paneManager.updateFocus(QApplication.focusWidget(), self.theme)
-        self.paneManager.setEditorWheelScrollSpeed(
-          updated.appearance.editorWheelScrollSpeed)
-        self.opacityEffect.applyOpacity(
-          updated.appearance.opacityEnabled,
-          updated.appearance.opacityLevel)
+        elif self.currentProject.len > 0:
+          self.projectConfig = projectConfig
+
+        if themeModeChanged:
+          applyTheme(self.theme)
+          self.toolbar.applyTheme(self.theme)
+          if self.fileTree != nil:
+            self.fileTree.applyTheme(self.theme)
+          if self.commandPalette != nil:
+            self.commandPalette.applyTheme(self.theme)
+          self.paneManager.updateFocus(QApplication.focusWidget(), self.theme)
+
+        if syntaxThemeChanged:
+          setCurrentTheme(updated.appearance.syntaxTheme)
+          self.bufferManager.rehighlightAll()
+          for pane in self.paneManager.panels:
+            pane.applyEditorTheme()
+
+        if editorFontChanged:
+          self.paneManager.setEditorFont(
+            updated.appearance.font,
+            updated.appearance.fontSize)
+
+        if lineNumbersChanged:
+          self.paneManager.setLineNumbersVisible(
+            updated.appearance.lineNumbers)
+
+        if wheelSpeedChanged:
+          self.paneManager.setEditorWheelScrollSpeed(
+            updated.appearance.editorWheelScrollSpeed)
+
+        if opacityChanged:
+          self.opacityEffect.applyOpacity(
+            updated.appearance.opacityEnabled,
+            updated.appearance.opacityLevel)
+
         let disp = self.paneManager.dispatcher
-        if disp != nil:
+        if disp != nil and keybindingsChanged:
           disp.resetBindings()
           registerBindings(disp, updated.keybindingScheme)
           disp.applyCustomBindings(updated.keybindings.toTable())
           if self.commandPalette != nil:
             self.commandPalette.refreshItems()
-        if self.currentProject.len > 0:
+
+        if self.currentProject.len > 0 and (nimSettingsChanged or projectConfigChanged):
           self.restartProjectNimIntegration()
-          self.runProjectCheck(),
-      proc(enabled: bool, level: int) {.raises: [].} =
-        self.opacityEffect.applyOpacity(enabled, level)
+          self.runProjectCheck()
     )
 
   self.toolbar.onTriggered(JumpBack) do():

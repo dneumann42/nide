@@ -3,6 +3,7 @@ import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbu
               qabstractspinbox, qsplitter, qlayout, qslider, qabstractslider,
               qgraphicsopacityeffect, qgraphicseffect,
               qtabwidget, qtablewidget, qheaderview, qpushbutton, qkeysequenceedit,
+              qlistwidget,
               qkeysequence, qtableview, qabstractitemview, qradiobutton]
 import std/[tables, algorithm, strutils, os, osproc]
 
@@ -187,10 +188,19 @@ proc showSettingsDialog*(
   current:          Settings,
   currentProjectRoot: string,
   currentProjectConfig: ProjectConfig,
-  onApply:          proc(s: Settings, projectConfig: ProjectConfig) {.raises: [].},
-  onOpacityPreview: proc(enabled: bool, level: int) {.raises: [].} = nil
+  onApply:          proc(s: Settings, projectConfig: ProjectConfig) {.raises: [].}
 ) {.raises: [].} =
   try:
+    var updated = current
+    var updatedProjectConfig = currentProjectConfig
+    var refreshResolvedToolchainLabels:
+      proc() {.raises: [].} = nil
+
+    proc applyChanges() {.raises: [].} =
+      if refreshResolvedToolchainLabels != nil:
+        refreshResolvedToolchainLabels()
+      onApply(updated, updatedProjectConfig)
+
     var dialog = newWidget(QDialog.create(parent))
     let dialogH = dialog.h
 
@@ -268,22 +278,21 @@ proc showSettingsDialog*(
     let sliderH   = opacitySlider.h
     let labelH    = opacityLabel.h
     let checkH    = opacityCheck.h
-    let previewCb = onOpacityPreview
     opacityCheck.onStateChanged do(state: cint) {.raises: [].}:
       let enabled = state != 0
       QWidget(h: sliderH, owned: false).setEnabled(enabled)
       let lvl = int QAbstractSlider(h: sliderH, owned: false).value()
       QGraphicsOpacityEffect(h: contentEffectH, owned: false).applyOpacity(enabled, lvl)
-      if previewCb != nil:
-        previewCb(enabled, lvl)
+      updated.appearance.opacityEnabled = enabled
+      applyChanges()
 
     # Wire slider → update label + live preview
     QAbstractSlider(h: opacitySlider.h, owned: false).onValueChanged do(v: cint) {.raises: [].}:
       QLabel(h: labelH, owned: false).setText($v & "%")
       let enabled = QAbstractButton(h: checkH, owned: false).isChecked()
       QGraphicsOpacityEffect(h: contentEffectH, owned: false).applyOpacity(enabled, int v)
-      if previewCb != nil:
-        previewCb(enabled, int v)
+      updated.appearance.opacityLevel = int v
+      applyChanges()
 
     # Slider row
     var opacityRowLayout = hbox()
@@ -308,6 +317,37 @@ proc showSettingsDialog*(
     let picker = buildThemePickerWidget(
       QWidget(h: appearTabH, owned: false),
       current.appearance.syntaxTheme)
+
+    QComboBox(h: themeModeCombo.h, owned: false).onCurrentIndexChanged do(
+      idx: cint) {.raises: [].}:
+      updated.appearance.themeMode = if idx == 1: Dark else: Light
+      applyChanges()
+
+    QLineEdit(h: fontEdit.h, owned: false).onEditingFinished do() {.raises: [].}:
+      updated.appearance.font = fontEdit.text()
+      applyChanges()
+
+    fontSizeSpin.onValueChanged do(v: cint) {.raises: [].}:
+      updated.appearance.fontSize = int v
+      applyChanges()
+
+    editorWheelScrollSpeedSpin.onValueChanged do(v: cint) {.raises: [].}:
+      updated.appearance.editorWheelScrollSpeed = int v
+      applyChanges()
+
+    lineNumbersCheck.onStateChanged do(state: cint) {.raises: [].}:
+      updated.appearance.lineNumbers = state != 0
+      applyChanges()
+
+    restoreSessionCheck.onStateChanged do(state: cint) {.raises: [].}:
+      updated.restoreLastSessionOnLaunch = state != 0
+      applyChanges()
+
+    QListWidget(h: picker.listWidget.h, owned: false).onCurrentRowChanged do(
+      row: cint) {.raises: [].}:
+      if row >= 0 and row < cint(picker.themes.len):
+        updated.appearance.syntaxTheme = picker.themes[row]
+        applyChanges()
 
     # Appearance tab layout
     var appearLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
@@ -420,14 +460,18 @@ proc showSettingsDialog*(
             let newStr = rawStr.split(", ")[0]
             if newStr.len > 0:
               changesRef[][cmdId] = newStr
+              updated.keybindings = changesRef[].toOverrides()
               refreshKeybindingsTable()
+              applyChanges()
 
         table.setCellWidget(row, cint 2, QWidget(h: setBtnH, owned: false))
 
     QComboBox(h: keybindingSchemeCombo.h, owned: false).onCurrentIndexChanged do(
       idx: cint) {.raises: [].}:
       discard idx
+      updated.keybindingScheme = selectedKeybindingScheme()
       refreshKeybindingsTable()
+      applyChanges()
 
     refreshKeybindingsTable()
 
@@ -514,10 +558,32 @@ proc showSettingsDialog*(
     installWithNimbleRadio.onToggled do(checked: bool) {.raises: [].}:
       if checked:
         updateNimUIVisibility()
+        updated.nim.mode = InstallWithNimble
+        applyChanges()
 
     customPathRadio.onToggled do(checked: bool) {.raises: [].}:
       if checked:
         updateNimUIVisibility()
+        updated.nim.mode = CustomPath
+        applyChanges()
+
+    QLineEdit(h: nimbleInstallPathEdit.h, owned: false).onEditingFinished do() {.raises: [].}:
+      updated.nim.nimbleInstallPath = nimbleInstallPathEdit.text()
+      applyChanges()
+
+    QComboBox(h: nimbleVersionCombo.h, owned: false).onCurrentIndexChanged do(
+      idx: cint) {.raises: [].}:
+      discard idx
+      updated.nim.nimbleVersion = nimbleVersionCombo.currentText()
+      applyChanges()
+
+    QLineEdit(h: customNimPathEdit.h, owned: false).onEditingFinished do() {.raises: [].}:
+      updated.nim.customNimPath = customNimPathEdit.text()
+      applyChanges()
+
+    QLineEdit(h: customNimblePathEdit.h, owned: false).onEditingFinished do() {.raises: [].}:
+      updated.nim.customNimblePath = customNimblePathEdit.text()
+      applyChanges()
 
     testButton.onClicked do() {.raises: [].}:
       let isInstallMode = QAbstractButton(h: installWithNimbleRadioH, owned: false).isChecked()
@@ -716,6 +782,40 @@ proc showSettingsDialog*(
     ))
     resolvedNimSuggestLabel.setWordWrap(true)
 
+    refreshResolvedToolchainLabels = proc() {.raises: [].} =
+      let resolved = resolveProjectToolchain(
+        getNimPath(updated),
+        getNimblePath(updated),
+        currentProjectRoot,
+        updatedProjectConfig
+      )
+      resolvedSourceLabel.setText(
+        if hasOpenProject and updatedProjectConfig.useSystemNim:
+          "Using " & resolved.source
+        elif hasOpenProject:
+          "Using global settings"
+        else:
+          "No project open"
+      )
+      resolvedNimLabel.setText(
+        if resolved.nimCommand.len > 0:
+          resolved.nimCommand
+        else:
+          "Not resolved"
+      )
+      resolvedNimbleLabel.setText(
+        if resolved.nimbleCommand.len > 0:
+          resolved.nimbleCommand
+        else:
+          "Not resolved"
+      )
+      resolvedNimSuggestLabel.setText(
+        if resolved.nimsuggestCommand.len > 0:
+          resolved.nimsuggestCommand
+        else:
+          "Not resolved"
+      )
+
     var projectNimPathEdit = newWidget(QLineEdit.create())
     projectNimPathEdit.setText(currentProjectConfig.nimPath)
     projectNimPathEdit.setPlaceholderText("e.g. /nix/store/.../bin/nim")
@@ -740,6 +840,16 @@ proc showSettingsDialog*(
     useSystemNimCheck.onStateChanged do(state: cint) {.raises: [].}:
       discard state
       updateProjectUIVisibility()
+      updatedProjectConfig.useSystemNim = useSystemNimCheck.asButton.isChecked()
+      applyChanges()
+
+    QLineEdit(h: projectNimPathEdit.h, owned: false).onEditingFinished do() {.raises: [].}:
+      updatedProjectConfig.nimPath = projectNimPathEdit.text()
+      applyChanges()
+
+    QLineEdit(h: projectNimblePathEdit.h, owned: false).onEditingFinished do() {.raises: [].}:
+      updatedProjectConfig.nimblePath = projectNimblePathEdit.text()
+      applyChanges()
 
     var projectForm = newWidget(QFormLayout.create())
     projectForm.setSpacing(FormSpacing)
@@ -779,37 +889,6 @@ proc showSettingsDialog*(
     dialogLayout.addWidget(QWidget(h: contentH, owned: false))
     dialogLayout.applyTo(QWidget(h: dialogH, owned: false))
 
-    if QDialog(h: dialogH, owned: false).exec() == 1:  # Accepted
-      var updated = current
-      updated.appearance.themeMode =
-        if themeModeCombo.currentIndex() == 1: Dark else: Light
-      updated.appearance.font       = fontEdit.text()
-      updated.appearance.fontSize   = int fontSizeSpin.value()
-      updated.appearance.editorWheelScrollSpeed =
-        int editorWheelScrollSpeedSpin.value()
-      updated.appearance.lineNumbers = lineNumbersCheck.asButton.isChecked()
-      updated.restoreLastSessionOnLaunch = restoreSessionCheck.asButton.isChecked()
-      updated.appearance.opacityEnabled = opacityCheck.asButton.isChecked()
-      updated.appearance.opacityLevel =
-        int QAbstractSlider(h: opacitySlider.h, owned: false).value()
-      let chosen = picker.currentThemeSelection()
-      if chosen.len > 0:
-        updated.appearance.syntaxTheme = chosen
-      updated.keybindingScheme = selectedKeybindingScheme()
-      updated.keybindings = customChanges[].toOverrides()
-      if installWithNimbleRadio.asButton.isChecked():
-        updated.nim.mode = InstallWithNimble
-      else:
-        updated.nim.mode = CustomPath
-      updated.nim.nimbleInstallPath = nimbleInstallPathEdit.text()
-      updated.nim.nimbleVersion = nimbleVersionCombo.currentText()
-      updated.nim.customNimPath = customNimPathEdit.text()
-      updated.nim.customNimblePath = customNimblePathEdit.text()
-      var updatedProjectConfig = currentProjectConfig
-      if hasOpenProject:
-        updatedProjectConfig.useSystemNim = useSystemNimCheck.asButton.isChecked()
-        updatedProjectConfig.nimPath = projectNimPathEdit.text()
-        updatedProjectConfig.nimblePath = projectNimblePathEdit.text()
-      onApply(updated, updatedProjectConfig)
+    discard QDialog(h: dialogH, owned: false).exec()
   except CatchableError:
     discard
