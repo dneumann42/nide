@@ -39,6 +39,26 @@ proc highlightedTextColor*(theme: Theme): string =
   case theme
   of Dark, Light: "#000000"
 
+proc chromeIconColor*(theme: Theme, enabled = true): string =
+  if not enabled:
+    mutedTextColor(theme)
+  else:
+    textColor(theme)
+
+proc paneHeaderBaseColor*(theme: Theme): string =
+  case theme
+  of Dark: windowColor(theme)
+  of Light: headerColor(theme)
+
+proc paneHeaderAccentColor*(theme: Theme): string =
+  highlightColor(theme)
+
+proc paneHeaderIconColor*(theme: Theme, focused: bool): string =
+  if focused:
+    "#000000"
+  else:
+    chromeIconColor(theme)
+
 proc applyTheme*(theme: Theme) =
   # Fusion style makes QPalette work reliably cross-platform
   let style = QStyleFactory.createX("Fusion")

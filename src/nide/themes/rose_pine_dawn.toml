@@ -7,7 +7,7 @@ background = "#faf4ed"
 foreground = "#575279"
 lineNumber = "#9893a5"
 lineNumberBg = "#fffaf3"
-selection = "#dfdad9"
+selection = "#e6ddcf"
 currentLine = "#f2e9e1"
 primary = "#286983"
 

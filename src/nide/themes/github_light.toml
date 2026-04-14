@@ -5,9 +5,9 @@ variant = "light"
 [editor]
 background = "#ffffff"
 foreground = "#24292e"
-lineNumber = "#babbbc"
+lineNumber = "#6e7781"
 lineNumberBg = "#fafbfc"
-selection = "#c8c8fa"
+selection = "#dbeafe"
 currentLine = "#f6f8fa"
 primary = "#0366d6"
 

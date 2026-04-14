@@ -7,8 +7,8 @@ background = "#fdf6e3"
 foreground = "#657b83"
 lineNumber = "#93a1a1"
 lineNumberBg = "#eee8d5"
-selection = "#eee8d5"
-currentLine = "#eee8d5"
+selection = "#e6ddc4"
+currentLine = "#f4eed7"
 primary = "#268bd2"
 
 [syntax]

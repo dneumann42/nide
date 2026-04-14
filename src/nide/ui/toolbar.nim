@@ -2,6 +2,7 @@ import std/[tables, strutils]
 import seaqt/[qtoolbar, qtoolbutton, qmenu, qwidget, qlayout, qaction, qapplication,
               qabstractbutton, qsize, qicon, qlabel, qhboxlayout, qpushbutton, qpoint,
               qscrollarea, qvboxlayout, qscroller]
+import nide/settings/theme
 import nide/ui/widgets
 import nide/helpers/logparser
 import nide/helpers/qtconst, nide/helpers/uicolors
@@ -65,6 +66,7 @@ type
     diagWarnBtn: QToolButton
     diagErrBtn: QToolButton
     diagNavigateCb: proc(path: string, line, col: int) {.raises: [].}
+    currentTheme: Theme
 
 proc build(self: ToolMenu) =
   self.button = QToolButton.create()
@@ -135,6 +137,7 @@ proc buildNimMenu(self: Toolbar) =
   discard self.toolbar.addWidget(self.nimMenu.button)
 
 proc build*(self: Toolbar) =
+  self.currentTheme = Dark
   self.toolbar = QToolbar.create()
   self.toolbar.setMovable(false)
   self.toolbar.setIconSize(QSize.create(ToolbarIconSize, ToolbarIconSize))
@@ -201,6 +204,26 @@ proc build*(self: Toolbar) =
   self.settingsBtn = makeIconButton(GearSvg, ToolbarIconSize)
   discard self.toolbar.addWidget(self.settingsBtn)
 
+proc applyTheme*(self: Toolbar, theme: Theme) {.raises: [].} =
+  if self == nil:
+    return
+  self.currentTheme = theme
+  let iconColor = chromeIconColor(theme)
+  let fileTreeColor =
+    chromeIconColor(theme,
+      self.fileTreeBtn.h != nil and self.fileTreeBtn.asWidget.isEnabled())
+
+  if self.fileTreeBtn.h != nil:
+    self.fileTreeBtn.asButton.setIcon(svgIcon(FileTreeSvg, ToolbarIconSize, fileTreeColor))
+  if self.graphBtn.h != nil:
+    self.graphBtn.asButton.setIcon(svgIcon(GraphSvg, ToolbarIconSize, iconColor))
+  if self.runBtn.h != nil:
+    self.runBtn.asButton.setIcon(svgIcon(RunSvg, ToolbarIconSize, iconColor))
+  if self.buildBtn.h != nil:
+    self.buildBtn.asButton.setIcon(svgIcon(BuildSvg, ToolbarIconSize, iconColor))
+  if self.settingsBtn.h != nil:
+    self.settingsBtn.asButton.setIcon(svgIcon(GearSvg, ToolbarIconSize, iconColor))
+
 proc setProjectName*(self: Toolbar, name: string) =
   self.projectLabel.setText(name)
 
@@ -221,9 +244,7 @@ proc onNewPane*(self: Toolbar, triggered: proc() {.raises: [].}) =
 
 proc setFileTreeEnabled*(self: Toolbar, enabled: bool) =
   self.fileTreeBtn.asWidget.setEnabled(enabled)
-
-proc setFileTreeIconColor*(self: Toolbar, color: string) =
-  self.fileTreeBtn.asButton.setIcon(svgIcon(FileTreeSvg, ToolbarIconSize, color))
+  self.applyTheme(self.currentTheme)
 
 proc onFileTreeToggle*(self: Toolbar, triggered: proc() {.raises: [].}) =
   self.fileTreeBtn.onClicked(triggered)

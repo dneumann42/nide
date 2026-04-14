@@ -1,6 +1,8 @@
 import std/[os, strutils]
 import seaqt/[qabstractscrollarea, qcheckbox, qimage, qlabel, qpixmap, qplaintextedit,
-              qresizeevent, qscrollarea, qstackedwidget, qwidget]
+              qresizeevent, qscrollarea, qstackedwidget, qsyntaxhighlighter,
+              qtextdocument, qwidget]
+import nide/editor/highlight
 import nide/helpers/qtconst
 import nide/ui/widgets
 
@@ -27,6 +29,7 @@ type FilePreviewWidget* = ref object
   imageLabel*: QLabel
   placeholder*: QLabel
   filterCheck*: QCheckBox
+  highlighter*: EditorHighlighter
   imagePixmapH: pointer
 
 proc isBinarySample*(sample: openArray[char]): bool {.raises: [].} =
@@ -123,6 +126,12 @@ proc updateImagePreview*(preview: FilePreviewWidget) {.raises: [].} =
   preview.imageLabel.setPixmap(scaled)
   preview.imageLabel.asWidget.resize(scaled.size())
 
+proc clearHighlighter(preview: FilePreviewWidget) {.raises: [].} =
+  if preview == nil or preview.highlighter == nil:
+    return
+  QSyntaxHighlighter(h: preview.highlighter[].h, owned: false).setDocument(QTextDocument())
+  preview.highlighter = nil
+
 proc newFilePreviewWidget*(parent: QWidget, showFilter = true): FilePreviewWidget =
   result = FilePreviewWidget()
 
@@ -183,9 +192,15 @@ proc setPreviewForFile*(preview: FilePreviewWidget, path: string): FilePreviewKi
   let (kind, content) = loadFilePreview(path)
   case kind
   of fpkText:
+    preview.clearHighlighter()
     preview.textPreview.setPlainText(content)
+    let hl = createHighlighterForPath(path)
+    if hl != nil:
+      hl.attach(preview.textPreview.document())
+    preview.highlighter = hl
     preview.stack.setCurrentWidget(preview.textPreview.asWidget)
   of fpkImage:
+    preview.clearHighlighter()
     let (ok, pixmap) = loadImagePixmap(path)
     if not ok:
       preview.placeholder.setText(PreviewReadErrorPlaceholder)
@@ -195,6 +210,7 @@ proc setPreviewForFile*(preview: FilePreviewWidget, path: string): FilePreviewKi
     preview.updateImagePreview()
     preview.stack.setCurrentWidget(preview.imageScroll.asWidget)
   of fpkBinary, fpkError:
+    preview.clearHighlighter()
     preview.placeholder.setText(content)
     preview.stack.setCurrentWidget(preview.placeholder.asWidget)
   result = kind

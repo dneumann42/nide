@@ -1,6 +1,6 @@
 import nide/pane/logic
 export logic
-import nide/editor/autocomplete, nide/editor/buffers, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/syntaxtheme, nide/helpers/widgetref, nide/ui/widgets
+import nide/editor/autocomplete, nide/editor/buffers, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/[syntaxtheme, theme], nide/helpers/widgetref, nide/ui/widgets
 import nide/helpers/[debuglog, qtconst]
 import seaqt/[qabstractbutton, qabstractitemview, qabstractscrollarea, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qresizeevent, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[math, options, os, strutils]
@@ -170,7 +170,6 @@ const
   ImageZoomStep = 1.25
   MinImageZoom = 0.1
   MaxImageZoom = 16.0
-
 
 proc widget*(pane: Pane): QWidget =
   QWidget(h: pane.container.h, owned: false)
@@ -1569,14 +1568,17 @@ proc newPane*(
       showDiagPopup(pane, ed, diags,
         QPoint.create(rect.left(), rect.top() + rect.height()))
 
-proc setHeaderFocus*(pane: Pane, focused: bool, isDark: bool) =
-  let iconColor = if focused: "#000000" else: "#ffffff"
+proc setHeaderFocus*(pane: Pane, focused: bool, theme: Theme) =
+  let iconColor = paneHeaderIconColor(theme, focused)
   const headerIconSize = 10
   if focused:
-    let (rightColor, _) = headerGradientColors(isDark)
-    pane.headerBar.setStyleSheet("#headerBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #000000, stop:0.95 " & rightColor & "); }")
+    let baseColor = paneHeaderBaseColor(theme)
+    let accentColor = paneHeaderAccentColor(theme)
+    pane.headerBar.setStyleSheet(
+      "#headerBar { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0.7 " &
+      baseColor & ", stop:0.99 " & accentColor & "); }")
   else:
-    pane.headerBar.setStyleSheet("#headerBar { background: #000000; }")
+    pane.headerBar.setStyleSheet("#headerBar { background: " & paneHeaderBaseColor(theme) & "; }")
   pane.saveBtn.get().asButton.setIcon(svgIcon(SaveSvg, cint headerIconSize, iconColor))
   pane.vSplitBtn.get().asButton.setIcon(svgIcon(VsplitSvg, cint headerIconSize, iconColor))
   pane.hSplitBtn.get().asButton.setIcon(svgIcon(HsplitSvg, cint headerIconSize, iconColor))

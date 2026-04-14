@@ -627,6 +627,7 @@ proc wireToolbar(self: Application) =
           self.projectConfig = projectConfig
           saveProjectConfig(self.currentProject, self.projectConfig)
         applyTheme(self.theme)
+        self.toolbar.applyTheme(self.theme)
         if self.fileTree != nil:
           self.fileTree.applyTheme(self.theme)
         if self.commandPalette != nil:
@@ -635,6 +636,7 @@ proc wireToolbar(self: Application) =
         self.bufferManager.rehighlightAll()
         for pane in self.paneManager.panels:
           pane.applyEditorTheme()
+        self.paneManager.updateFocus(QApplication.focusWidget(), self.theme)
         self.paneManager.setEditorWheelScrollSpeed(
           updated.appearance.editorWheelScrollSpeed)
         self.opacityEffect.applyOpacity(
@@ -791,7 +793,7 @@ proc wireFocusTracking(self: Application) =
   let appInstance = QApplication(h: QCoreApplication.instance().h, owned: false)
   appInstance.onFocusChanged do(old, now: QWidget):
     try:
-      self.paneManager.updateFocus(now, self.theme == Dark)
+      self.paneManager.updateFocus(now, self.theme)
       discard old
       self.requestSessionSave()
     except CatchableError:
@@ -820,11 +822,13 @@ proc build*(self: Application) =
 
   self.theme = Dark
   applyTheme(self.theme)
+  self.toolbar.applyTheme(self.theme)
 
   logInfo("application: Loading settings...")
   self.settings = Settings.load()
   self.theme = self.settings.appearance.themeMode
   applyTheme(self.theme)
+  self.toolbar.applyTheme(self.theme)
   self.fileTree.applyTheme(self.theme)
 
   self.opacityEffect = setupWindowOpacity(
@@ -837,6 +841,7 @@ proc build*(self: Application) =
   setCurrentTheme(self.settings.appearance.syntaxTheme)
 
   self.setupPaneManager(splitter)
+  self.paneManager.updateFocus(QApplication.focusWidget(), self.theme)
   self.setupCommandDispatcher()
   commandPaletteCell[] = self.commandPalette
   self.wireFileTree()

@@ -3,6 +3,7 @@ import nide/pane/pane, nide/helpers/widgetref, nide/nim/nimsuggest
 import commands
 import std/algorithm
 import nide/helpers/qtconst
+import nide/settings/theme
 import nide/ui/widgets
 
 const SplitterHandleWidth = cint 4
@@ -317,9 +318,9 @@ proc setProjectOpen*(self: PaneManager, open: bool) =
   for panel in self.panels:
     panel.setProjectOpen(open)
 
-proc updateFocus*(self: PaneManager, focusedWidget: QWidget, isDark: bool) =
+proc updateFocus*(self: PaneManager, focusedWidget: QWidget, theme: Theme) =
   for p in self.panels:
     let focused = focusedWidget.h != nil and p.widget().isAncestorOf(focusedWidget)
-    p.setHeaderFocus(focused, isDark)
+    p.setHeaderFocus(focused, theme)
     if focused:
       self.lastFocusedPane = p

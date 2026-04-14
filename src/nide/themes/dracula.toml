@@ -3,12 +3,12 @@ name = "Dracula"
 variant = "dark"
 
 [editor]
-background = "#000000"
+background = "#282a36"
 foreground = "#f8f8f2"
 lineNumber = "#6272a4"
-lineNumberBg = "#000000"
+lineNumberBg = "#282a36"
 selection = "#44475a"
-currentLine = "#44475a"
+currentLine = "#343746"
 primary = "#bd93f9"
 
 [syntax]

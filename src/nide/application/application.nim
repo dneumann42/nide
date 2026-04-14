@@ -191,7 +191,7 @@ proc openProject*(self: Application, path: string, restoreMode = false) {.raises
   self.projectManager.recordOpenedProject(path)
   self.fileTree.setRoot(dir)
   self.toolbar.setFileTreeEnabled(true)
-  self.toolbar.setFileTreeIconColor("#ffffff")
+  self.toolbar.applyTheme(self.theme)
   self.restartProjectNimIntegration()
   if not restoreMode:
     self.paneManager.panels[0].triggerOpenModule()
@@ -217,7 +217,7 @@ proc closeProject*(self: Application) {.raises: [].} =
   self.toolbar.setProjectName("—")
   self.fileTree.setRoot("")
   self.toolbar.setFileTreeEnabled(false)
-  self.toolbar.setFileTreeIconColor("#888888")
+  self.toolbar.applyTheme(self.theme)
   if self.nimSuggest != nil:
     self.nimSuggest.kill()
     self.nimSuggest = nil

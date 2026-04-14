@@ -3,10 +3,10 @@ name = "Solarized Dark"
 variant = "dark"
 
 [editor]
-background = "#000000"
+background = "#002b36"
 foreground = "#839496"
 lineNumber = "#586e75"
-lineNumberBg = "#000000"
+lineNumberBg = "#002b36"
 selection = "#073642"
 currentLine = "#073642"
 primary = "#268bd2"
