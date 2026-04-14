@@ -1,14 +1,8 @@
-import seaqt/[qwidget, qvboxlayout, qtreeview, qfilesystemmodel, qabstractitemview,
-               qabstractitemmodel, qabstractscrollarea, qheaderview, qlabel,
-               qabstractfileiconprovider, qmenu, qaction, qcontextmenuevent,
-               qdragenterevent, qdragmoveevent, qdropevent, qmimedata, qurl,
-               qshortcut, qkeysequence, qobject]
-import std/[os, strutils]
-import nide/helpers/devicons
-import nide/helpers/fspaths
-import nide/helpers/qtconst
+import nide/helpers/[devicons, fspaths, qtconst]
 import nide/settings/theme
 import nide/ui/widgets
+import seaqt/[qabstractfileiconprovider, qabstractitemmodel, qabstractitemview, qabstractscrollarea, qaction, qcontextmenuevent, qdragenterevent, qdragmoveevent, qdropevent, qfilesystemmodel, qheaderview, qkeysequence, qlabel, qmenu, qmimedata, qobject, qshortcut, qtreeview, qurl, qvboxlayout, qwidget]
+import std/os
 
 const TreeWidth = 320
 const TreeHeight = 420

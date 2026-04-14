@@ -222,7 +222,7 @@ proc stringToKeyCombo*(s: string): KeyCombo {.raises: [].} =
   
   let parts = s.split(' ')
   if parts.len == 2:
-    let prefixCombo = stringToKeyCombo(parts[0])
+    # let prefixCombo = stringToKeyCombo(parts[0])
     let keyCombo = stringToKeyCombo(parts[1])
     return keyCombo
   elif parts.len > 2:
@@ -234,7 +234,7 @@ proc stringToKeyCombo*(s: string): KeyCombo {.raises: [].} =
         prefixStr &= p
       else:
         keyStr = p
-    let prefixCombo = stringToKeyCombo(prefixStr)
+    # let prefixCombo = stringToKeyCombo(prefixStr)
     let keyCombo = stringToKeyCombo(keyStr)
     return keyCombo
   

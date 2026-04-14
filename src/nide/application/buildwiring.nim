@@ -1,19 +1,17 @@
 import commands
-import nide/application/application_types
-import nide/application/application
-import nide/application/filetreeops
+import nide/panemanager
+import nide/application/[application, application_types, filetreeops]
 import nide/dialogs/[graphdialog, moduledialog, projectdialog, themedialog]
 import nide/editor/buffers
-import nide/helpers/[debuglog, fspaths, logparser, qtconst, runner, widgetref]
-import nide/navigation/[rgfinder, sessionstate]
-import nide/nim/[nimcheck, nimproject, nimsuggest]
+import nide/helpers/[debuglog, logparser, qtconst, runner, widgetref]
+import nide/navigation/rgfinder
+import nide/nim/nimsuggest
 import nide/pane/pane
-import nide/panemanager
 import nide/project/[filefinder, projects]
 import nide/settings/[projectconfig, settings, syntaxtheme, theme, toolchain]
 import nide/ui/[commandpalette, filepreview, filetree, opacity, toolbar, widgets]
-import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
-import std/[options, os, strutils]
+import seaqt/[qabstractbutton, qapplication, qcoreapplication, qfiledialog, qfilesystemwatcher, qguiapplication, qmainwindow, qmessagebox, qplaintextedit, qresizeevent, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
+import std/[os, strutils]
 import tools/nim_graph
 
 proc createStatusButton(self: Application, text: string, parentH: pointer): WidgetRef[QToolButton] =
@@ -141,8 +139,8 @@ proc setupCommandDispatcher(self: Application) =
       return
     discard p.moveCursor(cint(op))
 
-  proc moveTarget(op: QTextCursorMoveOperationEnum) {.raises: [].} =
-    moveTarget(cint(op))
+  # proc moveTarget(op: QTextCursorMoveOperationEnum) {.raises: [].} =
+  #   moveTarget(cint(op))
 
   disp.register("editor.chordCx", "Prefix: C-x") do() {.raises: [].}:
     disp.inChord = true

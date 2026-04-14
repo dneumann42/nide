@@ -1,18 +1,17 @@
 import commands, toml_serialization
-import nide/application/application_types
-export application_types
 import nide/panemanager
-import nide/application/sessionops
+import nide/application/[application_types, sessionops]
 import nide/editor/buffers
-import nide/helpers/[debuglog, fspaths, logparser, qtconst, runner, widgetref]
-import nide/navigation/[rgfinder, sessionstate]
+import nide/helpers/[debuglog, logparser, qtconst]
+import nide/navigation/sessionstate
 import nide/nim/[nimcheck, nimproject, nimsuggest]
 import nide/pane/pane
-import nide/project/[filefinder, projects]
-import nide/settings/[projectconfig, settings, syntaxtheme, theme, toolchain]
-import nide/ui/[commandpalette, filetree, opacity, toolbar, widgets]
+import nide/project/projects
+import nide/settings/[projectconfig, settings, toolchain]
+import nide/ui/[filetree, toolbar, widgets]
 import seaqt/[qabstractbutton, qapplication, qclipboard, qcoreapplication, qfiledialog, qfilesystemwatcher, qgraphicsopacityeffect, qguiapplication, qinputdialog, qkeysequence, qmainwindow, qmessagebox, qobject, qplaintextedit, qprocess, qresizeevent, qshortcut, qsplitter, qtextcursor, qtextdocument, qtextedit, qtimer, qtoolbar, qtoolbutton, qwidget]
-import std/[options, os, strutils]
+import std/[options, os]
+export application_types
 
 proc getTargetPane*(self: Application): Pane {.raises: [].} =
   result = self.paneManager.lastFocusedPane
@@ -27,7 +26,7 @@ proc openFile*(self: Application, path: string): Buffer {.raises: [].} =
   when defined(debugFileWatcher):
     echo "[FileWatcher] openFile: ", path
   if result.path.len > 0:
-    let added = self.fileWatcher.addPath(result.path)
+    discard self.fileWatcher.addPath(result.path)
     when defined(debugFileWatcher):
       echo "[FileWatcher] addPath result: ", added, ", files: ", self.fileWatcher.files()
     if self.currentProject.len > 0:
@@ -293,8 +292,6 @@ proc closeBuffer*(self: Application, name: string) {.raises: [].} =
       panel.clearBuffer()
   self.bufferManager.close(name)
   self.requestSessionSave()
-
-import nide/application/filetreeops
 
 proc show*(self: Application) =
   self.root.show()

@@ -1,5 +1,5 @@
 import nide/application/[application, buildwiring]
-import nide/helpers/[debuglog, qtconst]
+import nide/helpers/debuglog
 import seaqt/qapplication
 
 proc start() =

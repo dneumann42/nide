@@ -1,7 +1,6 @@
-import seaqt/[qwidget, qvboxlayout, qlabel, qdialog, qpainter, qrect, qcursor]
-import nide/nim/nimsuggest
 import nide/helpers/[debuglog, qtconst]
 import nide/ui/widgets
+import seaqt/[qdialog, qlabel, qvboxlayout, qwidget]
 
 const
   ProtoMinWidth = cint 450

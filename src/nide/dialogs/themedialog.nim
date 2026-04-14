@@ -1,11 +1,8 @@
-import std/[strutils, tables]
-import seaqt/[qwidget, qvboxlayout, qhboxlayout, qlayout, qdialog,
-              qlistwidget, qlistwidgetitem, qplaintextedit, qfont,
-              qsplitter, qdialogbuttonbox, qlabel, qpalette, qcolor, qbrush,
-              qshortcut, qkeysequence, qobject, qcombobox]
-import nide/settings/syntaxtheme, nide/editor/highlight
+import nide/editor/highlight
 import nide/helpers/qtconst
+import nide/settings/syntaxtheme
 import nide/ui/widgets
+import seaqt/[qbrush, qcolor, qcombobox, qdialog, qdialogbuttonbox, qfont, qhboxlayout, qkeysequence, qlabel, qlayout, qlistwidget, qlistwidgetitem, qobject, qpalette, qplaintextedit, qshortcut, qsplitter, qvboxlayout, qwidget]
 
 const
   PreviewFontSize = 11

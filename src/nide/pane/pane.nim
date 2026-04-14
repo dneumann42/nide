@@ -152,7 +152,7 @@ const AutocompleteRefreshMs = cint 120
 
 const
   DiagBtnFontSize = "11px"
-  DiagPopupFontSize = "13px"
+  # DiagPopupFontSize = "13px"
   DiagPopupYOffset = cint 18
   LineNumberPadding = 12
   WelcomeCardMinWidth = cint 480
@@ -708,7 +708,7 @@ proc lineNumberAreaPaintEvent(editor: QPlainTextEdit, event: QPaintEvent, gutter
     while blk.isValid():
       let geo = editor.blockBoundingGeometry(blk)
       let top = cint(geo.top() + offset.y())
-      let blockH = cint(geo.height())
+      # let blockH = cint(geo.height())
       if top >= gutter.height(): break
       let numStr = $(blk.blockNumber() + 1)
       let lineH = cint(QFontMetrics.create(editorFont).height())
@@ -787,7 +787,7 @@ proc showDiagPopover(pane: Pane, filterLevel: LogLevel) {.raises: [].} =
     for ll in pane.diagLines[]:
       if ll.file != pane.buffer.path: continue
       if ll.level != filterLevel: continue
-      let (label, color) = case ll.level
+      let (label, _) = case ll.level
         of llError:   ("Error",   "#ff5555")
         of llWarning: ("Warning", "#ffaa00")
         of llHint:    ("Hint",    "#00cccc")

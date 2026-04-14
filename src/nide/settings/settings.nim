@@ -1,24 +1,11 @@
-import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbuttonbox,
-              qlineedit, qcheckbox, qspinbox, qcombobox, qabstractbutton, qlabel,
-              qabstractspinbox, qsplitter, qlayout, qslider, qabstractslider,
-              qgraphicsopacityeffect, qgraphicseffect,
-              qtabwidget, qtablewidget, qheaderview, qpushbutton, qkeysequenceedit,
-              qlistwidget,
-              qkeysequence, qtableview, qabstractitemview, qradiobutton]
-import std/[tables, algorithm, strutils, os, osproc]
-
-import nide/settings/theme
-import nide/settings/keybindings
-import nide/settings/nimbleinstaller
-import nide/settings/projectconfig
-import nide/settings/toolchain
-import nide/dialogs/themedialog
-import nide/ui/opacity
-import nide/settings/settingsstore
-import nide/dialogs/projectdialog
 import commands
+import nide/dialogs/[projectdialog, themedialog]
 import nide/helpers/qtconst
-import nide/ui/widgets
+import nide/settings/[keybindings, nimbleinstaller, projectconfig, settingsstore, theme, toolchain]
+import nide/ui/[opacity, widgets]
+import seaqt/[qabstractbutton, qabstractitemview, qabstractslider, qabstractspinbox, qcheckbox, qcombobox, qdialog, qdialogbuttonbox, qformlayout, qgraphicseffect, qgraphicsopacityeffect, qhboxlayout, qheaderview, qkeysequence, qkeysequenceedit, qlabel, qlayout, qlineedit, qlistwidget, qpushbutton, qradiobutton, qslider, qspinbox, qsplitter, qtableview, qtablewidget, qtabwidget, qvboxlayout, qwidget]
+import std/[algorithm, os, osproc, strutils, tables]
+
 
 const
   MinFontSize = cint 6
@@ -29,6 +16,8 @@ const
   MaxOpacity = cint 100
   OpacityStep = cint 5
   OpacityLabelMinWidth = cint 36
+  KeybindDefaultColWidth = cint 150
+  KeybindSourceColWidth = cint 80
   KeybindSetColWidth = cint 60
   KeyCaptureWidth = cint 360
   KeyCaptureHeight = cint 130
@@ -66,7 +55,7 @@ type
   Settings* = object
     appearance*:  AppearanceSettings
     restoreLastSessionOnLaunch*: bool
-    keybindingScheme*: KeybindingScheme
+    keybindingScheme*: KeybindingScheme = VSCode
     keybindings*: seq[KeybindingOverride]
     nim*: NimEnvironmentSettings  ## user-defined overrides, e.g. {command: "editor.forwardChar", key: "Ctrl+T"}
 
@@ -127,7 +116,8 @@ proc toRuntime(stored: StoredSettings): Settings =
   if stored.appearance.opacityLevel > 0:
     result.appearance.opacityLevel = stored.appearance.opacityLevel
   result.restoreLastSessionOnLaunch = stored.restoreLastSessionOnLaunch
-  result.keybindingScheme = parseKeybindingScheme(stored.keybindingScheme)
+  if stored.keybindingScheme.len > 0:
+    result.keybindingScheme = parseKeybindingScheme(stored.keybindingScheme)
   result.keybindings = stored.keybindings.toRuntime()
   case stored.nim.mode
   of "installWithNimble": result.nim.mode = InstallWithNimble
@@ -371,7 +361,7 @@ proc showSettingsDialog*(
     keybindingSchemeCombo.setCurrentIndex(
       if current.keybindingScheme == VSCode: cint 1 else: cint 0)
 
-    var kbTable = newWidget(QTableWidget.create(cint 0, cint 3))
+    var kbTable = newWidget(QTableWidget.create(cint 0, cint 5))
     let kbTableH = kbTable.h
 
     # Table configuration: no editing, select rows, no grid
@@ -379,13 +369,17 @@ proc showSettingsDialog*(
     QAbstractItemView(h: kbTableH, owned: false).setSelectionBehavior(SB_SelectRows)
     QTableView(h: kbTableH, owned: false).setShowGrid(false)
     QTableWidget(h: kbTableH, owned: false).setHorizontalHeaderLabels(
-      @["Command", "Binding", ""])
+      @["Command", "Binding", "Default", "Source", ""])
     let hdr = QTableView(h: kbTableH, owned: false).horizontalHeader()
     hdr.setStretchLastSection(false)
     hdr.setSectionResizeMode(cint 0, HR_ResizeToContents)
     hdr.setSectionResizeMode(cint 1, HR_ResizeToContents)
     hdr.setSectionResizeMode(cint 2, HR_Fixed)
-    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 2, KeybindSetColWidth)
+    hdr.setSectionResizeMode(cint 3, HR_Fixed)
+    hdr.setSectionResizeMode(cint 4, HR_Fixed)
+    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 2, KeybindDefaultColWidth)
+    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 3, KeybindSourceColWidth)
+    QHeaderView(h: hdr.h, owned: false).resizeSection(cint 4, KeybindSetColWidth)
     let vhdr = QTableView(h: kbTableH, owned: false).verticalHeader()
     vhdr.asWidget.setVisible(false)
 
@@ -398,11 +392,17 @@ proc showSettingsDialog*(
 
     proc refreshKeybindingsTable() {.raises: [].}
 
+    proc applyKeybindingSchemeSelection() {.raises: [].} =
+      updated.keybindingScheme = selectedKeybindingScheme()
+      refreshKeybindingsTable()
+      applyChanges()
+
     proc refreshKeybindingsTable() {.raises: [].} =
       var allBindings = defaultBindingList(selectedKeybindingScheme())
       allBindings.sort(proc(a, b: BindingEntry): int = cmp(a.id, b.id))
 
       let table = QTableWidget(h: kbTableH, owned: false)
+      table.setRowCount(cint 0)
       table.clearContents()
       table.setRowCount(cint allBindings.len)
 
@@ -414,19 +414,34 @@ proc showSettingsDialog*(
         table.setItem(row, cint 0, idItem)
 
         var bindStr: string
+        var defaultBindStr: string
         let customBinding = customChanges[].getOrDefault(entry.id, "")
+        let isCustom = customBinding.len > 0
+        if entry.combo.key == 0:
+          defaultBindStr = ""
+        elif entry.isChord and entry.chordPrefix.len > 0:
+          defaultBindStr = entry.chordPrefix & " " & keyComboToString(entry.combo)
+        else:
+          defaultBindStr = keyComboToString(entry.combo)
         if customBinding.len > 0:
           bindStr = customBinding
-        elif entry.combo.key == 0:
-          bindStr = ""
-        elif entry.isChord and entry.chordPrefix.len > 0:
-          bindStr = entry.chordPrefix & " " & keyComboToString(entry.combo)
         else:
-          bindStr = keyComboToString(entry.combo)
+          bindStr = defaultBindStr
 
         var bindItem = newWidget(QTableWidgetItem.create(bindStr))
         bindItem.setFlags(IF_SelectableEnabled)
         table.setItem(row, cint 1, bindItem)
+
+        var defaultItem = newWidget(QTableWidgetItem.create(defaultBindStr))
+        defaultItem.setFlags(IF_SelectableEnabled)
+        table.setItem(row, cint 2, defaultItem)
+
+        let sourceLabel =
+          if isCustom: "User"
+          else: "Default"
+        var sourceItem = newWidget(QTableWidgetItem.create(sourceLabel))
+        sourceItem.setFlags(IF_SelectableEnabled)
+        table.setItem(row, cint 3, sourceItem)
 
         var setBtn = newWidget(QPushButton.create("Set"))
         let setBtnH = setBtn.h
@@ -464,14 +479,17 @@ proc showSettingsDialog*(
               refreshKeybindingsTable()
               applyChanges()
 
-        table.setCellWidget(row, cint 2, QWidget(h: setBtnH, owned: false))
+        table.setCellWidget(row, cint 4, QWidget(h: setBtnH, owned: false))
 
     QComboBox(h: keybindingSchemeCombo.h, owned: false).onCurrentIndexChanged do(
       idx: cint) {.raises: [].}:
       discard idx
-      updated.keybindingScheme = selectedKeybindingScheme()
-      refreshKeybindingsTable()
-      applyChanges()
+      applyKeybindingSchemeSelection()
+
+    QComboBox(h: keybindingSchemeCombo.h, owned: false).onActivated do(
+      idx: cint) {.raises: [].}:
+      discard idx
+      applyKeybindingSchemeSelection()
 
     refreshKeybindingsTable()
 
@@ -537,12 +555,10 @@ proc showSettingsDialog*(
     let nimbleVersionComboH = nimbleVersionCombo.h
     let customNimPathEditH = customNimPathEdit.h
     let customNimblePathEditH = customNimblePathEdit.h
-    let testButtonH = testButton.h
     let installNimbleButtonH = installNimbleButton.h
     let installButtonH = installButton.h
     let testResultLabelH = testResultLabel.h
     let installWithNimbleRadioH = installWithNimbleRadio.h
-    let customPathRadioH = customPathRadio.h
 
     proc updateNimUIVisibility() {.raises: [].} =
       let isInstallMode = QAbstractButton(h: installWithNimbleRadioH, owned: false).isChecked()

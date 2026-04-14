@@ -321,7 +321,7 @@ proc showDiagPopover*(self: Toolbar, parentH: pointer, lines: seq[LogLine], filt
 
     for ll in lines:
       if ll.level != filterLevel: continue
-      let (label, color) = case ll.level
+      let (label, _) = case ll.level
         of llError:   ("Error",   clRed)
         of llWarning: ("Warning", clYellow)
         of llHint:    ("Hint",    "#00cccc")
