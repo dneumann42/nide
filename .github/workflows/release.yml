@@ -48,10 +48,10 @@ jobs:
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Set up nimble deps
-        run: nimble --useSystemNim --noLockfile setup
+        run: nimble --useSystemNim setup
 
       - name: Build nide
-        run: nimble --useSystemNim --noLockfile build -d:release
+        run: nimble --useSystemNim build -d:release
 
       - name: Bundle ripgrep
         run: |
@@ -242,11 +242,11 @@ jobs:
           echo "PKG_CONFIG_PATH=${QT_ROOT_DIR}/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Set up nimble deps
-        run: nimble --useSystemNim --noLockfile setup
+        run: nimble --useSystemNim setup
 
       - name: Build nide binary (patchelf'd for flatpak runtime)
         run: |
-          nimble --useSystemNim --noLockfile build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
+          nimble --useSystemNim build -d:release --dynlibOverride:pcre --passL:"-Wl,-Bstatic,-lpcre,-Bdynamic"
           patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 nide
           patchelf --set-rpath "" nide
 
