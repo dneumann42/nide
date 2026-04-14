@@ -31,6 +31,7 @@ type
   StoredSettings* = object
     appearance*: StoredAppearanceSettings
     restoreLastSessionOnLaunch*: bool
+    keybindingScheme*: string
     keybindings*: seq[StoredKeybindingOverride]
     nim*: StoredNimSettings
 

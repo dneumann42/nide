@@ -3,7 +3,7 @@ import std/strutils
 import std/algorithm
 import nide/settings/keybindings
 
-export KeyCombo, combo, ctrlMod, altMod, shiftMod, noMod
+export KeybindingScheme, KeyCombo, combo, ctrlMod, altMod, shiftMod, noMod
 
 type
   CommandId* = string
@@ -23,6 +23,21 @@ type
     single:   Table[KeyCombo, CommandId]
     chordCx:  Table[KeyCombo, CommandId]
     inChord*: bool
+
+proc removeBindingsForCommand(d: CommandDispatcher, id: CommandId) {.raises: [].} =
+  var singleToRemove: seq[KeyCombo]
+  for key, value in d.single:
+    if value == id:
+      singleToRemove.add(key)
+  for key in singleToRemove:
+    d.single.del(key)
+
+  var chordToRemove: seq[KeyCombo]
+  for key, value in d.chordCx:
+    if value == id:
+      chordToRemove.add(key)
+  for key in chordToRemove:
+    d.chordCx.del(key)
 
 proc register*(d: CommandDispatcher, id: CommandId, cmd: Command) =
   d.commands[id] = cmd
@@ -67,9 +82,8 @@ proc execute*(d: CommandDispatcher, id: CommandId): bool =
   cmd()
   true
 
-proc registerDefaultBindings*(d: CommandDispatcher) =
+proc registerEmacsBindings(d: CommandDispatcher) {.raises: [].} =
   ## Bind the default Emacs-style key combos to command IDs.
-  ## Single-key bindings
   d.bindKey(combo(0x46, ctrlMod), "editor.forwardChar")
   d.bindKey(combo(0x42, ctrlMod), "editor.backwardChar")
   d.bindKey(combo(0x4E, ctrlMod), "editor.nextLine")
@@ -124,7 +138,50 @@ proc registerDefaultBindings*(d: CommandDispatcher) =
   d.bindChordKey(combo(0x43, ctrlMod), "editor.quitApplication")
   d.bindChordKey(combo(0x46, ctrlMod), "editor.findFile")
 
-proc keyComboToString*(c: KeyCombo): string =
+proc registerVSCodeBindings(d: CommandDispatcher) {.raises: [].} =
+  registerEmacsBindings(d)
+
+  d.removeBindingsForCommand("editor.commandPalette")
+  d.bindKey(combo(0x50, ctrlMod or shiftMod), "editor.commandPalette") ## Ctrl+Shift+P
+
+  d.removeBindingsForCommand("editor.findInBuffer")
+  d.bindKey(combo(0x46, ctrlMod), "editor.findInBuffer") ## Ctrl+F
+
+  d.removeBindingsForCommand("editor.ripgrepFind")
+  d.bindKey(combo(0x46, ctrlMod or shiftMod), "editor.ripgrepFind") ## Ctrl+Shift+F
+
+  d.removeBindingsForCommand("editor.saveBuffer")
+  d.bindKey(combo(0x53, ctrlMod), "editor.saveBuffer") ## Ctrl+S
+
+  d.removeBindingsForCommand("editor.findFile")
+  d.bindKey(combo(0x50, ctrlMod), "editor.findFile") ## Ctrl+P
+
+  d.removeBindingsForCommand("editor.switchBuffer")
+  d.bindKey(combo(0x01000001, ctrlMod), "editor.switchBuffer") ## Ctrl+Tab
+
+  d.removeBindingsForCommand("editor.toggleFileTree")
+  d.bindKey(combo(0x45, ctrlMod or shiftMod), "editor.toggleFileTree") ## Ctrl+Shift+E
+
+  d.removeBindingsForCommand("editor.gotoDefinition")
+  d.bindKey(combo(0x0100003B, noMod), "editor.gotoDefinition") ## F12
+
+  d.removeBindingsForCommand("editor.showPrototype")
+  d.bindKey(combo(0x0100003B, ctrlMod), "editor.showPrototype") ## Ctrl+F12
+
+  d.removeBindingsForCommand("editor.jumpBack")
+  d.bindKey(combo(0x01000012, altMod), "editor.jumpBack") ## Alt+Left
+
+proc registerBindings*(d: CommandDispatcher, scheme: KeybindingScheme) {.raises: [].} =
+  case scheme
+  of Emacs:
+    registerEmacsBindings(d)
+  of VSCode:
+    registerVSCodeBindings(d)
+
+proc registerDefaultBindings*(d: CommandDispatcher) {.raises: [].} =
+  registerBindings(d, Emacs)
+
+proc keyComboToString*(c: KeyCombo): string {.raises: [].} =
   ## Convert a KeyCombo to a portable string like "Ctrl+F".
   var parts: seq[string]
   if (c.mods and ctrlMod) != 0:  parts.add("Ctrl")
@@ -132,6 +189,7 @@ proc keyComboToString*(c: KeyCombo): string =
   if (c.mods and shiftMod) != 0: parts.add("Shift")
   let keyName = case c.key
     of 0x01000000: "Escape"
+    of 0x01000001: "Tab"
     of 0x01000003: "Backspace"
     of 0x01000004: "Return"
     of 0x01000007: "Delete"
@@ -158,7 +216,7 @@ proc keyComboToString*(c: KeyCombo): string =
     parts.add(keyName)
     result = parts.join("+")
 
-proc stringToKeyCombo*(s: string): KeyCombo =
+proc stringToKeyCombo*(s: string): KeyCombo {.raises: [].} =
   ## Parse a portable key string like "Ctrl+F" or "Ctrl+X 1" (chord) into a KeyCombo.
   if s.len == 0: return combo(0, noMod)
   
@@ -189,6 +247,7 @@ proc stringToKeyCombo*(s: string): KeyCombo =
     of "Alt":       mods = mods or altMod
     of "Shift":     mods = mods or shiftMod
     of "Escape":    key = 0x01000000
+    of "Tab":       key = 0x01000001
     of "Backspace": key = 0x01000003
     of "Return":    key = 0x01000004
     of "Delete":    key = 0x01000007
@@ -212,47 +271,90 @@ proc stringToKeyCombo*(s: string): KeyCombo =
       if part.len == 1: key = cint(part[0].ord)
   result = combo(key, mods)
 
-proc resetBindings*(d: CommandDispatcher) =
+proc resetBindings*(d: CommandDispatcher) {.raises: [].} =
   ## Clear all key bindings so they can be re-registered from scratch.
   d.single.clear()
   d.chordCx.clear()
 
-proc applyCustomBindings*(d: CommandDispatcher, custom: Table[string, string]) =
+proc findChordPrefix*(d: CommandDispatcher, chordKey: KeyCombo): string {.raises: [].}
+
+proc applyCustomBindings*(d: CommandDispatcher, custom: Table[string, string]) {.raises: [].} =
   ## Override default bindings with user-specified key strings.
-  ## Removes any existing single binding for each command before adding the new one.
+  ## Removes existing bindings for each command before adding the new one.
+  let chordPrefixBinding = custom.getOrDefault("editor.chordCx", "")
+  if chordPrefixBinding.len > 0:
+    let newCombo = stringToKeyCombo(chordPrefixBinding)
+    if newCombo.key != 0:
+      d.removeBindingsForCommand("editor.chordCx")
+      d.single[newCombo] = "editor.chordCx"
+
+  let chordPrefix = findChordPrefix(d, combo(0, noMod)).toLowerAscii()
+
   for cmdId, keyStr in custom:
-    let newCombo = stringToKeyCombo(keyStr)
-    if newCombo.key == 0: continue
-    var toRemove: seq[KeyCombo]
-    for k, v in d.single:
-      if v == cmdId: toRemove.add(k)
-    for k in toRemove: d.single.del(k)
+    if cmdId == "editor.chordCx":
+      continue
+
+    let normalized = keyStr.replace(", ", " ").strip()
+    let parts = normalized.splitWhitespace()
+    if parts.len == 0:
+      continue
+
+    if parts.len == 2:
+      if parts[0].toLowerAscii() != chordPrefix:
+        continue
+      let newCombo = stringToKeyCombo(parts[1])
+      if newCombo.key == 0:
+        continue
+      d.removeBindingsForCommand(cmdId)
+      d.chordCx[newCombo] = cmdId
+      continue
+
+    let newCombo = stringToKeyCombo(normalized)
+    if newCombo.key == 0:
+      continue
+    d.removeBindingsForCommand(cmdId)
     d.single[newCombo] = cmdId
 
-proc findChordPrefix*(d: CommandDispatcher, chordKey: KeyCombo): string =
+proc findChordPrefix*(d: CommandDispatcher, chordKey: KeyCombo): string {.raises: [].} =
   ## Find the prefix key that triggers this chord (e.g., "Ctrl+X" for C-x 1).
   for key, cmdId in d.single:
     if cmdId == "editor.chordCx":
       return keyComboToString(key)
   return "Ctrl+X"
 
-proc defaultBindingList*(): seq[BindingEntry] =
-  ## Returns all default keybindings as a list for display/editing purposes.
+proc bindingListForScheme(scheme: KeybindingScheme): seq[BindingEntry] {.raises: [].} =
   let d = CommandDispatcher()
-  registerDefaultBindings(d)
+  registerBindings(d, scheme)
   for k, v in d.single:
     result.add((id: v, combo: k, isChord: false, chordPrefix: ""))
   for k, v in d.chordCx:
     let prefix = findChordPrefix(d, k)
     result.add((id: v, combo: k, isChord: true, chordPrefix: prefix))
 
-proc listCommands*(d: CommandDispatcher): seq[CommandDescriptor] =
+proc defaultBindingList*(scheme: KeybindingScheme = Emacs): seq[BindingEntry] {.raises: [].} =
+  ## Returns the selected scheme's keybindings plus blank entries for commands
+  ## that are only bound in the other scheme so they remain editable.
+  result = bindingListForScheme(scheme)
+
+  var seen: Table[CommandId, bool]
+  for entry in result:
+    seen[entry.id] = true
+
+  for fallback in KeybindingScheme:
+    if fallback == scheme:
+      continue
+    for entry in bindingListForScheme(fallback):
+      if not seen.hasKey(entry.id):
+        seen[entry.id] = true
+        result.add((id: entry.id, combo: combo(0, noMod), isChord: false, chordPrefix: ""))
+
+proc listCommands*(d: CommandDispatcher): seq[CommandDescriptor] {.raises: [].} =
   for _, desc in d.metadata:
     result.add(desc)
   result.sort(proc(a, b: CommandDescriptor): int {.raises: [].} =
     cmp(a.label.toLowerAscii(), b.label.toLowerAscii()))
 
-proc bindingStrings*(d: CommandDispatcher, id: CommandId): seq[string] =
+proc bindingStrings*(d: CommandDispatcher, id: CommandId): seq[string] {.raises: [].} =
   for key, value in d.single:
     if value == id:
       let s = keyComboToString(key)

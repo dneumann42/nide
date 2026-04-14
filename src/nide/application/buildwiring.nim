@@ -126,7 +126,7 @@ proc setupPaneManager(self: Application, splitter: QSplitter) =
 
 proc setupCommandDispatcher(self: Application) =
   let disp = CommandDispatcher()
-  registerDefaultBindings(disp)
+  registerBindings(disp, self.settings.keybindingScheme)
   disp.applyCustomBindings(self.settings.keybindings.toTable())
   self.paneManager.dispatcher = disp
 
@@ -645,7 +645,7 @@ proc wireToolbar(self: Application) =
         let disp = self.paneManager.dispatcher
         if disp != nil:
           disp.resetBindings()
-          registerDefaultBindings(disp)
+          registerBindings(disp, updated.keybindingScheme)
           disp.applyCustomBindings(updated.keybindings.toTable())
           if self.commandPalette != nil:
             self.commandPalette.refreshItems()

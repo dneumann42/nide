@@ -1,4 +1,4 @@
-import std/unittest
+import std/[tables, unittest]
 import commands
 
 suite "default keybindings":
@@ -91,3 +91,21 @@ suite "command metadata":
     check "Ctrl+X Ctrl+F" in d.bindingStrings("editor.findFile")
     check "Ctrl+X 0" in d.bindingStrings("editor.deleteWindow")
     check "Ctrl+X O" in d.bindingStrings("editor.otherWindow")
+
+suite "keybinding schemes":
+  test "vscode scheme remaps common editor commands":
+    let d = CommandDispatcher()
+    registerBindings(d, VSCode)
+    check d.lookupCommand(combo(0x46, ctrlMod)) == "editor.findInBuffer"
+    check d.lookupCommand(combo(0x53, ctrlMod)) == "editor.saveBuffer"
+    check d.lookupCommand(combo(0x50, ctrlMod)) == "editor.findFile"
+    check d.lookupCommand(combo(0x01000001, ctrlMod)) == "editor.switchBuffer"
+    check d.lookupCommand(combo(0x0100003B, noMod)) == "editor.gotoDefinition"
+    check d.lookupCommand(combo(0x01000012, altMod)) == "editor.jumpBack"
+
+  test "custom overrides survive scheme changes":
+    let d = CommandDispatcher()
+    registerBindings(d, VSCode)
+    d.applyCustomBindings({"editor.findFile": "Alt+P"}.toTable)
+    check d.lookupCommand(combo(0x50, altMod)) == "editor.findFile"
+    check d.lookupCommand(combo(0x50, ctrlMod)) == ""

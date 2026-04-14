@@ -7,6 +7,7 @@ import seaqt/[qwidget, qdialog, qformlayout, qvboxlayout, qhboxlayout, qdialogbu
 import std/[tables, algorithm, strutils, os, osproc]
 
 import nide/settings/theme
+import nide/settings/keybindings
 import nide/settings/nimbleinstaller
 import nide/settings/projectconfig
 import nide/settings/toolchain
@@ -64,6 +65,7 @@ type
   Settings* = object
     appearance*:  AppearanceSettings
     restoreLastSessionOnLaunch*: bool
+    keybindingScheme*: KeybindingScheme
     keybindings*: seq[KeybindingOverride]
     nim*: NimEnvironmentSettings  ## user-defined overrides, e.g. {command: "editor.forwardChar", key: "Ctrl+T"}
 
@@ -97,6 +99,7 @@ proc toStored(settings: Settings): StoredSettings =
   result.appearance.opacityEnabled = settings.appearance.opacityEnabled
   result.appearance.opacityLevel = settings.appearance.opacityLevel
   result.restoreLastSessionOnLaunch = settings.restoreLastSessionOnLaunch
+  result.keybindingScheme = settings.keybindingScheme.toStored()
   result.keybindings = settings.keybindings.toStored()
   case settings.nim.mode
   of InstallWithNimble: result.nim.mode = "installWithNimble"
@@ -123,6 +126,7 @@ proc toRuntime(stored: StoredSettings): Settings =
   if stored.appearance.opacityLevel > 0:
     result.appearance.opacityLevel = stored.appearance.opacityLevel
   result.restoreLastSessionOnLaunch = stored.restoreLastSessionOnLaunch
+  result.keybindingScheme = parseKeybindingScheme(stored.keybindingScheme)
   result.keybindings = stored.keybindings.toRuntime()
   case stored.nim.mode
   of "installWithNimble": result.nim.mode = InstallWithNimble
@@ -321,11 +325,13 @@ proc showSettingsDialog*(
     var kbTab = newWidget(QWidget.create(QWidget(h: tabsH, owned: false)))
     let kbTabH = kbTab.h
 
-    # Build sorted list of all default bindings
-    var allBindings = defaultBindingList()
-    allBindings.sort(proc(a, b: BindingEntry): int = cmp(a.id, b.id))
+    var keybindingSchemeCombo = newWidget(QComboBox.create())
+    for scheme in KeybindingScheme:
+      keybindingSchemeCombo.addItem(keybindingSchemeLabel(scheme))
+    keybindingSchemeCombo.setCurrentIndex(
+      if current.keybindingScheme == VSCode: cint 1 else: cint 0)
 
-    var kbTable = newWidget(QTableWidget.create(cint allBindings.len, cint 3))
+    var kbTable = newWidget(QTableWidget.create(cint 0, cint 3))
     let kbTableH = kbTable.h
 
     # Table configuration: no editing, select rows, no grid
@@ -347,68 +353,90 @@ proc showSettingsDialog*(
     var customChanges = new(Table[string, string])
     customChanges[] = current.keybindings.toTable()
 
-    for i, entry in allBindings:
-      let row = cint i
+    proc selectedKeybindingScheme(): KeybindingScheme {.raises: [].} =
+      if keybindingSchemeCombo.currentIndex() == 1: VSCode else: Emacs
 
-      # Col 0: command id — read-only
-      var idItem = newWidget(QTableWidgetItem.create(entry.id))
-      idItem.setFlags(IF_SelectableEnabled)
-      QTableWidget(h: kbTableH, owned: false).setItem(row, cint 0, idItem)
+    proc refreshKeybindingsTable() {.raises: [].}
 
-      # Col 1: current binding string — read-only
-      var bindStr: string
-      if customChanges[].hasKey(entry.id):
-        bindStr = customChanges[][entry.id]
-      elif entry.isChord and entry.chordPrefix.len > 0:
-        bindStr = entry.chordPrefix & " " & keyComboToString(entry.combo)
-      else:
-        bindStr = keyComboToString(entry.combo)
-      var bindItem = newWidget(QTableWidgetItem.create(bindStr))
-      bindItem.setFlags(IF_SelectableEnabled)
-      QTableWidget(h: kbTableH, owned: false).setItem(row, cint 1, bindItem)
+    proc refreshKeybindingsTable() {.raises: [].} =
+      var allBindings = defaultBindingList(selectedKeybindingScheme())
+      allBindings.sort(proc(a, b: BindingEntry): int = cmp(a.id, b.id))
 
-      # Col 2: "Set" button (all bindings)
-      var setBtn = newWidget(QPushButton.create("Set"))
-      let setBtnH = setBtn.h
-      let cmdId = entry.id
-      let changesRef = customChanges
-      QAbstractButton(h: setBtnH, owned: false).onClicked do() {.raises: [].}:
-        var capDlg = newWidget(QDialog.create(QWidget(h: dialogH, owned: false)))
-        let capDlgH = capDlg.h
-        QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
-        QWidget(h: capDlgH, owned: false).resize(KeyCaptureWidth, KeyCaptureHeight)
+      let table = QTableWidget(h: kbTableH, owned: false)
+      table.clearContents()
+      table.setRowCount(cint allBindings.len)
 
-        var capLabel = newWidget(QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:"))
+      for i, entry in allBindings:
+        let row = cint i
 
-        var keyEdit = newWidget(QKeySequenceEdit.create())
-        let keyEditH = keyEdit.h
+        var idItem = newWidget(QTableWidgetItem.create(entry.id))
+        idItem.setFlags(IF_SelectableEnabled)
+        table.setItem(row, cint 0, idItem)
 
-        var capBtns = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
-        capBtns.onAccepted do():
-          QDialog(h: capDlgH, owned: false).accept()
-        capBtns.onRejected do():
-          QDialog(h: capDlgH, owned: false).reject()
+        var bindStr: string
+        let customBinding = customChanges[].getOrDefault(entry.id, "")
+        if customBinding.len > 0:
+          bindStr = customBinding
+        elif entry.combo.key == 0:
+          bindStr = ""
+        elif entry.isChord and entry.chordPrefix.len > 0:
+          bindStr = entry.chordPrefix & " " & keyComboToString(entry.combo)
+        else:
+          bindStr = keyComboToString(entry.combo)
 
-        var capLayout = vbox((cint 8, cint 8, cint 8, cint 8))
-        capLayout.add(capLabel)
-        capLayout.addWidget(QWidget(h: keyEditH, owned: false))
-        capLayout.add(capBtns)
-        capLayout.applyTo(QWidget(h: capDlgH, owned: false))
+        var bindItem = newWidget(QTableWidgetItem.create(bindStr))
+        bindItem.setFlags(IF_SelectableEnabled)
+        table.setItem(row, cint 1, bindItem)
 
-        if QDialog(h: capDlgH, owned: false).exec() == 1:
-          let rawStr = QKeySequenceEdit(h: keyEditH, owned: false).keySequence().toString()
-          let newStr = rawStr.split(", ")[0]
-          if newStr.len > 0:
-            changesRef[][cmdId] = newStr
-            let bi = QTableWidget(h: kbTableH, owned: false).item(row, cint 1)
-            if bi.h != nil:
-              bi.setText(newStr)
+        var setBtn = newWidget(QPushButton.create("Set"))
+        let setBtnH = setBtn.h
+        let cmdId = entry.id
+        let changesRef = customChanges
+        QAbstractButton(h: setBtnH, owned: false).onClicked do() {.raises: [].}:
+          var capDlg = newWidget(QDialog.create(QWidget(h: dialogH, owned: false)))
+          let capDlgH = capDlg.h
+          QWidget(h: capDlgH, owned: false).setWindowTitle("Set Keybinding")
+          QWidget(h: capDlgH, owned: false).resize(KeyCaptureWidth, KeyCaptureHeight)
 
-      QTableWidget(h: kbTableH, owned: false).setCellWidget(
-        row, cint 2, QWidget(h: setBtnH, owned: false))
+          var capLabel = newWidget(QLabel.create("Command:  " & cmdId & "\n\nPress a key combination:"))
+
+          var keyEdit = newWidget(QKeySequenceEdit.create())
+          let keyEditH = keyEdit.h
+
+          var capBtns = newWidget(QDialogButtonBox.create2(Btn_OkCancel))
+          capBtns.onAccepted do():
+            QDialog(h: capDlgH, owned: false).accept()
+          capBtns.onRejected do():
+            QDialog(h: capDlgH, owned: false).reject()
+
+          var capLayout = vbox((cint 8, cint 8, cint 8, cint 8))
+          capLayout.add(capLabel)
+          capLayout.addWidget(QWidget(h: keyEditH, owned: false))
+          capLayout.add(capBtns)
+          capLayout.applyTo(QWidget(h: capDlgH, owned: false))
+
+          if QDialog(h: capDlgH, owned: false).exec() == 1:
+            let rawStr = QKeySequenceEdit(h: keyEditH, owned: false).keySequence().toString()
+            let newStr = rawStr.split(", ")[0]
+            if newStr.len > 0:
+              changesRef[][cmdId] = newStr
+              refreshKeybindingsTable()
+
+        table.setCellWidget(row, cint 2, QWidget(h: setBtnH, owned: false))
+
+    QComboBox(h: keybindingSchemeCombo.h, owned: false).onCurrentIndexChanged do(
+      idx: cint) {.raises: [].}:
+      discard idx
+      refreshKeybindingsTable()
+
+    refreshKeybindingsTable()
 
     # Keybindings tab layout
     var kbLayout = vbox((TabMargin, TabMargin, TabMargin, TabMargin))
+    var kbForm = newWidget(QFormLayout.create())
+    kbForm.setSpacing(FormSpacing)
+    kbForm.addRow("Default keybindings", keybindingSchemeCombo.asWidget)
+    kbLayout.addLayout(kbForm.asLayout())
     kbLayout.addWidget(QWidget(h: kbTableH, owned: false), cint 1)
     kbLayout.applyTo(QWidget(h: kbTabH, owned: false))
 
@@ -767,6 +795,7 @@ proc showSettingsDialog*(
       let chosen = picker.currentThemeSelection()
       if chosen.len > 0:
         updated.appearance.syntaxTheme = chosen
+      updated.keybindingScheme = selectedKeybindingScheme()
       updated.keybindings = customChanges[].toOverrides()
       if installWithNimbleRadio.asButton.isChecked():
         updated.nim.mode = InstallWithNimble
