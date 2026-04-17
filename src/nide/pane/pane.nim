@@ -1,6 +1,6 @@
 import nide/pane/logic
 export logic
-import nide/editor/autocomplete, nide/editor/buffers, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/[syntaxtheme, theme], nide/helpers/widgetref, nide/ui/widgets
+import nide/editor/autocomplete, nide/editor/buffers, nide/editor/sexpr_parse, commands, nide/editor/funcprototype, nide/helpers/logparser, nide/nim/nimcheck, nide/nim/nimfinddef, nide/nim/nimimports, nide/nim/nimindex, nide/nim/nimsuggest, nide/settings/[syntaxtheme, theme], nide/helpers/widgetref, nide/ui/[sexprview, widgets]
 import nide/helpers/[debuglog, qtconst]
 import seaqt/[qabstractbutton, qabstractitemview, qabstractscrollarea, qabstractslider, qbrush, qcheckbox, qclipboard, qcolor, qcursor, qevent, qfiledialog, qfont, qfontmetrics, qguiapplication, qhboxlayout, qheaderview, qicon, qkeyevent, qkeysequence, qlabel, qlayout, qlineargradient, qlineedit, qlistwidget, qlistwidgetitem, qmessagebox, qmouseevent, qpaintdevice, qpainter, qpaintevent, qpalette, qpixmap, qplaintextdocumentlayout, qplaintextedit, qpoint, qprocess, qpushbutton, qrect, qregularexpression, qresizeevent, qscrollarea, qscrollbar, qscroller, qscrollerproperties, qshortcut, qsize, qstackedwidget, qsvgrenderer, qtableview, qtablewidget, qtablewidgetitem, qtextcursor, qtextdocument, qtextedit, qtextformat, qtextobject, qtimer, qvariant, qvboxlayout, qwheelevent, qwidget]
 import std/[math, options, os, strutils]
@@ -52,6 +52,8 @@ type
     stack: QStackedWidget
     openModuleWidget: QWidget
     editor*: QPlainTextEdit
+    sexprView*: SExprView
+    sexprPage: QScrollArea
     imagePage: QWidget
     imageScroll: QScrollArea
     imageLabel: QLabel
@@ -649,7 +651,7 @@ proc prefillDiags*(pane: Pane, lines: seq[LogLine]) {.raises: [].} =
 
 proc save*(pane: Pane) {.raises: [].} =
   if pane.buffer != nil and pane.buffer.path.len > 0:
-    if pane.buffer.kind != bkText:
+    if pane.buffer.kind notin {bkText, bkSExpr}:
       return
     if pane.buffer.externallyModified:
       let parent = QWidget(h: pane.container.h, owned: false)
@@ -663,20 +665,30 @@ proc save*(pane: Pane) {.raises: [].} =
       if clicked == MsgBox_Discard:
         try:
           let content = readFile(pane.buffer.path)
-          pane.buffer.document().setPlainText(content)
-          pane.buffer.document().setModified(false)
+          if pane.buffer.kind == bkSExpr:
+            pane.buffer.sexpr = parseSExpr(content)
+            pane.sexprView.setDocument(pane.buffer.sexpr)
+          else:
+            pane.buffer.document().setPlainText(content)
+            pane.buffer.document().setModified(false)
           pane.buffer.externallyModified = false
         except CatchableError:
           logError("pane: reload file error: ", getCurrentExceptionMsg())
         return
       pane.buffer.externallyModified = false
     try:
-      let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
-      let savedScroll = ed.verticalScrollBar().value()
-      writeFile(pane.buffer.path, ed.toPlainText())
-      runCheck(pane)
-      ed.document().setModified(false)
-      ed.verticalScrollBar().setValue(savedScroll)
+      if pane.buffer.kind == bkSExpr:
+        writeFile(pane.buffer.path, serializeSExpr(pane.buffer.sexprDocument()))
+        pane.buffer.sexpr.dirty = false
+        pane.changed = false
+        pane.statusLabel.setText(StatusDark)
+      else:
+        let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
+        let savedScroll = ed.verticalScrollBar().value()
+        writeFile(pane.buffer.path, ed.toPlainText())
+        runCheck(pane)
+        ed.document().setModified(false)
+        ed.verticalScrollBar().setValue(savedScroll)
     except CatchableError:
       logError("pane: save error: ", getCurrentExceptionMsg())
 
@@ -1305,10 +1317,21 @@ proc newPane*(
   var imagePage = newWidget(QWidget.create())
   imageLayout.applyTo(imagePage)
 
+  var sexpr = newSExprView(proc() {.raises: [].} =
+    pane.changed = true
+    pane.statusLabel.setText(StatusLight)
+    onEvent(PaneEvent(pane: pane, kind: peStateChanged)))
+  var sexprScroll = newWidget(QScrollArea.create())
+  sexprScroll.setWidget(sexpr.widget)
+  sexprScroll.setWidgetResizable(true)
+  sexprScroll.setAlignment(0)
+  sexprScroll.asWidget.setStyleSheet("QScrollArea { border: none; background: " & editorBackground() & "; }")
+
   var stack = newWidget(QStackedWidget.create())
   discard stack.addWidget(openModuleWidget)
   discard stack.addWidget(editor.asWidget)
   discard stack.addWidget(imagePage)
+  discard stack.addWidget(sexprScroll.asWidget)
 
   var label = newWidget(QLabel.create(""))
   var statusLabel = newWidget(QLabel.create(StatusDark))
@@ -1462,6 +1485,8 @@ proc newPane*(
   result.stack = stack
   result.openModuleWidget = openModuleWidget
   result.editor = editor
+  result.sexprView = sexpr
+  result.sexprPage = sexprScroll
   result.imagePage = imagePage
   result.imageScroll = imageScroll
   result.imageLabel = imageLabel
@@ -1608,6 +1633,13 @@ proc setBuffer*(pane: Pane, buf: Buffer) =
     pane.stack.setCurrentIndex(cint(1))
     pane.searchBar.get().hide()
     pane.saveBtn.get().asWidget.setEnabled(true)
+  elif buf.kind == bkSExpr:
+    pane.changed = buf.sexprDocument().dirty
+    pane.statusLabel.setText(if pane.changed: StatusLight else: StatusDark)
+    pane.sexprView.setDocument(buf.sexprDocument())
+    pane.stack.setCurrentWidget(pane.sexprPage.asWidget)
+    pane.searchBar.get().hide()
+    pane.saveBtn.get().asWidget.setEnabled(true)
   else:
     pane.changed = false
     pane.statusLabel.setText(StatusDark)
@@ -1634,6 +1666,7 @@ proc clearBuffer*(pane: Pane) =
   pane.label.setText("")
   let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
   ed.setDocument(pane.emptyDoc.get())
+  pane.sexprView.setDocument(nil)
   pane.imageLabel.clear()
   pane.imageScale = 1.0
   pane.imageUserZoomed = false
@@ -1885,6 +1918,8 @@ proc setEditorFont*(pane: Pane, family: string, size: int) {.raises: [].} =
     ed.document().setDefaultFont(font)
     if pane.emptyDoc.h != nil:
       QTextDocument(h: pane.emptyDoc.h, owned: false).setDefaultFont(font)
+    if pane.sexprView != nil:
+      pane.sexprView.setEditorFont(family, size)
     ed.updateLineNumberAreaWidth()
     ed.viewport().update()
   except CatchableError: discard
@@ -1971,6 +2006,9 @@ proc currentScrollPosition*(pane: Pane): tuple[vertical, horizontal: int] {.rais
     if pane.isImageBuffer():
       let area = QAbstractScrollArea(h: pane.imageScroll.h, owned: false)
       (area.verticalScrollBar().value().int, area.horizontalScrollBar().value().int)
+    elif pane.buffer != nil and pane.buffer.kind == bkSExpr:
+      let area = QAbstractScrollArea(h: pane.sexprPage.h, owned: false)
+      (area.verticalScrollBar().value().int, area.horizontalScrollBar().value().int)
     else:
       let ed = QPlainTextEdit(h: pane.editor.h, owned: false)
       (ed.verticalScrollBar().value().int, ed.horizontalScrollBar().value().int)
@@ -1979,6 +2017,12 @@ proc currentScrollPosition*(pane: Pane): tuple[vertical, horizontal: int] {.rais
 
 proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raises: [].} =
   if pane.buffer == nil:
+    return
+  if pane.buffer.kind == bkSExpr:
+    let area = QAbstractScrollArea(h: pane.sexprPage.h, owned: false)
+    area.verticalScrollBar().setValue(cint min(max(vertical, 0), area.verticalScrollBar().maximum().int))
+    area.horizontalScrollBar().setValue(cint min(max(horizontal, 0), area.horizontalScrollBar().maximum().int))
+    pane.sexprView.focus()
     return
   if pane.buffer.kind != bkText:
     pane.fitImageToPane()
@@ -2006,6 +2050,8 @@ proc restoreViewState*(pane: Pane, line, col, vertical, horizontal: int) {.raise
 proc focus*(pane: Pane) {.raises: [].} =
   if pane.isImageBuffer():
     QWidget(h: pane.imageScroll.h, owned: false).setFocus()
+  elif pane.buffer != nil and pane.buffer.kind == bkSExpr:
+    pane.sexprView.focus()
   elif pane.buffer != nil:
     QWidget(h: pane.editor.h, owned: false).setFocus()
   else:
@@ -2024,6 +2070,11 @@ proc applyEditorTheme*(pane: Pane) {.raises: [].} =
       "QScrollArea { background: " & bg & "; border: none; }")
     QWidget(h: pane.imagePage.h, owned: false).setStyleSheet(
       "QWidget { background: " & bg & "; color: " & fg & "; }")
+    if pane.sexprView != nil and pane.sexprView.widget.h != nil:
+      QWidget(h: pane.sexprView.widget.h, owned: false).setStyleSheet(
+        "QWidget { background: " & bg & "; color: " & fg & "; }")
+      QWidget(h: pane.sexprPage.h, owned: false).setStyleSheet(
+        "QScrollArea { background: " & bg & "; border: none; }")
     # Force gutter repaint
     ed.updateLineNumberAreaWidth()
     ed.viewport().update()

@@ -1,6 +1,7 @@
 import std/[os, strutils]
 import seaqt/[qtextdocument, qplaintextedit, qabstracttextdocumentlayout, qfont, qpixmap]
 import nide/editor/highlight
+import nide/editor/[sexpr_model, sexpr_parse]
 import nide/ui/widgets
 import nide/ui/filepreview
 
@@ -8,6 +9,7 @@ type
   BufferKind* = enum
     bkText
     bkImage
+    bkSExpr
 
   Buffer* = ref object
     name, path: string
@@ -15,6 +17,7 @@ type
     content: string
     documentH: pointer
     pixmapH: pointer
+    sexpr*: SExprDocument
     highlighter*: EditorHighlighter
     externallyModified*: bool
 
@@ -43,6 +46,15 @@ proc path*(b: Buffer): string = b.path
 proc `path=`*(b: Buffer, p: string) = b.path = p
 proc content*(b: Buffer): string = b.content
 proc kind*(b: Buffer): BufferKind = b.kind
+
+proc isSExprPath*(path: string): bool =
+  let ext = path.splitFile.ext.toLowerAscii()
+  ext in [".lisp", ".cl", ".scm", ".rkt", ".el", ".sexp", ".sxp"]
+
+proc sexprDocument*(b: Buffer): SExprDocument =
+  if b.sexpr == nil:
+    b.sexpr = parseSExpr(b.content)
+  b.sexpr
 
 proc pixmap*(b: Buffer): QPixmap =
   if b.pixmapH == nil:
@@ -91,7 +103,13 @@ proc openFile*(bm: var BufferManager, path: string): Buffer =
   try:
     var pixmap = QPixmap.create()
     pixmap.owned = false
-    if pixmap.load(path):
+    if isSExprPath(path):
+      result.kind = bkSExpr
+      result.content = readFile(path)
+      result.sexpr = parseSExpr(result.content)
+      when defined(debugFileWatcher):
+        echo "[FileWatcher] BufferManager.openFile: loaded s-expression buffer"
+    elif pixmap.load(path):
       result.kind = bkImage
       result.pixmapH = pixmap.h
       when defined(debugFileWatcher):

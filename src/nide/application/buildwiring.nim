@@ -2,7 +2,7 @@ import commands
 import nide/panemanager
 import nide/application/[application, application_types, filetreeops]
 import nide/dialogs/[graphdialog, moduledialog, projectdialog, themedialog]
-import nide/editor/buffers
+import nide/editor/[buffers, sexpr_parse]
 import nide/helpers/[debuglog, logparser, qtconst, runner, widgetref]
 import nide/navigation/rgfinder
 import nide/nim/nimsuggest
@@ -433,7 +433,7 @@ proc setupCommandDispatcher(self: Application) =
   do() {.raises: [].}:
     let target = self.getTargetPane()
     if target != nil:
-      target.editor.asWidget.setFocus()
+      target.focus()
   self.commandPalette.applyTheme(self.theme)
 
 proc wireFileTree(self: Application) =
@@ -782,6 +782,9 @@ proc wireFileWatcher(self: Application) =
         if buf.kind == bkText and QPlainTextEdit(h: panel.editor.h, owned: false).document().isModified():
           dirty = true
           break
+        if buf.kind == bkSExpr and buf.sexprDocument().dirty:
+          dirty = true
+          break
     if dirty:
       buf.externallyModified = true
       when defined(debugFileWatcher):
@@ -811,6 +814,26 @@ proc wireFileWatcher(self: Application) =
           buf.externallyModified = true
           when defined(debugFileWatcher):
             echo "[FileWatcher] failed to reload image after retries"
+      elif buf.kind == bkSExpr:
+        var content = ""
+        var readOk = false
+        for i in 0..<FileReadRetries:
+          try:
+            content = readFile(p)
+            readOk = true
+            break
+          except CatchableError:
+            when defined(debugFileWatcher):
+              echo "[FileWatcher] retry sexpr readFile attempt ", i + 1, ": ", getCurrentExceptionMsg()
+            sleep(FileWatcherRetryMs)
+        if readOk:
+          buf.sexpr = parseSExpr(content)
+          buf.externallyModified = false
+          for panel in self.paneManager.panels:
+            if panel.buffer == buf:
+              panel.setBuffer(buf)
+        else:
+          buf.externallyModified = true
       else:
         var content = ""
         var readOk = false
