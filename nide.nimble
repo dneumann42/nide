@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.0.0"
+version       = "0.0.4"
 author        = "dneumann"
 description   = "A nim editor by Dustin Neumann"
 license       = "MIT"
